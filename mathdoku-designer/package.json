@@ -1,0 +1,23 @@
+{
+  "name": "mathdoku-designer",
+  "private": true,
+  "scripts": {
+    "tw:build": "tailwindcss -i tailwind.css -o tailwind-out.css",
+    "tw:watch": "tailwindcss -i tailwind.css -o tailwind-out.css --watch",
+    "lint": "eslint",
+    "lint:fix": "eslint --fix",
+    "format": "prettier --write \"tests/**/*.ts\" playwright.config.ts",
+    "format:check": "prettier --check \"tests/**/*.ts\" playwright.config.ts"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.59.1",
+    "@tailwindcss/cli": "^4.2.4",
+    "@types/node": "^25.9.1",
+    "eslint": "^10.4.0",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.8.3",
+    "tailwindcss": "^4.2.4",
+    "typescript-eslint": "^8.59.4"
+  }
+}
