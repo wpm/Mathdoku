@@ -5,10 +5,8 @@
 //! search-tree node) and what the cache's keys project over. Anything that can
 //! be recomputed from the store is *cache*, not store.
 
-use crate::{
-    Cell, Domain,
-    variable::{VarId, Variable},
-};
+use crate::puzzle::variable::{VarId, Variable};
+use crate::{Cell, Domain};
 
 /// Intrinsic state: one [`Domain`] per cell of an `n`×`n` grid, in row-major
 /// order.

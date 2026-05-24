@@ -1,27 +1,48 @@
-//! A [`Puzzle`] pairs a domain [`Store`] with a set of [`Cage`] constraints and
-//! all-different constraints for every row and column.
+//! The [`Puzzle`] type and its supporting submodules.
+//!
+//! [`Puzzle`] is the central value of the crate. This module contains its
+//! definition, all mutation methods, the propagation-and-search plumbing, and
+//! serde support. The supporting submodules provide the building blocks:
+//!
+//! | Submodule | Contents |
+//! |-----------|----------|
+//! | [`variable`] | [`Variable`](variable::Variable) trait and [`VarId`](variable::VarId) newtype; [`Cell`] is the concrete variable |
+//! | [`store`] | [`Store`]: one [`Domain`] per cell, the snapshot-able solver state |
+//! | [`cache`] | [`TuplesCache`]: memoized viable-tuple sets keyed by cage × domain projection |
+//! | [`types`] | Primitive type aliases (`N`, `Index`, `M`) and [`Error`] |
+//! | [`cage`] | [`Cage`]: an arithmetic constraint over a polyomino with tuple-based GAC |
+//! | [`arithmetic`] | Target/value arithmetic for each [`Operation`] |
+//! | [`operation`] | [`Operation`] enum (Given, Add, Subtract, Multiply, Divide) |
+//! | [`polyomino`] | [`Polyomino`]: a connected set of grid cells |
+//! | [`slot`] | [`Slot`]: a polyomino that is either a region (unconstrained) or a cage |
+//! | [`cover`] | [`Cover`] helper trait for types that yield a set of cells |
 
-use std::{collections::BTreeSet, sync::Mutex};
-
-use rand::Rng;
-
-#[cfg(test)]
-use crate::variable::Variable;
-use crate::{
-    Cage, Cell, Domain, Error,
-    Error::{
-        CageConflict, CellNotCovered, DuplicateSlotPolyomino, InfeasibleOperation, InvalidGridSize,
-        RegionConflict, SlotNotInPuzzle, TargetNotAdjacent,
-    },
-    Operation, Polyomino, Slot,
-    all_different::AllDifferent,
-    cache::{TuplesCache, viable_multisets, viable_tuples},
-    constraint::{Constraint, Outcome, PropagationCtx, propagate_to_fixpoint},
-    cover::Cover,
-    generator::generate::{SizeDistribution, default_op_policy, generate, generate_with},
-    solver::Search,
-    store::Store,
+use crate::Error::{
+    CageConflict, CellNotCovered, DuplicateSlotPolyomino, InfeasibleOperation, InvalidGridSize,
+    RegionConflict, SlotNotInPuzzle, TargetNotAdjacent,
 };
+use crate::cs::all_different::AllDifferent;
+use crate::cs::constraint::{Constraint, Outcome, PropagationCtx, propagate_to_fixpoint};
+use crate::cs::solver::Search;
+use crate::generator::generate::{default_op_policy, generate_with};
+use crate::puzzle::cache::{TuplesCache, viable_multisets, viable_tuples};
+use crate::puzzle::cover::Cover;
+use crate::puzzle::store::Store;
+use crate::{Cage, Cell, Domain, Error, Operation, Polyomino, SizeDistribution, Slot, generate};
+use rand::Rng;
+use std::collections::BTreeSet;
+use std::sync::Mutex;
+
+pub mod arithmetic;
+pub mod cache;
+pub mod cage;
+pub mod cover;
+pub mod operation;
+pub mod polyomino;
+pub mod slot;
+pub mod store;
+pub mod types;
+pub mod variable;
 
 /// The one homogeneous constraint type the engine propagates: a cage or an
 /// all-different. [`propagate_to_fixpoint`] is generic over a single constraint
@@ -572,6 +593,7 @@ impl Puzzle {
 
     #[cfg(test)]
     fn domain(&self, cell: Cell) -> Domain {
+        use crate::puzzle::variable::Variable;
         self.store.get(cell.id())
     }
 
@@ -614,8 +636,14 @@ impl<'de> serde::Deserialize<'de> for Puzzle {
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-    use super::*;
+    use crate::Error::{
+        CageConflict, CellNotCovered, DuplicateSlotPolyomino, InfeasibleOperation, RegionConflict,
+        SlotNotInPuzzle, TargetNotAdjacent, WouldDisconnect,
+    };
+    use crate::puzzle::Puzzle;
+    use crate::puzzle::cover::Cover;
     use crate::test_utils::{cells, l_shape, pair, singleton};
+    use crate::{Cage, Cell, Domain, Operation, Polyomino, Slot};
 
     fn puzzle_4() -> Puzzle {
         Puzzle::new(4).unwrap()
@@ -1344,7 +1372,7 @@ mod tests {
         let p = puzzle_4().insert_region(row3).unwrap();
         assert!(matches!(
             p.remove_cell(Cell::new(0, 1)),
-            Err(Error::WouldDisconnect(_))
+            Err(WouldDisconnect(_))
         ));
     }
 

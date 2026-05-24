@@ -8,14 +8,12 @@
 
 use std::collections::HashMap;
 
-use crate::{
-    Cell, Domain, Error,
-    constraint::{Constraint, Outcome, PropagationCtx},
-    cover::Cover,
-    store::Narrowed,
-    types::N,
-    variable::Variable,
-};
+use crate::cs::constraint::{Constraint, Outcome, PropagationCtx};
+use crate::puzzle::cover::Cover;
+use crate::puzzle::store::Narrowed;
+use crate::puzzle::types::N;
+use crate::puzzle::variable::Variable;
+use crate::{Cell, Domain, Error};
 
 /// A constraint that ensures every cell in a row or column contains a different
 /// value.
@@ -72,10 +70,12 @@ impl Cover for AllDifferent {
     }
 }
 
-/// Full Régin GAC for all-different: given one domain per variable, returns the
-/// pruned domains in the same order. A value survives for a variable iff some
-/// assignment of distinct values (one per variable, each within its domain) uses
-/// it; if no such complete assignment exists, every domain empties.
+/// Full Régin GAC for all-different.
+///
+/// Given one domain per variable, returns the pruned domains in the same order.
+/// A value survives for a variable iff some assignment of distinct values (one
+/// per variable, each within its domain) uses it; if no such complete
+/// assignment exists, every domain empties.
 #[allow(clippy::similar_names)]
 pub fn regin_gac(domains: &[Domain]) -> Vec<Domain> {
     let n = domains.len();
@@ -264,7 +264,8 @@ mod tests {
     use rand_chacha::ChaCha8Rng;
 
     use super::*;
-    use crate::{cache::TuplesCache, store::Store};
+    use crate::puzzle::cache::TuplesCache;
+    use crate::puzzle::store::Store;
 
     fn row_4() -> AllDifferent {
         AllDifferent::row(4, 2).unwrap()

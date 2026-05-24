@@ -2,7 +2,8 @@
 
 #![allow(clippy::unwrap_used, clippy::missing_panics_doc)]
 
-use crate::{Cell, polyomino::Polyomino};
+use crate::Cell;
+use crate::puzzle::polyomino::Polyomino;
 
 /// Builds [`Cell`]s from `(row, column)` pairs.
 pub fn cells(positions: &[(usize, usize)]) -> Vec<Cell> {

@@ -1,16 +1,14 @@
 use std::collections::{BTreeSet, HashMap};
 
-use crate::{
-    Cell, Domain, Error, Operation, Operator,
-    all_different::regin_gac,
-    arithmetic::{
-        addition_multisets, division_multisets, multiplication_multisets, subtraction_multisets,
-    },
-    cage::Tuple,
-    cover::Cover,
-    operation::CageOption,
-    types::{Index, M, N},
+use crate::cs::all_different::regin_gac;
+use crate::puzzle::arithmetic::{
+    addition_multisets, division_multisets, multiplication_multisets, subtraction_multisets,
 };
+use crate::puzzle::cage::Tuple;
+use crate::puzzle::cover::Cover;
+use crate::puzzle::operation::CageOption;
+use crate::puzzle::types::{Index, M, N};
+use crate::{Cell, Domain, Error, Operation, Operator};
 
 /// A contiguous region of edge-connected [`Cell`]s.
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Ord, PartialOrd)]
@@ -415,7 +413,7 @@ fn regin_filter_tuples(mut tuples: Vec<Tuple>, groups: &[Vec<usize>]) -> Vec<Tup
         if tuples.is_empty() {
             break;
         }
-        // First remove tuples where group positions are not all distinct.
+        // First, remove tuples where group positions are not all distinct.
         tuples.retain(|t| {
             let vals: Vec<N> = group.iter().map(|&pos| t[pos]).collect();
             (1..vals.len()).all(|i| !vals[..i].contains(&vals[i]))

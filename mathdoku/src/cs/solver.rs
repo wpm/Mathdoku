@@ -6,13 +6,11 @@
 //! callers can stop after the first solution (a uniqueness check) or drain it to
 //! enumerate all. The viable-tuple [`TuplesCache`] is shared across the whole search.
 
-use crate::{
-    Cell, Domain,
-    cache::TuplesCache,
-    constraint::{Constraint, Outcome, PropagationCtx, propagate_to_fixpoint},
-    store::Store,
-    variable::Variable,
-};
+use crate::cs::constraint::{Constraint, Outcome, PropagationCtx, propagate_to_fixpoint};
+use crate::puzzle::cache::TuplesCache;
+use crate::puzzle::store::Store;
+use crate::puzzle::variable::Variable;
+use crate::{Cell, Domain};
 
 /// A lazy depth-first solver over constraints of type `C`.
 pub struct Search<C: Constraint<Cell>> {

@@ -1,6 +1,8 @@
 use std::cmp::Ordering;
 
-use crate::{Cage, Cell, Error, Operation, Polyomino, cover::Cover, types::N};
+use crate::puzzle::cover::Cover;
+use crate::puzzle::types::N;
+use crate::{Cage, Cell, Error, Operation, Polyomino};
 
 /// A slot in a puzzle: either a claimed [`Polyomino`] region with no operation
 /// or a fully specified [`Cage`].

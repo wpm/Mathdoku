@@ -1,7 +1,5 @@
-use crate::{
-    cage::Tuple,
-    types::{Error, M, N},
-};
+use crate::puzzle::cage::Tuple;
+use crate::puzzle::types::{Error, M, N};
 
 /// Returns an iterator over all non-decreasing `k`-tuples with values in
 /// `1..=n` that sum to `s`.

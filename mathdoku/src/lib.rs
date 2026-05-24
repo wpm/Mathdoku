@@ -25,29 +25,17 @@
     clippy::missing_panics_doc
 )]
 
-mod all_different;
-mod arithmetic;
-mod cache;
-mod cage;
-mod constraint;
-mod cover;
 mod generator;
-mod operation;
-mod polyomino;
-mod puzzle;
-mod slot;
-mod solver;
-mod store;
-mod types;
-mod variable;
 
+pub mod cs;
+pub mod puzzle;
 #[cfg(test)]
 mod test_utils;
 
-pub use cage::{Cage, Tuple};
 pub use generator::generate::{SizeDistribution, generate};
-pub use operation::{CageOption, Operation, Operator};
-pub use polyomino::Polyomino;
 pub use puzzle::Puzzle;
-pub use slot::Slot;
-pub use types::{Cell, Domain, Error};
+pub use puzzle::cage::{Cage, Tuple};
+pub use puzzle::operation::{CageOption, Operation, Operator};
+pub use puzzle::polyomino::Polyomino;
+pub use puzzle::slot::Slot;
+pub use puzzle::types::{Cell, Domain, Error};

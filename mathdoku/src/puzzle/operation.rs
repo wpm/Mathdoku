@@ -1,6 +1,6 @@
 use strum::EnumIter;
 
-use crate::types::M;
+use crate::puzzle::types::M;
 
 /// An arithmetic operation required by a [`Cage`](crate::Cage).
 #[derive(

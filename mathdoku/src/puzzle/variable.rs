@@ -2,7 +2,8 @@
 
 use std::hash::Hash;
 
-use crate::{Cell, types::N};
+use crate::Cell;
+use crate::puzzle::types::N;
 
 /// Identifier for a constraint-satisfaction variable.
 ///
@@ -10,7 +11,7 @@ use crate::{Cell, types::N};
 /// so the identifier carries the cell coordinates directly. [`Store`] keys its
 /// domains by `VarId`.
 ///
-/// [`Store`]: crate::store::Store
+/// [`Store`]: crate::puzzle::store::Store
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct VarId(pub Cell);
 

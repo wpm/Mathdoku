@@ -5,13 +5,11 @@ use std::collections::HashSet;
 
 use rand::{Rng, RngExt};
 
-use crate::{
-    Cell, Operation, Polyomino,
-    cage::Cage,
-    generator::latin_square::generate_latin_square,
-    puzzle::Puzzle,
-    types::{Error, Index, M, N},
-};
+use crate::puzzle::Puzzle;
+use crate::puzzle::cage::Cage;
+use crate::puzzle::types::{Error, Index, M, N};
+use crate::{Cell, Operation, Polyomino, generator::latin_square::generate_latin_square};
+
 /// Poisson distribution over cage sizes, truncated to `[1, n*n]` by
 /// rejection sampling.
 #[derive(Debug, Clone, Copy)]
@@ -230,7 +228,7 @@ mod tests {
     use rand::SeedableRng;
 
     use super::*;
-    use crate::cover::Cover;
+    use crate::puzzle::cover::Cover;
 
     #[test]
     fn default_op_policy_one_cell_is_given() {

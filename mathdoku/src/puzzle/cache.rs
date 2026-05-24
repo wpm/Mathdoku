@@ -12,7 +12,11 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use crate::{Domain, Tuple, cage::Cage, store::Store, types::N, variable::Variable};
+use crate::puzzle::cage::Cage;
+use crate::puzzle::store::Store;
+use crate::puzzle::types::N;
+use crate::puzzle::variable::Variable;
+use crate::{Domain, Tuple};
 
 /// A set of viable ordered tuples for a cage.
 pub type TupleSet = Vec<Tuple>;
@@ -28,9 +32,11 @@ struct ViableKey {
     projection: Vec<Vec<N>>,
 }
 
-/// Derived state, populated lazily. Three memos: a cage's full static tuple set
-/// (independent of the store), the viable ordered-tuple subset under a given
-/// projection, and the viable unordered-multiset subset under a given projection.
+/// Derived state, populated lazily.
+///
+/// Three memos: a cage's full static tuple set (independent of the store), the
+/// viable ordered-tuple subset under a given projection, and the viable
+/// unordered-multiset subset under a given projection.
 #[derive(Debug, Default, Clone)]
 pub struct TuplesCache {
     static_tuples: HashMap<Cage, Arc<[Tuple]>>,

@@ -18,7 +18,6 @@ pub trait Cover {
         self.cells().count()
     }
 
-    #[cfg(test)]
     fn is_empty(&self) -> bool {
         self.cells().next().is_none()
     }

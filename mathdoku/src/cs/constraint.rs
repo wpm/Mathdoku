@@ -2,13 +2,15 @@
 //! mutates, and [`propagate_to_fixpoint`].
 //!
 //! A constraint narrows variable domains held in a [`Store`] via a
-//! [`PropagationCtx`]. The concrete constraints are [`Cage`](crate::cage::Cage)
-//! (tuple-based GAC) and [`AllDifferent`](crate::all_different::AllDifferent)
+//! [`PropagationCtx`]. The concrete constraints are [`Cage`](crate::puzzle::cage::Cage)
+//! (tuple-based GAC) and [`AllDifferent`](crate::cs::all_different::AllDifferent)
 //! (Régin).
 
 use std::marker::PhantomData;
 
-use crate::{cache::TuplesCache, store::Store, variable::Variable};
+use crate::puzzle::cache::TuplesCache;
+use crate::puzzle::store::Store;
+use crate::puzzle::variable::Variable;
 
 /// What a single propagation step did to the store.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

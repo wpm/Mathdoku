@@ -3,7 +3,10 @@ use std::{
     ops::{BitAnd, BitOr},
 };
 
-use crate::{cage::Cage, operation::Operation, polyomino::Polyomino, slot::Slot};
+use crate::puzzle::cage::Cage;
+use crate::puzzle::operation::Operation;
+use crate::puzzle::polyomino::Polyomino;
+use crate::puzzle::slot::Slot;
 
 /// Possible cell value: a number in the range `1..=9`.
 pub type N = u8;
@@ -158,20 +161,20 @@ pub enum Error {
     InfeasibleOperation(Polyomino, Operation),
     /// A tiling operation referenced a [`Cell`] that no polyomino covers.
     CellNotCovered(Cell),
-    /// Removing a [`Cell`] from a [`crate::Polyomino`] would leave the remaining cells
+    /// Removing a [`Cell`] from a [`Polyomino`] would leave the remaining cells
     /// disconnected.
     WouldDisconnect(Cell),
     /// A target [`Cell`] is not edge-connected to any cell of the
-    /// [`crate::Polyomino`] it was applied to.
+    /// [`Polyomino`] it was applied to.
     TargetNotAdjacent,
-    /// A [`Cell`] passed to <code>[crate::Polyomino]::insert</code> is already in the polyomino.
+    /// A [`Cell`] passed to <code>[Polyomino]::insert</code> is already in the polyomino.
     CellAlreadyInPolyomino(Cell),
-    /// A <code>[crate::Polyomino]::remove</code> call would remove
+    /// A <code>[Polyomino]::remove</code> call would remove
     /// the polyomino's only remaining cell.
     RemovalWouldEmptyPolyomino(Cell),
-    /// A [`crate::Polyomino`] was constructed from an empty cell slice.
+    /// A [`Polyomino`] was constructed from an empty cell slice.
     EmptyPolyomino,
-    /// A [`crate::Polyomino`] was constructed from
+    /// A [`Polyomino`] was constructed from
     /// cells that are not edge-connected (e.g. a diagonal-only pair).
     DisconnectedPolyomino,
     /// A row/column index used to build an internal all-different constraint

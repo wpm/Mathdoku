@@ -1,11 +1,9 @@
-use crate::{
-    Cell, Domain, Operation, Polyomino,
-    cache::viable_tuples,
-    constraint::{Constraint, Outcome, PropagationCtx},
-    store::Narrowed,
-    types::N,
-    variable::Variable,
-};
+use crate::cs::constraint::{Constraint, Outcome, PropagationCtx};
+use crate::puzzle::cache::viable_tuples;
+use crate::puzzle::store::Narrowed;
+use crate::puzzle::types::N;
+use crate::puzzle::variable::Variable;
+use crate::{Cell, Domain, Operation, Polyomino};
 
 /// An ordered assignment of values to the cells of a cage, one value per cell.
 pub type Tuple = Vec<N>;
@@ -115,11 +113,9 @@ impl serde::Serialize for Cage {
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
-    use crate::{
-        cache::TuplesCache,
-        store::Store,
-        test_utils::{l_shape, pair, singleton},
-    };
+    use crate::puzzle::cache::TuplesCache;
+    use crate::puzzle::store::Store;
+    use crate::test_utils::{l_shape, pair, singleton};
 
     #[test]
     fn cage_new_given_singleton() {
