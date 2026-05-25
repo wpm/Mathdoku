@@ -5,9 +5,20 @@ use crate::cage::Cage;
 use crate::polyomino::Polyomino;
 use crate::{Cell, Error, N, Values};
 
+// Serde wire format: flat struct with an n×n `values` array of cell domains.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct PuzzleWire {
+    n: usize,
+    values: Vec<Vec<Values>>,
+    cages: Vec<Cage>,
+}
+
 /// An `n×n` Mathdoku grid.
 ///
 /// Stores one [`Values`] domain per cell and the list of cages that have been added.
+///
+/// Serializes to `{"n": <size>, "values": [[...], ...], "cages": [...]}` where `values`
+/// is an `n×n` array of cell domains in row-major order.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Puzzle {
     n: usize,
@@ -136,6 +147,50 @@ impl Puzzle {
         } else {
             Err(Error::InvalidCell(cell))
         }
+    }
+}
+
+impl serde::Serialize for Puzzle {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        let rows: Vec<Vec<Values>> = (0..self.n)
+            .map(|r| (0..self.n).map(|c| self.values[r * self.n + c]).collect())
+            .collect();
+        PuzzleWire {
+            n: self.n,
+            values: rows,
+            cages: self.cages.clone(),
+        }
+        .serialize(s)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for Puzzle {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let wire = PuzzleWire::deserialize(d)?;
+        let n = wire.n;
+        if !(1..=9).contains(&n) {
+            return Err(serde::de::Error::custom(format!("invalid grid size {n}")));
+        }
+        if wire.values.len() != n {
+            return Err(serde::de::Error::custom(format!(
+                "expected {n} rows of values, got {}",
+                wire.values.len()
+            )));
+        }
+        for (r, row) in wire.values.iter().enumerate() {
+            if row.len() != n {
+                return Err(serde::de::Error::custom(format!(
+                    "row {r}: expected {n} columns, got {}",
+                    row.len()
+                )));
+            }
+        }
+        let values: Box<[Values]> = wire.values.into_iter().flatten().collect();
+        Ok(Self {
+            n,
+            values,
+            cages: wire.cages,
+        })
     }
 }
 
@@ -473,6 +528,53 @@ mod tests {
                 assert_eq!(row_sum, 6, "row {r} should sum to 6");
             }
         }
+    }
+
+    // --- serde round-trip ---
+
+    #[test]
+    fn puzzle_round_trips_through_json() {
+        let p = Puzzle::new(3)
+            .unwrap()
+            .insert_cage(cage_at(&[(0, 0), (0, 1)], Operator::Add, 3))
+            .insert_cage(cage_at(&[(0, 2)], Operator::Given, 2));
+        let json = serde_json::to_string(&p).unwrap();
+        let restored: Puzzle = serde_json::from_str(&json).unwrap();
+        assert_eq!(p, restored);
+    }
+
+    #[test]
+    fn puzzle_deserialize_invalid_n_returns_err() {
+        let json = r#"{"n":0,"values":[],"cages":[]}"#;
+        assert!(serde_json::from_str::<Puzzle>(json).is_err());
+        let json = r#"{"n":10,"values":[],"cages":[]}"#;
+        assert!(serde_json::from_str::<Puzzle>(json).is_err());
+    }
+
+    #[test]
+    fn puzzle_deserialize_wrong_row_count_returns_err() {
+        // n=2 but only 1 row provided
+        let json = r#"{"n":2,"values":[[1,2]],"cages":[]}"#;
+        assert!(serde_json::from_str::<Puzzle>(json).is_err());
+    }
+
+    #[test]
+    fn puzzle_deserialize_wrong_column_count_returns_err() {
+        // n=2 but rows have 3 columns
+        let json = r#"{"n":2,"values":[[1,2,3],[1,2,3]],"cages":[]}"#;
+        assert!(serde_json::from_str::<Puzzle>(json).is_err());
+    }
+
+    #[test]
+    fn puzzle_serialize_values_are_row_major() {
+        let p = Puzzle::new(2)
+            .unwrap()
+            .set_cell_value(Cell::new(0, 0), 1)
+            .unwrap();
+        let json = serde_json::to_string(&p).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+        // values[0][0] should be the singleton [1]
+        assert_eq!(v["values"][0][0], serde_json::json!([1]));
     }
 
     #[test]
