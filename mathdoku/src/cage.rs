@@ -35,6 +35,16 @@ impl Cage {
         self.polyomino.cells()
     }
 
+    /// Returns the operation (operator and target) for this cage.
+    pub fn operation(&self) -> Operation {
+        self.operation.clone()
+    }
+
+    /// Returns a reference to the polyomino for this cage.
+    pub const fn polyomino(&self) -> &Polyomino {
+        &self.polyomino
+    }
+
     /// Returns all valid ordered value assignments for this cage in an `n`×`n` grid.
     ///
     /// Each tuple assigns one value from `1..=n` to each cell. Assignments that

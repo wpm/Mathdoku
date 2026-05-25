@@ -5,7 +5,7 @@ pub mod commands;
 
 use std::sync::Mutex;
 
-use mathdoku::Puzzle;
+use mathdoku::puzzle::Puzzle;
 use tauri::image::Image;
 use tauri::menu::{AboutMetadata, Menu, MenuItemBuilder, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Emitter, Manager, Runtime, WindowEvent};

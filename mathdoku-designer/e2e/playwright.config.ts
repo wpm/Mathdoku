@@ -1,4 +1,5 @@
 import { defineConfig } from '@playwright/test';
+import path from 'path';
 
 // Optional escape hatch: if you have a pre-installed chromium binary (offline
 // runs, alternate revision, etc.) point this env var at it and Playwright will
@@ -21,6 +22,7 @@ export default defineConfig({
   // build takes ~1 min from cold so give it a generous timeout.
   webServer: {
     command: 'trunk serve --port 1420',
+    cwd: path.resolve(__dirname, '..'),
     url: 'http://localhost:1420',
     reuseExistingServer: true,
     timeout: 180_000,

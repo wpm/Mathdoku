@@ -2,27 +2,21 @@ import { test, expect } from '@playwright/test';
 import { installTauriStubs, gotoApp, waitForGrid } from './helpers';
 
 // 3×3 puzzle: two cages.
-// Slot 0: cells (0,0),(0,1) — horizontal domino, Add 3
-// Slot 1: cell  (0,2)       — singleton, Given 3
+// Cage 0: cells (0,0),(0,1) — horizontal domino, Add 3
+// Cage 1: cell  (0,2)       — singleton, Given 3
 const PUZZLE_3 = {
   n: 3,
-  slots: [
+  cages: [
     {
-      Cage: {
-        polyomino: [
-          { row: 0, column: 0 },
-          { row: 0, column: 1 },
-        ],
-        operation: { Add: 3 },
-        n: 3,
-      },
+      polyomino: [
+        { row: 0, column: 0 },
+        { row: 0, column: 1 },
+      ],
+      operation: { operator: 'Add', target: 3 },
     },
     {
-      Cage: {
-        polyomino: [{ row: 0, column: 2 }],
-        operation: { Given: 3 },
-        n: 3,
-      },
+      polyomino: [{ row: 0, column: 2 }],
+      operation: { operator: 'Given', target: 3 },
     },
   ],
 };
@@ -155,7 +149,7 @@ test.describe('slot selection overlay', () => {
   test('Tab does nothing in Cell Mode when there are no slots', async ({
     page,
   }) => {
-    await installTauriStubs(page, { n: 3, slots: [] });
+    await installTauriStubs(page, { n: 3 });
     await gotoApp(page);
     await waitForGrid(page);
     await page.locator('.grid-svg').focus();
@@ -171,7 +165,7 @@ test.describe('slot selection overlay', () => {
   test('Shift+Tab does nothing in Cell Mode when there are no slots', async ({
     page,
   }) => {
-    await installTauriStubs(page, { n: 3, slots: [] });
+    await installTauriStubs(page, { n: 3 });
     await gotoApp(page);
     await waitForGrid(page);
     await page.locator('.grid-svg').focus();

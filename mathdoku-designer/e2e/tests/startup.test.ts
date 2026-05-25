@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { installTauriStubs, gotoApp } from './helpers';
 
-const PUZZLE = { n: 4, slots: [] };
+const PUZZLE = { n: 4 };
 
 test.describe('startup', () => {
   test('get_puzzle returning a puzzle renders the grid', async ({ page }) => {

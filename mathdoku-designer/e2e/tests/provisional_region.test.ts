@@ -1,21 +1,21 @@
 import { test, expect } from '@playwright/test';
 import { installTauriStubs, gotoApp, waitForGrid } from './helpers';
 
-// Empty 3×3: no slots.
-const EMPTY_3X3 = { n: 3, slots: [] };
+// Empty 3×3: no cages.
+const EMPTY_3X3 = { n: 3 };
 
 // 3×3 with one cage covering (0,0).
 const PUZZLE_WITH_CAGE = {
   n: 3,
-  slots: [
-    { Cage: { polyomino: [{ row: 0, column: 0 }], operation: { Given: 1 }, n: 3 } },
+  cages: [
+    { polyomino: [{ row: 0, column: 0 }], operation: { operator: 'Given', target: 1 } },
   ],
 };
 
 const PROVISIONAL = '#7b4f9e';
 const ACCENT = '#1a4e7a';
 
-async function setup(page: import('@playwright/test').Page, puzzle: { n: number; slots: unknown[] } = EMPTY_3X3) {
+async function setup(page: import('@playwright/test').Page, puzzle: unknown = EMPTY_3X3) {
   await installTauriStubs(page, puzzle);
   await gotoApp(page);
   await waitForGrid(page);
@@ -138,10 +138,14 @@ test.describe('provisional region', () => {
     await expect(page.locator(`.grid-svg line[stroke="${PROVISIONAL}"]`)).toHaveCount(0);
   });
 
-  test('committed region shows "?" label', async ({ page }) => {
+  test('committed singleton cage shows "1" label', async ({ page }) => {
     await setup(page);
-    await page.keyboard.press('Enter'); // commit singleton at (0,0)
+    await page.keyboard.press('Enter'); // commit singleton at (0,0) → Given/1 cage
 
-    await expect(page.locator('.grid-svg text').filter({ hasText: '?' })).toBeVisible();
+    // The add_region stub returns a Given/1 cage for a singleton.
+    // Given cages display only the target number as label.
+    await expect(
+      page.locator('.grid-svg text[font-weight="700"]').filter({ hasText: /^1$/ }),
+    ).toBeVisible();
   });
 });

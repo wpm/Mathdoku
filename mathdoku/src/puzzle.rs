@@ -6,10 +6,13 @@ use crate::polyomino::Polyomino;
 use crate::{Cell, Error, N, Values};
 
 // Serde wire format: flat struct with an n×n `values` array of cell domains.
+// `values` is optional on deserialization; absent means full domains for all cells.
 #[derive(serde::Serialize, serde::Deserialize)]
 struct PuzzleWire {
     n: usize,
+    #[serde(default)]
     values: Vec<Vec<Values>>,
+    #[serde(default)]
     cages: Vec<Cage>,
 }
 
@@ -42,7 +45,7 @@ impl Puzzle {
         })
     }
 
-    pub(crate) const fn n(&self) -> usize {
+    pub const fn n(&self) -> usize {
         self.n
     }
 
@@ -171,21 +174,26 @@ impl<'de> serde::Deserialize<'de> for Puzzle {
         if !(1..=9).contains(&n) {
             return Err(serde::de::Error::custom(format!("invalid grid size {n}")));
         }
-        if wire.values.len() != n {
-            return Err(serde::de::Error::custom(format!(
-                "expected {n} rows of values, got {}",
-                wire.values.len()
-            )));
-        }
-        for (r, row) in wire.values.iter().enumerate() {
-            if row.len() != n {
+        let values: Box<[Values]> = if wire.values.is_empty() {
+            // Absent values field: initialize all cells to the full domain {1..=n}.
+            vec![Values::all(n); n * n].into_boxed_slice()
+        } else {
+            if wire.values.len() != n {
                 return Err(serde::de::Error::custom(format!(
-                    "row {r}: expected {n} columns, got {}",
-                    row.len()
+                    "expected {n} rows of values, got {}",
+                    wire.values.len()
                 )));
             }
-        }
-        let values: Box<[Values]> = wire.values.into_iter().flatten().collect();
+            for (r, row) in wire.values.iter().enumerate() {
+                if row.len() != n {
+                    return Err(serde::de::Error::custom(format!(
+                        "row {r}: expected {n} columns, got {}",
+                        row.len()
+                    )));
+                }
+            }
+            wire.values.into_iter().flatten().collect()
+        };
         Ok(Self {
             n,
             values,

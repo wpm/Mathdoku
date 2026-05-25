@@ -6,23 +6,17 @@ import { installTauriStubs, gotoApp } from './helpers';
 // Cage 1: cell  (0,2)       — Given 3
 const PUZZLE_3 = {
   n: 3,
-  slots: [
+  cages: [
     {
-      Cage: {
-        polyomino: [
-          { row: 0, column: 0 },
-          { row: 0, column: 1 },
-        ],
-        operation: { Add: 3 },
-        n: 3,
-      },
+      polyomino: [
+        { row: 0, column: 0 },
+        { row: 0, column: 1 },
+      ],
+      operation: { operator: 'Add', target: 3 },
     },
     {
-      Cage: {
-        polyomino: [{ row: 0, column: 2 }],
-        operation: { Given: 3 },
-        n: 3,
-      },
+      polyomino: [{ row: 0, column: 2 }],
+      operation: { operator: 'Given', target: 3 },
     },
   ],
 };
@@ -83,16 +77,13 @@ test.describe('grid rendering', () => {
   test('Subtract cage label shows "−<target>"', async ({ page }) => {
     const puzzle = {
       n: 3,
-      slots: [
+      cages: [
         {
-          Cage: {
-            polyomino: [
-              { row: 1, column: 0 },
-              { row: 1, column: 1 },
-            ],
-            operation: { Subtract: 2 },
-            n: 3,
-          },
+          polyomino: [
+            { row: 1, column: 0 },
+            { row: 1, column: 1 },
+          ],
+          operation: { operator: 'Subtract', target: 2 },
         },
       ],
     };
@@ -106,16 +97,13 @@ test.describe('grid rendering', () => {
   test('Multiply cage label shows "×<target>"', async ({ page }) => {
     const puzzle = {
       n: 3,
-      slots: [
+      cages: [
         {
-          Cage: {
-            polyomino: [
-              { row: 1, column: 0 },
-              { row: 1, column: 1 },
-            ],
-            operation: { Multiply: 6 },
-            n: 3,
-          },
+          polyomino: [
+            { row: 1, column: 0 },
+            { row: 1, column: 1 },
+          ],
+          operation: { operator: 'Multiply', target: 6 },
         },
       ],
     };
@@ -129,16 +117,13 @@ test.describe('grid rendering', () => {
   test('Divide cage label shows "÷<target>"', async ({ page }) => {
     const puzzle = {
       n: 3,
-      slots: [
+      cages: [
         {
-          Cage: {
-            polyomino: [
-              { row: 1, column: 0 },
-              { row: 1, column: 1 },
-            ],
-            operation: { Divide: 2 },
-            n: 3,
-          },
+          polyomino: [
+            { row: 1, column: 0 },
+            { row: 1, column: 1 },
+          ],
+          operation: { operator: 'Divide', target: 2 },
         },
       ],
     };
@@ -149,43 +134,18 @@ test.describe('grid rendering', () => {
     ).toBeVisible();
   });
 
-  test('region slot shows "?" label', async ({ page }) => {
-    const puzzle = {
-      n: 3,
-      slots: [
-        {
-          Region: [
-            { row: 2, column: 0 },
-            { row: 2, column: 1 },
-          ],
-        },
-      ],
-    };
-    await installTauriStubs(page, puzzle);
-    await gotoApp(page);
-    await expect(
-      page.locator('.grid-svg text').filter({ hasText: '?' }),
-    ).toBeVisible();
-  });
-
   test('adjacent cages get different fill colors', async ({ page }) => {
     // Two single-cell cages side by side in a 3×3.
     const puzzle = {
       n: 3,
-      slots: [
+      cages: [
         {
-          Cage: {
-            polyomino: [{ row: 0, column: 0 }],
-            operation: { Given: 1 },
-            n: 3,
-          },
+          polyomino: [{ row: 0, column: 0 }],
+          operation: { operator: 'Given', target: 1 },
         },
         {
-          Cage: {
-            polyomino: [{ row: 0, column: 1 }],
-            operation: { Given: 2 },
-            n: 3,
-          },
+          polyomino: [{ row: 0, column: 1 }],
+          operation: { operator: 'Given', target: 2 },
         },
       ],
     };
@@ -207,7 +167,7 @@ test.describe('grid rendering', () => {
 
   test('candidate digits appear for unconstrained cells', async ({ page }) => {
     // A puzzle with no cages — all cells should show all candidate digits.
-    const puzzle = { n: 3, slots: [] };
+    const puzzle = { n: 3 };
     await installTauriStubs(page, puzzle);
     await gotoApp(page);
 
@@ -233,13 +193,10 @@ test.describe('grid rendering', () => {
     // All other cells are unconstrained — the domain is {1,2,3}.
     const puzzle = {
       n: 3,
-      slots: [
+      cages: [
         {
-          Cage: {
-            polyomino: [{ row: 0, column: 0 }],
-            operation: { Given: 2 },
-            n: 3,
-          },
+          polyomino: [{ row: 0, column: 0 }],
+          operation: { operator: 'Given', target: 2 },
         },
       ],
     };
@@ -262,13 +219,10 @@ test.describe('grid rendering', () => {
   }) => {
     const puzzle = {
       n: 3,
-      slots: [
+      cages: [
         {
-          Cage: {
-            polyomino: [{ row: 0, column: 0 }],
-            operation: { Given: 2 },
-            n: 3,
-          },
+          polyomino: [{ row: 0, column: 0 }],
+          operation: { operator: 'Given', target: 2 },
         },
       ],
     };

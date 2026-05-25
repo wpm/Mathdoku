@@ -5,23 +5,23 @@ import { installTauriStubs, gotoApp, waitForGrid } from './helpers';
 // c1: (0,0) Given(1), c2: (0,1) Given(2), c3: (1,0)(1,1) Add(3)
 const COMPLETE_2X2 = {
   n: 2,
-  slots: [
-    { Cage: { polyomino: [{ row: 0, column: 0 }], operation: { Given: 1 }, n: 2 } },
-    { Cage: { polyomino: [{ row: 0, column: 1 }], operation: { Given: 2 }, n: 2 } },
-    { Cage: { polyomino: [{ row: 1, column: 0 }, { row: 1, column: 1 }], operation: { Add: 3 }, n: 2 } },
+  cages: [
+    { polyomino: [{ row: 0, column: 0 }], operation: { operator: 'Given', target: 1 } },
+    { polyomino: [{ row: 0, column: 1 }], operation: { operator: 'Given', target: 2 } },
+    { polyomino: [{ row: 1, column: 0 }, { row: 1, column: 1 }], operation: { operator: 'Add', target: 3 } },
   ],
 };
 
-// Incomplete 3×3: only two cells covered; most cells are in region slots.
+// Incomplete 3×3: only one cell covered; not all cells are in cages.
 const INCOMPLETE_3X3 = {
   n: 3,
-  slots: [
-    { Cage: { polyomino: [{ row: 0, column: 0 }], operation: { Given: 1 }, n: 3 } },
+  cages: [
+    { polyomino: [{ row: 0, column: 0 }], operation: { operator: 'Given', target: 1 } },
   ],
 };
 
-// Brand new empty 9×9: no slots at all.
-const EMPTY_9X9 = { n: 9, slots: [] };
+// Brand new empty 9×9: no cages at all.
+const EMPTY_9X9 = { n: 9 };
 
 test.describe('solution count', () => {
   test('solution count shown for a complete puzzle', async ({ page }) => {

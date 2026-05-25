@@ -1,7 +1,8 @@
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-use mathdoku::{Cell, Polyomino, Puzzle};
+use mathdoku::{Cell, Operation, Operator, Polyomino};
+use mathdoku::puzzle::Puzzle;
 use mathdoku_designer_shared::{DocState, ViewState};
 use tauri::{AppHandle, Manager, Runtime, State};
 
@@ -92,7 +93,7 @@ pub fn new_puzzle(n: usize, state: State<Mutex<AppState>>) -> Result<Puzzle, Str
 #[tauri::command]
 #[allow(clippy::needless_pass_by_value)]
 pub fn generate_puzzle(n: usize, state: State<Mutex<AppState>>) -> Result<Puzzle, String> {
-    let puzzle = Puzzle::generate(n, &mut rand::rng()).map_err(|e| e.to_string())?;
+    let puzzle = mathdoku::generate::generate(n, &mut rand::rng()).map_err(|e| e.to_string())?;
     let mut s = state.lock().map_err(|e| e.to_string())?;
     s.puzzle = Some(puzzle.clone());
     s.path = None;
@@ -216,39 +217,64 @@ pub fn set_window_title<R: Runtime>(title: String, app: AppHandle<R>) -> Result<
         .map_err(|e| e.to_string())
 }
 
-/// Adds a region (uncaged polyomino) to the current puzzle.
+/// Adds a cage to the current puzzle for the given cells.
 ///
-/// `cells` is a list of `{row, col}` objects. Returns the updated puzzle.
+/// `cells` is a list of `{row, column}` objects. Single-cell regions use `Given`
+/// with target 1; multi-cell regions use `Add` with target 0 as a placeholder.
+/// Returns the updated puzzle.
 ///
 /// # Errors
-/// Returns an error string if no puzzle is loaded, the cells form an invalid
-/// polyomino, or the region conflicts with existing slots.
+/// Returns an error string if no puzzle is loaded or the cells form an invalid
+/// polyomino.
 #[tauri::command]
 #[allow(clippy::needless_pass_by_value)]
 pub fn add_region(cells: Vec<Cell>, state: State<Mutex<AppState>>) -> Result<Puzzle, String> {
     let mut s = state.lock().map_err(|e| e.to_string())?;
     let puzzle = s.puzzle.as_ref().ok_or("no puzzle loaded")?;
     let poly = Polyomino::from_cells(&cells).map_err(|e| e.to_string())?;
-    let new_puzzle = puzzle.insert_region(poly).map_err(|e| e.to_string())?;
+    let operation = if cells.len() == 1 {
+        Operation::new(Operator::Given, 1)
+    } else {
+        Operation::new(Operator::Add, 0)
+    };
+    let cage = mathdoku::Cage::new(poly, operation);
+    let new_puzzle = puzzle.insert_cage(cage);
     s.puzzle = Some(new_puzzle.clone());
     s.dirty = true;
     Ok(new_puzzle)
 }
 
-/// Removes a region from the current puzzle.
+/// Removes the cage whose cell set matches `cells` from the current puzzle.
 ///
-/// `cells` identifies the region by its cell set. Returns the updated puzzle.
+/// `cells` identifies the cage by its cell set. Returns the updated puzzle.
 ///
 /// # Errors
 /// Returns an error string if no puzzle is loaded, the cells form an invalid
-/// polyomino, or the region is not found in the puzzle.
+/// polyomino, or no matching cage is found.
 #[tauri::command]
 #[allow(clippy::needless_pass_by_value)]
 pub fn remove_region(cells: Vec<Cell>, state: State<Mutex<AppState>>) -> Result<Puzzle, String> {
     let mut s = state.lock().map_err(|e| e.to_string())?;
     let puzzle = s.puzzle.as_ref().ok_or("no puzzle loaded")?;
-    let poly = Polyomino::from_cells(&cells).map_err(|e| e.to_string())?;
-    let new_puzzle = puzzle.remove_region(&poly).map_err(|e| e.to_string())?;
+    let target_cells: std::collections::HashSet<_> = cells.iter().copied().collect();
+    // Rebuild the puzzle without the matching cage.
+    let n = puzzle.n();
+    let remaining_cages: Vec<mathdoku::Cage> = puzzle
+        .cages()
+        .filter(|cage| {
+            let cage_cells: std::collections::HashSet<_> = cage.cells().into_iter().collect();
+            cage_cells != target_cells
+        })
+        .cloned()
+        .collect();
+    if remaining_cages.len() == puzzle.cages().count() {
+        return Err("cage not found".to_string());
+    }
+    let new_puzzle = remaining_cages
+        .into_iter()
+        .fold(Puzzle::new(n).map_err(|e| e.to_string())?, |p, cage| {
+            p.insert_cage(cage)
+        });
     s.puzzle = Some(new_puzzle.clone());
     s.dirty = true;
     Ok(new_puzzle)

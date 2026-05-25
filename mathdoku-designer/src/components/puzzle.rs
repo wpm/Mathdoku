@@ -26,7 +26,7 @@
     clippy::cast_possible_truncation
 )]
 
-use mathdoku::Puzzle as KenkenPuzzle;
+use mathdoku::puzzle::Puzzle as KenkenPuzzle;
 use mathdoku_designer_shared::{Mode, ViewState};
 use leptos::prelude::*;
 use wasm_bindgen::prelude::*;
@@ -34,7 +34,6 @@ use wasm_bindgen::prelude::*;
 use super::cage::Cage;
 use super::cage_stats::CageStats;
 use super::cell::Cell;
-use super::region::Region;
 use super::selection::SelectionOverlay;
 use super::solution_count::SolutionCount;
 
@@ -61,42 +60,58 @@ pub struct PuzzleRef(std::sync::Arc<PuzzleRefInner>);
 
 struct PuzzleRefInner {
     puzzle: std::sync::Mutex<KenkenPuzzle>,
-    /// Cage for each slot; `None` for region slots.
-    cages: Vec<Option<mathdoku::Cage>>,
+    /// Cages in slot order.
+    cages: Vec<mathdoku::Cage>,
+    /// Grid size.
+    n: usize,
 }
 
 impl PuzzleRef {
-    fn new(puzzle: KenkenPuzzle, cages: Vec<Option<mathdoku::Cage>>) -> Self {
+    fn new(puzzle: KenkenPuzzle, cages: Vec<mathdoku::Cage>, n: usize) -> Self {
         Self(std::sync::Arc::new(PuzzleRefInner {
             puzzle: std::sync::Mutex::new(puzzle),
             cages,
+            n,
         }))
     }
 
-    /// Returns the number of solutions, or `None` if the puzzle is incomplete.
-    ///
-    /// The result is cached inside the library after the first call. The first
-    /// call may block (DFS search), so callers should use `spawn_local`.
+    /// Returns the number of solutions, or `None` if not all cells are covered by cages.
     pub fn solution_count(&self) -> Option<usize> {
-        self.0
-            .puzzle
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .solution_count()
+        let puzzle = self.0.puzzle.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let n = self.0.n;
+        // Return None if not all cells are covered by a cage.
+        let covered: std::collections::HashSet<_> = puzzle.cages()
+            .flat_map(|c| c.cells())
+            .collect();
+        if covered.len() < n * n {
+            return None;
+        }
+        Some(puzzle.solutions().count())
     }
 
-    /// Returns `(multisets, tuples)` for `slot_idx`, or `None` for a region slot.
+    /// Returns `(multisets, tuples)` for `slot_idx`.
     pub fn viable_counts(&self, slot_idx: usize) -> Option<(usize, usize)> {
-        let cage = self.0.cages.get(slot_idx)?.as_ref()?;
-        let puzzle = self
-            .0
-            .puzzle
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        Some((
-            puzzle.viable_multiset_count(cage),
-            puzzle.viable_tuple_count(cage),
-        ))
+        let cage = self.0.cages.get(slot_idx)?;
+        let puzzle = self.0.puzzle.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let n = self.0.n as u8;
+        // Get current domain for each cell in the cage.
+        let cell_domains: Vec<std::collections::HashSet<u8>> = cage.cells().into_iter()
+            .map(|cell| {
+                puzzle.get_cell_values(cell)
+                    .map(|v| v.values().into_iter().collect())
+                    .unwrap_or_default()
+            })
+            .collect();
+        // Count tuples that are consistent with current domains.
+        let tuples: Vec<_> = cage.tuples(n).collect();
+        let valid_tuples: Vec<_> = tuples.iter()
+            .filter(|t| t.iter().zip(&cell_domains).all(|(v, domain)| domain.contains(v)))
+            .collect();
+        // Multisets: unique sorted value sets among valid tuples.
+        let multisets: std::collections::HashSet<Vec<u8>> = valid_tuples.iter()
+            .map(|t| { let mut s = (*t).clone(); s.sort(); s })
+            .collect();
+        Some((multisets.len(), valid_tuples.len()))
     }
 }
 
@@ -229,7 +244,8 @@ extern "C" {
 
 // ---- Puzzle component ----
 
-type SlotList = Vec<(Vec<(usize, usize)>, Option<mathdoku::Cage>)>;
+/// Each slot is a list of (row, col) pairs and the cage covering it.
+type SlotList = Vec<(Vec<(usize, usize)>, mathdoku::Cage)>;
 
 #[component]
 #[allow(clippy::needless_pass_by_value, clippy::too_many_lines)]
@@ -245,30 +261,29 @@ pub fn Puzzle(
 
     // Collect slots in polyomino order (canonical for Tab traversal).
     let slots: SlotList = puzzle
-        .slots()
-        .map(|slot| {
-            let cells = slot
-                .polyomino()
-                .cells()
-                .map(|c| (c.row, c.column))
-                .collect();
-            let cage = slot.as_cage().cloned();
-            (cells, cage)
+        .cages()
+        .map(|cage| {
+            let cells = cage.cells().into_iter().map(|c| (c.row, c.column)).collect();
+            (cells, cage.clone())
         })
         .collect();
 
     let slot_cells: Vec<Vec<(usize, usize)>> = slots.iter().map(|(c, _)| c.clone()).collect();
-    let slot_cages: Vec<Option<mathdoku::Cage>> =
-        slots.iter().map(|(_, cage)| cage.clone()).collect();
+    let slot_cages: Vec<mathdoku::Cage> = slots.iter().map(|(_, cage)| cage.clone()).collect();
     let (colors, cell_slot) = assign_colors(n, &slot_cells);
 
     // Per-cell domains.
     let mut domains = vec![vec![vec![]; n]; n];
-    for (cell_ref, domain) in puzzle.domains() {
-        domains[cell_ref.row][cell_ref.column] = domain.iter().collect::<Vec<u8>>();
+    for r in 0..n {
+        for c in 0..n {
+            let cell_ref = mathdoku::Cell::new(r, c);
+            if let Ok(vals) = puzzle.get_cell_values(cell_ref) {
+                domains[r][c] = vals.values();
+            }
+        }
     }
 
-    let puzzle_ref = PuzzleRef::new(puzzle, slot_cages);
+    let puzzle_ref = PuzzleRef::new(puzzle, slot_cages, n);
 
     let grid_size = cell * n as f64;
     let total = 2.0f64.mul_add(MARGIN, grid_size);
@@ -470,17 +485,18 @@ pub fn Puzzle(
                             else {
                                 return;
                             };
-                            // Find the slot index of the new region in the new puzzle.
+                            // Find the slot index of the new cage in the new puzzle.
+                            let commit_set: std::collections::HashSet<_> =
+                                commit_cells_clone.iter().copied().collect();
                             let new_slot_idx = new_puzzle
-                                .slots()
-                                .position(|slot| {
-                                    let cells: std::collections::HashSet<_> = slot
-                                        .polyomino()
+                                .cages()
+                                .position(|cage| {
+                                    let cells: std::collections::HashSet<_> = cage
                                         .cells()
+                                        .into_iter()
                                         .map(|c| (c.row, c.column))
                                         .collect();
-                                    commit_cells_clone.iter().all(|cell| cells.contains(cell))
-                                        && cells.len() == commit_cells_clone.len()
+                                    cells == commit_set
                                 })
                                 .unwrap_or(0);
                             provisional_region.set(Vec::new());
@@ -559,13 +575,8 @@ pub fn Puzzle(
         .map(|(cells, cage)| {
             let (ar, ac) = anchor(cells);
             let (x, y) = origin(cell, ar, ac);
-            cage.as_ref().map_or_else(
-                || view! { <Region x=x y=y op_f=op_f /> }.into_any(),
-                |c| {
-                    let operation = c.operation();
-                    view! { <Cage x=x y=y op_f=op_f operation=operation /> }.into_any()
-                },
-            )
+            let operation = cage.operation();
+            view! { <Cage x=x y=y op_f=op_f operation=operation /> }.into_any()
         })
         .collect();
 
@@ -646,7 +657,7 @@ pub fn Puzzle(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mathdoku::Operation;
+    use mathdoku::{Operation, Operator};
 
     #[test]
     fn cell_size_divides_viewport_evenly() {
@@ -693,13 +704,16 @@ mod tests {
 
     #[test]
     fn op_label_add() {
-        assert_eq!(super::super::cage::op_label(Operation::Add(5)), "+5");
+        assert_eq!(
+            super::super::cage::op_label(Operation::new(Operator::Add, 5)),
+            "+5"
+        );
     }
 
     #[test]
     fn op_label_subtract() {
         assert_eq!(
-            super::super::cage::op_label(Operation::Subtract(2)),
+            super::super::cage::op_label(Operation::new(Operator::Subtract, 2)),
             "\u{2212}2"
         );
     }
@@ -707,7 +721,7 @@ mod tests {
     #[test]
     fn op_label_multiply() {
         assert_eq!(
-            super::super::cage::op_label(Operation::Multiply(12)),
+            super::super::cage::op_label(Operation::new(Operator::Multiply, 12)),
             "\u{00d7}12"
         );
     }
@@ -715,14 +729,17 @@ mod tests {
     #[test]
     fn op_label_divide() {
         assert_eq!(
-            super::super::cage::op_label(Operation::Divide(3)),
+            super::super::cage::op_label(Operation::new(Operator::Divide, 3)),
             "\u{00f7}3"
         );
     }
 
     #[test]
     fn op_label_given_shows_only_target() {
-        assert_eq!(super::super::cage::op_label(Operation::Given(7)), "7");
+        assert_eq!(
+            super::super::cage::op_label(Operation::new(Operator::Given, 7)),
+            "7"
+        );
     }
 
     #[test]

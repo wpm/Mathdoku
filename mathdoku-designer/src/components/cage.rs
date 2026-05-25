@@ -1,6 +1,6 @@
 //! Cage component: operation label in the anchor cell corner.
 
-use mathdoku::Operation;
+use mathdoku::{Operation, Operator};
 use leptos::prelude::*;
 
 const INK: &str = "#26221b";
@@ -9,12 +9,13 @@ const OP_INSET: f64 = 4.0;
 
 /// Formats a cage operation as a short label: `"+5"`, `"−2"`, `"×12"`, `"÷3"`, or `"7"`.
 pub fn op_label(op: Operation) -> String {
-    match op {
-        Operation::Add(t) => format!("+{t}"),
-        Operation::Subtract(t) => format!("\u{2212}{t}"),
-        Operation::Multiply(t) => format!("\u{00d7}{t}"),
-        Operation::Divide(t) => format!("\u{00f7}{t}"),
-        Operation::Given(t) => format!("{t}"),
+    let t = op.target;
+    match op.operator {
+        Operator::Add => format!("+{t}"),
+        Operator::Subtract => format!("\u{2212}{t}"),
+        Operator::Multiply => format!("\u{00d7}{t}"),
+        Operator::Divide => format!("\u{00f7}{t}"),
+        Operator::Given => format!("{t}"),
     }
 }
 

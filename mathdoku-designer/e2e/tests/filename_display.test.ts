@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { installTauriStubs, gotoApp, waitForGrid } from './helpers';
 
-const EMPTY_3 = { n: 3, slots: [] };
+const EMPTY_3 = { n: 3 };
 
 test.describe('filename display', () => {
   test('app calls set_window_title with basename when puzzle has a backing file', async ({

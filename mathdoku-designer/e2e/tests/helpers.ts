@@ -54,14 +54,19 @@ export async function installTauriStubs(
               return Promise.resolve(null);
             }
             if (cmd === 'add_region') {
-              // Add the region cells as a new region slot in the puzzle.
+              // Add the cells as a new cage in the puzzle (new serde format).
               const cells = (args as { cells?: { row: number; column: number }[] } | undefined)?.cells ?? [];
-              const currentPuzzle = puzzle as { n: number; slots: unknown[] } | null;
+              const currentPuzzle = puzzle as { n: number; cages?: unknown[] } | null;
               if (!currentPuzzle) return Promise.resolve(null);
-              const newSlot = {
-                Region: cells.map(({ row, column }) => ({ row, column })),
+              const isMultiCell = cells.length > 1;
+              const newCage = {
+                polyomino: cells.map(({ row, column }) => ({ row, column })),
+                operation: isMultiCell
+                  ? { operator: 'Add', target: 0 }
+                  : { operator: 'Given', target: 1 },
               };
-              puzzle = { ...currentPuzzle, slots: [...currentPuzzle.slots, newSlot] };
+              const cages = [...(currentPuzzle.cages ?? []), newCage];
+              puzzle = { n: currentPuzzle.n, cages };
               return Promise.resolve(puzzle);
             }
             return Promise.resolve(null);

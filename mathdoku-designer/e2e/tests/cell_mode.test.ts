@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { installTauriStubs, gotoApp, waitForGrid } from './helpers';
 
-const EMPTY_3 = { n: 3, slots: [] };
+const EMPTY_3 = { n: 3 };
 const ACCENT = '#1a4e7a';
 
 // Returns the {x, y} attribute values of the Cell Mode selection rect.

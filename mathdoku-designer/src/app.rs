@@ -5,7 +5,7 @@
     clippy::too_many_lines         // App component is inherently long
 )]
 
-use mathdoku::Puzzle;
+use mathdoku::puzzle::Puzzle;
 use mathdoku_designer_shared::{DocState, ViewState};
 use leptos::prelude::*;
 use wasm_bindgen::prelude::*;
