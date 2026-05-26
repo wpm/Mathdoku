@@ -26,11 +26,13 @@ impl SizeDistribution {
     /// Returns `None` if `mean` is not strictly positive. The mean must be
     /// `> 0` so that rejection sampling on `Poisson(mean)` truncated to
     /// `[1, n*n]` is guaranteed to terminate.
+    #[must_use]
     pub fn new(mean: f64) -> Option<Self> {
         (mean > 0.0).then_some(Self { mean })
     }
 
     /// Returns the mean of the underlying (untruncated) Poisson distribution.
+    #[must_use]
     pub const fn mean(self) -> f64 {
         self.mean
     }
@@ -40,6 +42,7 @@ impl SizeDistribution {
     /// For `n = 0`, the same distribution is returned as for `n = 1`. The
     /// puzzle constructor rejects `n = 0` independently, so the degenerate
     /// case never propagates to sampling.
+    #[must_use]
     #[allow(clippy::cast_precision_loss)]
     pub fn default_for(n: usize) -> Self {
         Self {

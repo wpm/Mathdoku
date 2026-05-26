@@ -17,13 +17,6 @@
 //!   [`Puzzle::insert_cage`].
 //! - **Inspect** cell domains with [`Puzzle::get_cell_values`].
 
-#![allow(
-    clippy::must_use_candidate,
-    clippy::return_self_not_must_use,
-    clippy::expect_used,
-    clippy::missing_panics_doc
-)]
-
 mod arithmetic;
 mod cage;
 mod cell;

@@ -23,6 +23,7 @@ pub struct Cage {
 }
 
 impl Cage {
+    #[must_use]
     pub const fn new(polyomino: Polyomino, operation: Operation) -> Self {
         Self {
             polyomino,
@@ -31,16 +32,19 @@ impl Cage {
     }
 
     /// Returns the cells covered by this cage.
+    #[must_use]
     pub fn cells(&self) -> Vec<Cell> {
         self.polyomino.cells()
     }
 
     /// Returns the operation (operator and target) for this cage.
+    #[must_use]
     pub fn operation(&self) -> Operation {
         self.operation.clone()
     }
 
     /// Returns a reference to the polyomino for this cage.
+    #[must_use]
     pub const fn polyomino(&self) -> &Polyomino {
         &self.polyomino
     }
@@ -96,6 +100,7 @@ pub struct Operation {
 }
 
 impl Operation {
+    #[must_use]
     pub const fn new(operator: Operator, target: M) -> Self {
         Self { operator, target }
     }

@@ -25,6 +25,7 @@ pub struct Cell {
 
 impl Cell {
     /// Creates a cell at the given `row` and `column`.
+    #[must_use]
     pub const fn new(row: usize, column: usize) -> Self {
         Self { row, column }
     }
@@ -52,11 +53,13 @@ pub struct Values(u16);
 
 impl Values {
     /// Creates a `Values` set from a slice of numbers in the range `1..=9`.
+    #[must_use]
     pub fn new(ns: &[N]) -> Self {
         Self(ns.iter().fold(0u16, |acc, &n| acc | (1u16 << u32::from(n))))
     }
 
     /// Returns the full set `{1, ..., n}`.
+    #[must_use]
     #[allow(clippy::cast_possible_truncation)]
     pub fn all(n: usize) -> Self {
         let ns: Vec<N> = (1..=(n as N)).collect();
@@ -64,11 +67,13 @@ impl Values {
     }
 
     /// Returns the values in ascending order.
+    #[must_use]
     pub fn values(self) -> Vec<N> {
         (1u8..=9).filter(|&v| self.0 & (1u16 << v) != 0).collect()
     }
 
     /// Returns true if the set contains no values.
+    #[must_use]
     pub const fn is_empty(self) -> bool {
         self.0 == 0
     }
@@ -78,16 +83,19 @@ impl Values {
     /// Values are stored in bits 1–9 of a `u16`, so exactly one value means
     /// exactly one bit is set, which is equivalent to the inner integer
     /// being a power of two.
+    #[must_use]
     pub const fn is_singleton(self) -> bool {
         self.0.is_power_of_two()
     }
 
     /// Returns the number of values.
+    #[must_use]
     pub const fn len(self) -> usize {
         self.0.count_ones() as usize
     }
 
     /// Returns `true` if `value` is in this set.
+    #[must_use]
     pub const fn contains(self, value: N) -> bool {
         self.0 & (1u16 << value) != 0
     }

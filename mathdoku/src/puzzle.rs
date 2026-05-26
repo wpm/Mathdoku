@@ -46,6 +46,7 @@ impl Puzzle {
         })
     }
 
+    #[must_use]
     pub const fn n(&self) -> usize {
         self.n
     }

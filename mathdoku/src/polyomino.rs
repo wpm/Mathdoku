@@ -19,6 +19,7 @@ impl Polyomino {
     }
 
     /// The cells of the polyomino in row-major order.
+    #[must_use]
     pub fn cells(&self) -> Vec<Cell> {
         self.0.iter().copied().collect()
     }
@@ -26,6 +27,7 @@ impl Polyomino {
     /// Returns the number of cells in this polyomino.
     ///
     /// Always at least 1: a polyomino cannot be empty by construction.
+    #[must_use]
     #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
         self.0.len()
@@ -47,6 +49,7 @@ impl Polyomino {
     }
 
     /// The cells grouped by row, in row-major order. Each inner vec is sorted by column.
+    #[must_use]
     pub fn rows(&self) -> Vec<Vec<Cell>> {
         let mut rows: Vec<Vec<Cell>> = Vec::new();
         for &cell in &self.0 {
@@ -59,6 +62,7 @@ impl Polyomino {
     }
 
     /// The cells grouped by column, in column-major order. Each inner vec is sorted by row.
+    #[must_use]
     pub fn columns(&self) -> Vec<Vec<Cell>> {
         let mut cols: std::collections::BTreeMap<usize, Vec<Cell>> =
             std::collections::BTreeMap::new();
