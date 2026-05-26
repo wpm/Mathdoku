@@ -25,7 +25,7 @@ struct PuzzleWire {
 /// Every `Puzzle` is at a constraint-propagation fixpoint: all cage, row, and
 /// column constraints have been applied as far as they can be inferred. Every
 /// public method that returns a new `Puzzle` upholds this invariant by
-/// propagating to a new fixpoint before returning.
+/// calling `constrain` before returning.
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct Puzzle {
     n: usize,
@@ -88,7 +88,7 @@ impl Puzzle {
 
     /// Returns a new puzzle with the cells of `cage` set to the values in the
     /// tuple at `index` (tuples in the same lexicographic order as [`cage_tuples`]),
-    /// then propagated to a new fixpoint.
+    /// then propagated to a new constraint fixpoint.
     ///
     /// [`cage_tuples`]: Self::cage_tuples
     ///
@@ -108,7 +108,7 @@ impl Puzzle {
         for (cell, &value) in cage.cells().iter().zip(tuple) {
             puzzle = puzzle.set_cell_value(*cell, value)?;
         }
-        puzzle.fixpoint()
+        puzzle.constrain()
     }
 
     /// Returns a new puzzle adding `cage` and propagating all constraints.
@@ -125,7 +125,7 @@ impl Puzzle {
             values: self.values.clone(),
             cages,
         }
-        .fixpoint()
+        .constrain()
     }
 
     /// Returns a new puzzle with `cage` removed and constraints re-propagated.
@@ -145,10 +145,37 @@ impl Puzzle {
         }
         Self {
             n: self.n,
-            values: vec![Values::all(self.n); self.n * self.n].into_boxed_slice(),
+            values: self.values.clone(),
             cages,
         }
-        .fixpoint()
+        .loosen(
+            &(0..self.n)
+                .flat_map(|r| (0..self.n).map(move |c| Cell::new(r, c)))
+                .collect::<Vec<_>>(),
+        )
+    }
+
+    /// Returns a new puzzle with the domains of `cells` reset to `{1..=n}` and
+    /// all constraints re-propagated.
+    ///
+    /// This is the inverse of narrowing: use it when a constraint that was
+    /// previously narrowing those cells is removed and their domains may have
+    /// widened beyond what the remaining constraints require.
+    ///
+    /// # Errors
+    /// Returns an error if any cell is out of bounds or propagation fails.
+    pub fn loosen(&self, cells: &[Cell]) -> Result<Self, Error> {
+        let mut values = self.values.clone();
+        let full = Values::all(self.n);
+        for &cell in cells {
+            values[self.index(cell)?] = full;
+        }
+        Self {
+            n: self.n,
+            values,
+            cages: self.cages.clone(),
+        }
+        .constrain()
     }
 
     /// Returns the current domain of `cell`.
@@ -205,7 +232,7 @@ impl Puzzle {
     ///
     /// # Errors
     /// Returns an error if any cell is out of bounds during propagation.
-    fn fixpoint(&self) -> Result<Self, Error> {
+    fn constrain(&self) -> Result<Self, Error> {
         crate::puzzle_csp::puzzle_fixpoint(self)
     }
 }
@@ -371,10 +398,10 @@ mod tests {
         assert_eq!(p.get_cell_values(Cell::new(0, 0)).unwrap(), Values::all(4));
     }
 
-    // --- Puzzle::fixpoint ---
+    // --- Puzzle::constrain ---
 
     // Builds a fully caged 2×2 puzzle with four Given cages and verifies that
-    // fixpoint pins every cell to its given value.
+    // constrain pins every cell to its given value.
     //
     //   [1][2]
     //   [2][1]
@@ -394,8 +421,8 @@ mod tests {
     }
 
     #[test]
-    fn fixpoint_given_cages_pin_all_cells() {
-        let fp = solved_2x2().fixpoint().unwrap();
+    fn constrain_given_cages_pin_all_cells() {
+        let fp = solved_2x2().constrain().unwrap();
         assert_eq!(
             fp.get_cell_values(Cell::new(0, 0)).unwrap(),
             Values::new(&[1])
@@ -415,18 +442,18 @@ mod tests {
     }
 
     #[test]
-    fn fixpoint_is_idempotent() {
+    fn constrain_is_idempotent() {
         let p = solved_2x2();
-        let fp1 = p.fixpoint().unwrap();
-        let fp2 = fp1.fixpoint().unwrap();
+        let fp1 = p.constrain().unwrap();
+        let fp2 = fp1.constrain().unwrap();
         assert_eq!(fp1, fp2);
     }
 
     #[test]
-    fn fixpoint_no_cages_unchanged() {
+    fn constrain_no_cages_unchanged() {
         // Without cages, AllDifferent alone cannot pin any domain in a fresh puzzle.
         let p = Puzzle::new(2).unwrap();
-        let fp = p.fixpoint().unwrap();
+        let fp = p.constrain().unwrap();
         assert_eq!(fp, p);
     }
 
@@ -436,16 +463,16 @@ mod tests {
     //   [?][?]     (1,0)÷(1,1) = 2 (Divide) → only (1,2) or (2,1)
     //
     // Both solutions [[1,2],[2,1]] and [[2,1],[1,2]] satisfy all constraints, so
-    // fixpoint cannot pin any cell — but it can prune each domain to {1,2}.
+    // constrain cannot pin any cell — but it can prune each domain to {1,2}.
     #[test]
-    fn fixpoint_arithmetic_cages_prune_2x2() {
+    fn constrain_arithmetic_cages_prune_2x2() {
         let p = Puzzle::new(2)
             .unwrap()
             .insert_cage(cage_at(&[(0, 0), (0, 1)], Operator::Add, 3))
             .unwrap()
             .insert_cage(cage_at(&[(1, 0), (1, 1)], Operator::Divide, 2))
             .unwrap();
-        let fp = p.fixpoint().unwrap();
+        let fp = p.constrain().unwrap();
         let expected = Values::new(&[1, 2]);
         for r in 0..2 {
             for c in 0..2 {
