@@ -6,19 +6,13 @@
 //! arithmetic constraint and the all-different rule within each shared row and
 //! column of the polyomino.
 
-use std::cmp::Ordering;
-use std::collections::HashMap;
-use std::fmt::{self, Display, Formatter};
-use std::iter::{empty, once};
-
-use itertools::Itertools;
 use serde::{Deserialize, Serialize};
+use std::cmp::Ordering;
 
-use crate::arithmetic::{
-    Tuple, addition_multisets, division_multisets, multiplication_multisets, subtraction_multisets,
-};
+use crate::arithmetic::Tuple;
+use crate::operation::Operation;
 use crate::polyomino::Polyomino;
-use crate::{Cell, M, N};
+use crate::{Cell, N, tuples};
 
 /// A polyomino with an [`Operation`] constraining its cell values.
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
@@ -54,34 +48,11 @@ impl Cage {
         &self.polyomino
     }
 
-    /// Returns all valid ordered value assignments for this cage in an `n`×`n` grid.
+    /// Valid ordered value assignments for this cage in an `n`×`n` grid.
     ///
-    /// Each tuple assigns one value from `1..=n` to each cell, in the row-major
-    /// order of [`Cage::cells`]. Assignments that violate the all-different
-    /// constraint within any shared row or column of the polyomino are excluded.
-    #[allow(clippy::cast_possible_truncation)]
+    /// Delegates to the free function `tuples`.
     pub fn tuples(&self, n: N) -> impl Iterator<Item = Tuple> {
-        let k = self.polyomino.len();
-        let target = self.operation.target;
-        let multisets: Box<dyn Iterator<Item = Tuple>> = match self.operation.operator {
-            Operator::Add => Box::new(addition_multisets(n, k, target as N)),
-            Operator::Subtract => Box::new(subtraction_multisets(n, target as N)),
-            Operator::Multiply => Box::new(multiplication_multisets(n, k, target)),
-            Operator::Divide => Box::new(division_multisets(n, target as N)),
-            Operator::Given => {
-                if target >= 1 && target <= M::from(n) {
-                    Box::new(once(vec![target as N]))
-                } else {
-                    Box::new(empty())
-                }
-            }
-        };
-        let filter = CollinearityFilter::new(&self.polyomino);
-        multisets
-            .flat_map(move |t| t.into_iter().permutations(k))
-            .filter(move |t| filter.filter(t))
-            .sorted()
-            .dedup()
+        tuples::tuples(n, self.polyomino(), self.operation())
     }
 }
 
@@ -97,95 +68,12 @@ impl PartialOrd for Cage {
     }
 }
 
-/// An [`Operator`] paired with a numeric target value imposed on a [`Cage`]'s cells.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct Operation {
-    pub operator: Operator,
-    pub target: M,
-}
-
-impl Operation {
-    #[must_use]
-    pub const fn new(operator: Operator, target: M) -> Self {
-        Self { operator, target }
-    }
-}
-
-impl Display for Operation {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}{}", self.operator, self.target)
-    }
-}
-
-/// The arithmetic operation a [`Cage`] imposes on its cells.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum Operator {
-    /// Cells sum to the target.
-    Add,
-    /// Two cells differ by the target.
-    Subtract,
-    /// Cells multiply to the target.
-    Multiply,
-    /// Two cells have a ratio equal to the target.
-    Divide,
-    /// A single cell is fixed to the target value.
-    Given,
-}
-
-impl Display for Operator {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let s = match self {
-            Self::Add => "+",
-            Self::Subtract => "-",
-            Self::Multiply => "×",
-            Self::Divide => "÷",
-            Self::Given => "",
-        };
-        write!(f, "{s}")
-    }
-}
-
-/// Filters tuples that violate the all-different constraint within any row or
-/// column of a cage's polyomino.
-///
-/// Precomputes the cell-index groups for each row and column once on
-/// construction, then checks each candidate tuple against those groups.
-struct CollinearityFilter {
-    rows_and_columns: Vec<Vec<usize>>,
-}
-
-impl CollinearityFilter {
-    /// Builds the filter for `polyomino`, grouping cell indices by shared row
-    /// and column.
-    fn new(polyomino: &Polyomino) -> Self {
-        let cell_indexes: HashMap<Cell, usize> = polyomino
-            .cells()
-            .iter()
-            .copied()
-            .enumerate()
-            .map(|(i, cell)| (cell, i))
-            .collect();
-        let to_indexes = |cells: Vec<Cell>| cells.iter().map(|cell| cell_indexes[cell]).collect();
-        let rows = polyomino.rows().into_iter().map(&to_indexes);
-        let columns = polyomino.columns().into_iter().map(&to_indexes);
-        Self {
-            rows_and_columns: rows.chain(columns).collect(),
-        }
-    }
-    /// Returns `true` if `tuple` satisfies all-different within every row and
-    /// column group of the polyomino.
-    fn filter(&self, tuple: &Tuple) -> bool {
-        self.rows_and_columns
-            .iter()
-            .all(|indexes| indexes.iter().map(|&i| tuple[i]).all_unique())
-    }
-}
-
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
     use crate::test_utils::{col_pair, l_shape, pair, singleton};
+    use crate::{M, Operator};
 
     fn cage(polyomino: Polyomino, operator: Operator, target: M) -> Cage {
         Cage {

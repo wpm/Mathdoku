@@ -1,9 +1,8 @@
 //! Cage component: operation label in the anchor cell corner.
 
-use leptos::prelude::*;
-use mathdoku::{Operation, Operator};
-
 use crate::theme::{INK, OP_INSET, SERIF};
+use leptos::prelude::*;
+use mathdoku::operation::{Operation, Operator};
 
 /// Formats a cage operation as a short label: `"+5"`, `"−2"`, `"×12"`, `"÷3"`, or `"7"`.
 pub fn op_label(op: &Operation) -> String {

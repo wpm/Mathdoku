@@ -7,11 +7,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::{from_str, to_string, to_string_pretty};
 
 use mathdoku::generate::generate;
+use mathdoku::operation::{Operation, Operator};
 use mathdoku::{Cage, Puzzle};
-use mathdoku::{Cell, Operation, Operator, Polyomino};
+use mathdoku::{Cell, Polyomino};
 use mathdoku_designer_shared::{DocState, ViewState};
 use tauri::{AppHandle, Manager, Runtime, State};
-
 pub const SAVE_VERSION: u32 = 1;
 pub const RECENT_FILE: &str = "last_open.json";
 

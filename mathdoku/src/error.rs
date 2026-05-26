@@ -7,10 +7,10 @@
 use std::error::Error as StdError;
 use std::fmt;
 
-use crate::cage::{Cage, Operation, Operator};
+use crate::cage::Cage;
 use crate::cell::Cell;
+use crate::operation::{Operation, Operator};
 use crate::polyomino::Polyomino;
-
 /// Errors that can occur during puzzle construction or solving.
 #[derive(Debug)]
 pub enum Error {
@@ -138,10 +138,10 @@ impl StdError for Error {}
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-    use crate::cage::{Cage, Operation, Operator};
+    use crate::cage::Cage;
+    use crate::operation::{Operation, Operator};
     use crate::polyomino::Polyomino;
     use crate::{Cell, Error};
-
     #[test]
     fn error_display_covers_all_variants() {
         let c = Cell::new(1, 2);

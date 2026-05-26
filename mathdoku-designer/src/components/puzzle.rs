@@ -674,8 +674,7 @@ pub fn Puzzle(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mathdoku::{Operation, Operator};
-
+    use mathdoku::operation::{Operation, Operator};
     #[test]
     fn cell_size_divides_viewport_evenly() {
         let c = cell_size(4);

@@ -23,16 +23,20 @@ mod csp;
 mod error;
 pub mod generate;
 mod latin_square;
+pub mod operation;
 mod polyomino;
 pub mod puzzle;
 mod puzzle_csp;
 mod regin;
 #[cfg(test)]
 mod test_utils;
+pub mod tuples;
 
 pub use arithmetic::Tuple;
-pub use cage::{Cage, Operation, Operator};
+pub use cage::Cage;
 pub use cell::{Cell, M, N, Values};
 pub use error::Error;
+pub use operation::Operation;
+pub use operation::Operator;
 pub use polyomino::Polyomino;
 pub use puzzle::Puzzle;

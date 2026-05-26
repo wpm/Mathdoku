@@ -9,11 +9,10 @@ use std::{
 
 use crate::Error;
 
-/// Possible cell value: a number in the range `1..=9`.
+/// Possible cell value or puzzle size: a number in the range `1..=9`.
 pub type N = u8;
-/// A cage target (sum, product, difference, ratio, or given value). Wide enough
-/// to hold the largest possible product for a single cage.
-pub type M = u16;
+/// A cage target (sum, product, difference, ratio, or given value).
+pub type M = u64;
 
 /// A cell in a Mathdoku grid, identified by 0-based row and column index values
 /// in row-major order.

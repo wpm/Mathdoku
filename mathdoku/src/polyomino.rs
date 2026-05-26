@@ -12,30 +12,6 @@ use crate::{Cell, Error};
 pub struct Polyomino(BTreeSet<Cell>);
 
 impl Polyomino {
-    /// Constructs a polyomino from a slice of cells.
-    ///
-    /// # Errors
-    /// Returns [`Error::EmptyPolyomino`] if `cells` is empty, or
-    /// [`Error::DisconnectedPolyomino`] if `cells` is not edge-connected.
-    pub fn from_cells(cells: &[Cell]) -> Result<Self, Error> {
-        Self::new(cells.iter().copied().collect())
-    }
-
-    /// The cells of the polyomino in row-major order.
-    #[must_use]
-    pub fn cells(&self) -> Vec<Cell> {
-        self.0.iter().copied().collect()
-    }
-
-    /// Returns the number of cells in this polyomino.
-    ///
-    /// Always at least 1: a polyomino cannot be empty by construction.
-    #[must_use]
-    #[allow(clippy::len_without_is_empty)]
-    pub fn len(&self) -> usize {
-        self.0.len()
-    }
-
     /// Constructs a polyomino from a set of cells.
     ///
     /// # Errors
@@ -49,6 +25,30 @@ impl Polyomino {
             return Err(Error::DisconnectedPolyomino);
         }
         Ok(Self(cells))
+    }
+
+    /// Constructs a polyomino from a slice of cells.
+    ///
+    /// # Errors
+    /// Returns [`Error::EmptyPolyomino`] if `cells` is empty, or
+    /// [`Error::DisconnectedPolyomino`] if `cells` is not edge-connected.
+    pub fn from_cells(cells: &[Cell]) -> Result<Self, Error> {
+        Self::new(cells.iter().copied().collect())
+    }
+
+    /// Returns the number of cells in this polyomino.
+    ///
+    /// Always at least 1: a polyomino cannot be empty by construction.
+    #[must_use]
+    #[allow(clippy::len_without_is_empty)]
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    /// The cells of the polyomino in row-major order.
+    #[must_use]
+    pub fn cells(&self) -> Vec<Cell> {
+        self.0.iter().copied().collect()
     }
 
     /// The cells grouped by row, in row-major order. Each inner vec is sorted by column.
@@ -86,6 +86,30 @@ impl Polyomino {
         let mut cells = self.0.clone();
         let _ = cells.insert(cell);
         Self::new(cells)
+    }
+    /// Returns a new polyomino with `cell` removed.
+    ///
+    /// If `cell` is not present in the polyomino, returns an equivalent polyomino.
+    ///
+    /// # Errors
+    /// Returns [`Error::RemovalWouldEmptyPolyomino`] if `cell` is the only cell,
+    /// or [`Error::WouldDisconnect`] if removing `cell` would leave the remaining
+    /// cells edge-disconnected.
+    pub fn remove(&self, cell: Cell) -> Result<Self, Error> {
+        let cells: BTreeSet<Cell> = self.0.iter().copied().filter(|c| *c != cell).collect();
+        if cells.is_empty() {
+            return Err(Error::RemovalWouldEmptyPolyomino(cell));
+        }
+        if !is_edge_connected_component(&cells) {
+            return Err(Error::WouldDisconnect(cell));
+        }
+        Ok(Self(cells))
+    }
+
+    /// Returns `true` if this polyomino shares at least one cell with `other`.
+    #[must_use]
+    pub fn intersects(&self, other: &Self) -> bool {
+        self.0.intersection(&other.0).next().is_some()
     }
 }
 
@@ -139,21 +163,6 @@ mod tests {
     impl Polyomino {
         fn contains(&self, cell: Cell) -> bool {
             self.0.contains(&cell)
-        }
-
-        fn intersects(&self, other: &Self) -> bool {
-            self.0.intersection(&other.0).next().is_some()
-        }
-
-        fn remove(&self, cell: Cell) -> Result<Self, Error> {
-            let cells: BTreeSet<Cell> = self.0.iter().copied().filter(|c| *c != cell).collect();
-            if cells.is_empty() {
-                return Err(Error::RemovalWouldEmptyPolyomino(cell));
-            }
-            if !is_edge_connected_component(&cells) {
-                return Err(Error::WouldDisconnect(cell));
-            }
-            Ok(Self(cells))
         }
     }
 

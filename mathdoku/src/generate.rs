@@ -7,12 +7,12 @@ use rand::{Rng, RngExt};
 
 use crate::Cell;
 use crate::Error;
-use crate::cage::{Cage, Operation, Operator};
+use crate::cage::Cage;
 use crate::cell::{M, N};
 use crate::latin_square::generate_latin_square;
+use crate::operation::{Operation, Operator};
 use crate::polyomino::Polyomino;
 use crate::puzzle::Puzzle;
-
 /// Poisson distribution over cage sizes, truncated to `[1, n*n]` by
 /// rejection sampling.
 #[derive(Debug, Clone, Copy)]
@@ -102,10 +102,10 @@ pub(crate) fn default_op_policy(values: &[N], n: usize) -> Result<Operation, Err
             }
         }
         _ => {
-            let prod: u64 = values.iter().map(|&v| u64::from(v)).product();
-            let area = u64::from(M::try_from(n * n).unwrap_or(M::MAX));
+            let prod: M = values.iter().map(|&v| M::from(v)).product();
+            let area = M::try_from(n * n).unwrap_or(M::MAX);
             if prod <= area {
-                op(Operator::Multiply, M::try_from(prod).unwrap_or(M::MAX))
+                op(Operator::Multiply, prod)
             } else {
                 op(Operator::Add, values.iter().map(|&v| M::from(v)).sum())
             }

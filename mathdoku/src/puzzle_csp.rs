@@ -373,12 +373,8 @@ mod tests {
 
     // --- Cage::propagate ---
 
-    fn cage(
-        positions: &[(usize, usize)],
-        operator: crate::cage::Operator,
-        target: crate::M,
-    ) -> Cage {
-        use crate::cage::Operation;
+    fn cage(positions: &[(usize, usize)], operator: crate::Operator, target: crate::M) -> Cage {
+        use crate::operation::Operation;
         use crate::polyomino::Polyomino;
         let cells: Vec<Cell> = positions.iter().map(|&(r, c)| Cell::new(r, c)).collect();
         Cage::new(
@@ -392,7 +388,7 @@ mod tests {
         // A Given cage at (0,0) with target 3 in a 4×4 puzzle:
         // (0,0) should be pruned to {3} regardless of its initial domain.
         let p = Puzzle::new(4).unwrap();
-        let c = cage(&[(0, 0)], crate::cage::Operator::Given, 3);
+        let c = cage(&[(0, 0)], crate::Operator::Given, 3);
         let (new_p, changed) = c.propagate(&p).unwrap();
         assert_eq!(
             new_p.cell_values(Cell::new(0, 0)).unwrap(),
@@ -406,7 +402,7 @@ mod tests {
         // Add a cage over (0,0) and (0,1), target=3, in a 4×4 puzzle.
         // Valid tuples: (1,2) and (2,1). So (0,0) and (0,1) are both pruned to {1,2}.
         let p = Puzzle::new(4).unwrap();
-        let c = cage(&[(0, 0), (0, 1)], crate::cage::Operator::Add, 3);
+        let c = cage(&[(0, 0), (0, 1)], crate::Operator::Add, 3);
         let (new_p, _) = c.propagate(&p).unwrap();
         assert_eq!(
             new_p.cell_values(Cell::new(0, 0)).unwrap(),
@@ -423,7 +419,7 @@ mod tests {
         // Add a cage over (0,0) and (0,1), target=3, but both cells are pinned to {4}.
         // No valid tuple exists, so both domains should become empty.
         let p = puzzle_with_domains(&[(&(0, 0), &[4]), (&(0, 1), &[4])]);
-        let c = cage(&[(0, 0), (0, 1)], crate::cage::Operator::Add, 3);
+        let c = cage(&[(0, 0), (0, 1)], crate::Operator::Add, 3);
         let (new_p, changed) = c.propagate(&p).unwrap();
         assert!(new_p.cell_values(Cell::new(0, 0)).unwrap().is_empty());
         assert!(new_p.cell_values(Cell::new(0, 1)).unwrap().is_empty());
@@ -440,7 +436,7 @@ mod tests {
             .unwrap()
             .set_domain(Cell::new(0, 1), Values::new(&[1, 2]).unwrap())
             .unwrap();
-        let c = cage(&[(0, 0), (0, 1)], crate::cage::Operator::Add, 5);
+        let c = cage(&[(0, 0), (0, 1)], crate::Operator::Add, 5);
         let (new_p, _) = c.propagate(&p).unwrap();
         assert_eq!(
             new_p.cell_values(Cell::new(0, 0)).unwrap(),
