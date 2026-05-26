@@ -11,7 +11,6 @@ pub struct Operation {
 }
 
 impl Operation {
-    #[must_use]
     pub const fn new(operator: Operator, target: M) -> Self {
         Self { operator, target }
     }
@@ -51,7 +50,6 @@ impl Display for Operator {
     }
 }
 
-#[must_use]
 pub fn operators(polynomial: &Polyomino) -> Vec<Operator> {
     match polynomial.len() {
         1 => vec![Operator::Given],

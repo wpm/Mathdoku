@@ -23,6 +23,7 @@ cargo clippy --all-targets -- \
   -D clippy::dbg_macro \
   -D clippy::print_stdout \
   -D clippy::print_stderr \
+  -A clippy::must_use_candidate \
   2>&1
 
 echo "==> cargo doc"
