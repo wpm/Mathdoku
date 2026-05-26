@@ -26,9 +26,9 @@
     clippy::cast_possible_truncation
 )]
 
+use leptos::prelude::*;
 use mathdoku::puzzle::Puzzle as KenkenPuzzle;
 use mathdoku_designer_shared::{Mode, ViewState};
-use leptos::prelude::*;
 use wasm_bindgen::prelude::*;
 
 use super::cage::Cage;
@@ -77,12 +77,15 @@ impl PuzzleRef {
 
     /// Returns the number of solutions, or `None` if not all cells are covered by cages.
     pub fn solution_count(&self) -> Option<usize> {
-        let puzzle = self.0.puzzle.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let puzzle = self
+            .0
+            .puzzle
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let n = self.0.n;
         // Return None if not all cells are covered by a cage.
-        let covered: std::collections::HashSet<_> = puzzle.cages()
-            .flat_map(|c| c.cells())
-            .collect();
+        let covered: std::collections::HashSet<_> =
+            puzzle.cages().into_iter().flat_map(|c| c.cells()).collect();
         if covered.len() < n * n {
             return None;
         }
@@ -92,24 +95,41 @@ impl PuzzleRef {
     /// Returns `(multisets, tuples)` for `slot_idx`.
     pub fn viable_counts(&self, slot_idx: usize) -> Option<(usize, usize)> {
         let cage = self.0.cages.get(slot_idx)?;
-        let puzzle = self.0.puzzle.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let puzzle = self
+            .0
+            .puzzle
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let n = self.0.n as u8;
         // Get current domain for each cell in the cage.
-        let cell_domains: Vec<std::collections::HashSet<u8>> = cage.cells().into_iter()
+        let cell_domains: Vec<std::collections::HashSet<u8>> = cage
+            .cells()
+            .into_iter()
             .map(|cell| {
-                puzzle.get_cell_values(cell)
+                puzzle
+                    .get_cell_values(cell)
                     .map(|v| v.values().into_iter().collect())
                     .unwrap_or_default()
             })
             .collect();
         // Count tuples that are consistent with current domains.
         let tuples: Vec<_> = cage.tuples(n).collect();
-        let valid_tuples: Vec<_> = tuples.iter()
-            .filter(|t| t.iter().zip(&cell_domains).all(|(v, domain)| domain.contains(v)))
+        let valid_tuples: Vec<_> = tuples
+            .iter()
+            .filter(|t| {
+                t.iter()
+                    .zip(&cell_domains)
+                    .all(|(v, domain)| domain.contains(v))
+            })
             .collect();
         // Multisets: unique sorted value sets among valid tuples.
-        let multisets: std::collections::HashSet<Vec<u8>> = valid_tuples.iter()
-            .map(|t| { let mut s = (*t).clone(); s.sort(); s })
+        let multisets: std::collections::HashSet<Vec<u8>> = valid_tuples
+            .iter()
+            .map(|t| {
+                let mut s = (*t).clone();
+                s.sort();
+                s
+            })
             .collect();
         Some((multisets.len(), valid_tuples.len()))
     }
@@ -262,8 +282,13 @@ pub fn Puzzle(
     // Collect slots in polyomino order (canonical for Tab traversal).
     let slots: SlotList = puzzle
         .cages()
+        .into_iter()
         .map(|cage| {
-            let cells = cage.cells().into_iter().map(|c| (c.row, c.column)).collect();
+            let cells = cage
+                .cells()
+                .into_iter()
+                .map(|c| (c.row, c.column))
+                .collect();
             (cells, cage.clone())
         })
         .collect();
@@ -490,6 +515,7 @@ pub fn Puzzle(
                                 commit_cells_clone.iter().copied().collect();
                             let new_slot_idx = new_puzzle
                                 .cages()
+                                .into_iter()
                                 .position(|cage| {
                                     let cells: std::collections::HashSet<_> = cage
                                         .cells()

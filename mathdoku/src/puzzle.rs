@@ -63,8 +63,8 @@ impl Puzzle {
     }
 
     /// Returns the cages in this puzzle in polyomino order.
-    pub fn cages(&self) -> impl Iterator<Item = &Cage> {
-        self.cages.iter()
+    pub fn cages(&self) -> BTreeSet<Cage> {
+        self.cages.clone()
     }
 
     /// Returns a new puzzle adding `cage` and propagating all constraints.

@@ -261,13 +261,13 @@ pub fn remove_region(cells: Vec<Cell>, state: State<Mutex<AppState>>) -> Result<
     let n = puzzle.n();
     let remaining_cages: Vec<mathdoku::Cage> = puzzle
         .cages()
+        .into_iter()
         .filter(|cage| {
             let cage_cells: std::collections::HashSet<_> = cage.cells().into_iter().collect();
             cage_cells != target_cells
         })
-        .cloned()
         .collect();
-    if remaining_cages.len() == puzzle.cages().count() {
+    if remaining_cages.len() == puzzle.cages().len() {
         return Err("cage not found".to_string());
     }
     let new_puzzle = remaining_cages

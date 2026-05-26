@@ -41,7 +41,7 @@ impl PuzzleCell {
         Ok(Self {
             cell,
             n: puzzle.n(),
-            cages: puzzle.cages().cloned().collect(),
+            cages: puzzle.cages().into_iter().collect(),
         })
     }
 }
@@ -141,7 +141,7 @@ pub fn puzzle_fixpoint(puzzle: &Puzzle) -> Result<Puzzle, Error> {
     let n = puzzle.n();
     let rows = (0..n).map(|r| PuzzleConstraint::AllDifferent(AllDifferent::row(n, r)));
     let cols = (0..n).map(|c| PuzzleConstraint::AllDifferent(AllDifferent::column(n, c)));
-    let cages = puzzle.cages().cloned().map(PuzzleConstraint::Cage);
+    let cages = puzzle.cages().into_iter().map(PuzzleConstraint::Cage);
     let constraints: Vec<PuzzleConstraint> = rows.chain(cols).chain(cages).collect();
     generalized_arc_consistency(puzzle.clone(), &constraints)
 }
