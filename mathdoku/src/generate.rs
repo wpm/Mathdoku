@@ -85,7 +85,7 @@ fn poisson<R: Rng>(mean: f64, rng: &mut R) -> usize {
 /// Returns [`Error::EmptyOpPolicyValues`] if `values` is empty. A cage always
 /// covers at least one cell, so callers that obtain `values` from a cage's
 /// cells will never trigger this.
-pub fn default_op_policy(values: &[N], n: usize) -> Result<Operation, Error> {
+pub(crate) fn default_op_policy(values: &[N], n: usize) -> Result<Operation, Error> {
     let op = |operator, target| Ok(Operation::new(operator, target));
     match values.len() {
         0 => Err(Error::EmptyOpPolicyValues),
@@ -171,7 +171,7 @@ where
 /// # Errors
 /// Returns [`Error::DisconnectedPolyomino`] or [`Error::EmptyPolyomino`] if
 /// the grown cell set fails validation (structurally unreachable in practice).
-pub fn greedy<R: Rng>(
+pub(crate) fn greedy<R: Rng>(
     n: usize,
     dist: SizeDistribution,
     rng: &mut R,
