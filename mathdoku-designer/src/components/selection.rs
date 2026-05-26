@@ -12,10 +12,7 @@ use leptos::prelude::*;
 
 use super::puzzle::{GridContext, MARGIN};
 
-const PROVISIONAL: &str = "#7b4f9e";
-const PROVISIONAL_FILL: &str = "rgba(123,79,158,0.15)";
-
-const ACCENT: &str = "#1a4e7a";
+use crate::theme::{ACCENT, PROVISIONAL_FILL, PROVISIONAL_STROKE};
 const SELECTION: f64 = 3.5;
 
 const fn origin(cell: f64, row: usize, col: usize) -> (f64, f64) {
@@ -63,7 +60,7 @@ pub fn SelectionOverlay() -> impl IntoView {
                     .into_any(),
                 );
                 // Border lines on outer edges.
-                let stroke = PROVISIONAL;
+                let stroke = PROVISIONAL_STROKE;
                 if r == 0 || !cell_set.contains(&(r - 1, c)) {
                     let (x1, x2, yy) = (x + inset, x + cell - inset, y + inset);
                     elements.push(view! { <line x1=x1 y1=yy x2=x2 y2=yy stroke=stroke stroke-width=line_w stroke-linecap="square" /> }.into_any());

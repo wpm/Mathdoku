@@ -37,14 +37,13 @@ use super::cell::Cell;
 use super::selection::SelectionOverlay;
 use super::solution_count::SolutionCount;
 
-use crate::theme::{BG, INK, LINE, OP_INSET};
+use crate::theme::{BG, CAGE_PALETTE, INK, LINE, OP_INSET};
 
 // ---- visual constants (pub for SelectionOverlay) ----
 pub const MARGIN: f64 = 14.0;
 const THICK: f64 = 2.2;
 const THIN: f64 = 0.5;
 
-const CAGE_PALETTE: [&str; 4] = ["#cfe4f2", "#d7ecd5", "#f7ecc6", "#f6d9d3"];
 
 // ---- context ----
 
