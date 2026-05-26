@@ -155,29 +155,6 @@ impl Puzzle {
         )
     }
 
-    /// Returns a new puzzle with the domains of `cells` reset to `{1..=n}` and
-    /// all constraints re-propagated.
-    ///
-    /// This is the inverse of narrowing: use it when a constraint that was
-    /// previously narrowing those cells is removed and their domains may have
-    /// widened beyond what the remaining constraints require.
-    ///
-    /// # Errors
-    /// Returns an error if any cell is out of bounds or propagation fails.
-    pub fn loosen(&self, cells: &[Cell]) -> Result<Self, Error> {
-        let mut values = self.values.clone();
-        let full = Values::all(self.n);
-        for &cell in cells {
-            values[self.index(cell)?] = full;
-        }
-        Self {
-            n: self.n,
-            values,
-            cages: self.cages.clone(),
-        }
-        .constrain()
-    }
-
     /// Returns the current domain of `cell`.
     ///
     /// # Errors
@@ -222,6 +199,29 @@ impl Puzzle {
         } else {
             Err(Error::InvalidCell(cell))
         }
+    }
+
+    /// Returns a new puzzle with the domains of `cells` reset to `{1..=n}` and
+    /// all constraints re-propagated.
+    ///
+    /// This is the inverse of narrowing: use it when a constraint that was
+    /// previously narrowing those cells is removed and their domains may have
+    /// widened beyond what the remaining constraints require.
+    ///
+    /// # Errors
+    /// Returns an error if any cell is out of bounds or propagation fails.
+    fn loosen(&self, cells: &[Cell]) -> Result<Self, Error> {
+        let mut values = self.values.clone();
+        let full = Values::all(self.n);
+        for &cell in cells {
+            values[self.index(cell)?] = full;
+        }
+        Self {
+            n: self.n,
+            values,
+            cages: self.cages.clone(),
+        }
+        .constrain()
     }
 
     /// Propagates all constraints to a fixpoint using generalized arc consistency.
