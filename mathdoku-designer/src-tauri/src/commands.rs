@@ -238,7 +238,7 @@ pub fn add_region(cells: Vec<Cell>, state: State<Mutex<AppState>>) -> Result<Puz
         Operation::new(Operator::Add, 0)
     };
     let cage = mathdoku::Cage::new(poly, operation);
-    let new_puzzle = puzzle.insert_cage(cage)?;
+    let new_puzzle = puzzle.insert_cage(cage).map_err(|e| e.to_string())?;
     s.puzzle = Some(new_puzzle.clone());
     s.dirty = true;
     Ok(new_puzzle)
@@ -274,7 +274,8 @@ pub fn remove_region(cells: Vec<Cell>, state: State<Mutex<AppState>>) -> Result<
         .into_iter()
         .try_fold(Puzzle::new(n).map_err(|e| e.to_string())?, |p, cage| {
             p.insert_cage(cage)
-        })?;
+        })
+        .map_err(|e| e.to_string())?;
     s.puzzle = Some(new_puzzle.clone());
     s.dirty = true;
     Ok(new_puzzle)
