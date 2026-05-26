@@ -23,7 +23,9 @@
 #![allow(
     clippy::cast_precision_loss,
     clippy::cast_sign_loss,
-    clippy::cast_possible_truncation
+    clippy::cast_possible_truncation,
+    clippy::items_after_statements, // local serialization structs defined inside event handlers
+    unused_results,                 // invoke/Effect::new/HashSet::insert/Vec::pop are fire-and-forget in reactive WASM code
 )]
 
 use mathdoku::Puzzle as KenkenPuzzle;
@@ -77,7 +79,7 @@ impl PuzzleRef {
         let n = self.0.n;
         // Return None if not all cells are covered by a cage.
         let covered: std::collections::HashSet<_> = puzzle.cages()
-            .flat_map(|c| c.cells())
+            .flat_map(mathdoku::Cage::cells)
             .collect();
         if covered.len() < n * n {
             return None;
@@ -105,7 +107,7 @@ impl PuzzleRef {
             .collect();
         // Multisets: unique sorted value sets among valid tuples.
         let multisets: std::collections::HashSet<Vec<u8>> = valid_tuples.iter()
-            .map(|t| { let mut s = (*t).clone(); s.sort(); s })
+            .map(|t| { let mut s = (*t).clone(); s.sort_unstable(); s })
             .collect();
         Some((multisets.len(), valid_tuples.len()))
     }
@@ -122,7 +124,7 @@ pub enum UndoEntry {
     /// A region was committed (Enter). Undo: remove the region from the puzzle
     /// (via `remove_region` command) and restore the puzzle to `old_puzzle`.
     CommitRegion {
-        /// The cells that form the committed region (for the remove_region call).
+        /// The cells that form the committed region (for the `remove_region` call).
         cells: Vec<(usize, usize)>,
     },
 }
@@ -270,11 +272,11 @@ pub fn Puzzle(
 
     // Per-cell domains.
     let mut domains = vec![vec![vec![]; n]; n];
-    for r in 0..n {
-        for c in 0..n {
+    for (r, row) in domains.iter_mut().enumerate() {
+        for (c, cell_domain) in row.iter_mut().enumerate() {
             let cell_ref = mathdoku::Cell::new(r, c);
             if let Ok(vals) = puzzle.get_cell_values(cell_ref) {
-                domains[r][c] = vals.values();
+                *cell_domain = vals.values();
             }
         }
     }
@@ -447,16 +449,6 @@ pub fn Puzzle(
                     }
                     "Enter" => {
                         ev.prevent_default();
-                        let region = provisional_region.get_untracked();
-                        // Cells to commit: provisional region, or singleton current cell.
-                        let commit_cells = if region.is_empty() {
-                            if cell_slot_kd[r][c].is_some() {
-                                return; // covered cell, nothing to do
-                            }
-                            vec![(r, c)]
-                        } else {
-                            region.clone()
-                        };
                         #[derive(serde::Serialize)]
                         struct CellArg {
                             row: usize,
@@ -466,11 +458,20 @@ pub fn Puzzle(
                         struct AddRegionArgs {
                             cells: Vec<CellArg>,
                         }
+                        let region = provisional_region.get_untracked();
+                        // Cells to commit: provisional region, or singleton current cell.
+                        let commit_cells = if region.is_empty() {
+                            if cell_slot_kd[r][c].is_some() {
+                                return; // covered cell, nothing to do
+                            }
+                            vec![(r, c)]
+                        } else {
+                            region
+                        };
                         let cells_arg: Vec<CellArg> = commit_cells
                             .iter()
                             .map(|&(row, column)| CellArg { row, column })
                             .collect();
-                        let commit_cells_clone = commit_cells.clone();
                         leptos::task::spawn_local(async move {
                             let args =
                                 serde_wasm_bindgen::to_value(&AddRegionArgs { cells: cells_arg });
@@ -483,7 +484,7 @@ pub fn Puzzle(
                             };
                             // Find the slot index of the new cage in the new puzzle.
                             let commit_set: std::collections::HashSet<_> =
-                                commit_cells_clone.iter().copied().collect();
+                                commit_cells.iter().copied().collect();
                             let new_slot_idx = new_puzzle
                                 .cages()
                                 .position(|cage| {
@@ -502,7 +503,7 @@ pub fn Puzzle(
                                     s.pop();
                                 }
                                 s.push(UndoEntry::CommitRegion {
-                                    cells: commit_cells_clone,
+                                    cells: commit_cells,
                                 });
                             });
                             let new_view = ViewState {
@@ -701,7 +702,7 @@ mod tests {
     #[test]
     fn op_label_add() {
         assert_eq!(
-            super::super::cage::op_label(Operation::new(Operator::Add, 5)),
+            super::super::cage::op_label(&Operation::new(Operator::Add, 5)),
             "+5"
         );
     }
@@ -709,7 +710,7 @@ mod tests {
     #[test]
     fn op_label_subtract() {
         assert_eq!(
-            super::super::cage::op_label(Operation::new(Operator::Subtract, 2)),
+            super::super::cage::op_label(&Operation::new(Operator::Subtract, 2)),
             "\u{2212}2"
         );
     }
@@ -717,7 +718,7 @@ mod tests {
     #[test]
     fn op_label_multiply() {
         assert_eq!(
-            super::super::cage::op_label(Operation::new(Operator::Multiply, 12)),
+            super::super::cage::op_label(&Operation::new(Operator::Multiply, 12)),
             "\u{00d7}12"
         );
     }
@@ -725,7 +726,7 @@ mod tests {
     #[test]
     fn op_label_divide() {
         assert_eq!(
-            super::super::cage::op_label(Operation::new(Operator::Divide, 3)),
+            super::super::cage::op_label(&Operation::new(Operator::Divide, 3)),
             "\u{00f7}3"
         );
     }
@@ -733,7 +734,7 @@ mod tests {
     #[test]
     fn op_label_given_shows_only_target() {
         assert_eq!(
-            super::super::cage::op_label(Operation::new(Operator::Given, 7)),
+            super::super::cage::op_label(&Operation::new(Operator::Given, 7)),
             "7"
         );
     }

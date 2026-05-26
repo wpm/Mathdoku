@@ -6,7 +6,7 @@ use leptos::prelude::*;
 use crate::theme::{INK, OP_INSET, SERIF};
 
 /// Formats a cage operation as a short label: `"+5"`, `"−2"`, `"×12"`, `"÷3"`, or `"7"`.
-pub fn op_label(op: Operation) -> String {
+pub fn op_label(op: &Operation) -> String {
     let t = op.target;
     match op.operator {
         Operator::Add => format!("+{t}"),
@@ -19,6 +19,7 @@ pub fn op_label(op: Operation) -> String {
 
 /// Operation label rendered at the top-left of the cage's anchor cell.
 #[component]
+#[allow(clippy::needless_pass_by_value)] // Leptos component props must be owned
 pub fn Cage(
     /// Top-left x of the anchor cell.
     x: f64,
@@ -28,7 +29,7 @@ pub fn Cage(
     op_f: f64,
     operation: Operation,
 ) -> impl IntoView {
-    let text = op_label(operation);
+    let text = op_label(&operation);
     view! {
         <text
             x={x + OP_INSET} y={y + OP_INSET}

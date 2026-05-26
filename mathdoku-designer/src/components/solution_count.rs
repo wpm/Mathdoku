@@ -42,15 +42,13 @@ mod tests {
 pub fn SolutionCount() -> impl IntoView {
     let ctx = use_context::<GridContext>()
         .unwrap_or_else(|| panic!("SolutionCount must be inside Puzzle"));
-    let puzzle_ref = ctx.puzzle_ref.clone();
-
     // None = still computing, Some(n) = solver finished with count n.
     let count: RwSignal<Option<usize>> = RwSignal::new(None);
     // Whether the async call has resolved (distinguishes "solving" from "incomplete").
     let resolved: RwSignal<bool> = RwSignal::new(false);
 
     leptos::task::spawn_local(async move {
-        let n = puzzle_ref.solution_count();
+        let n = ctx.puzzle_ref.solution_count();
         count.set(n);
         resolved.set(true);
     });

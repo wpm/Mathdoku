@@ -241,6 +241,7 @@ pub fn add_region(cells: Vec<Cell>, state: State<Mutex<AppState>>) -> Result<Puz
     let new_puzzle = puzzle.insert_cage(cage).map_err(|e| e.to_string())?;
     s.puzzle = Some(new_puzzle.clone());
     s.dirty = true;
+    drop(s);
     Ok(new_puzzle)
 }
 
@@ -278,5 +279,6 @@ pub fn remove_region(cells: Vec<Cell>, state: State<Mutex<AppState>>) -> Result<
         .map_err(|e| e.to_string())?;
     s.puzzle = Some(new_puzzle.clone());
     s.dirty = true;
+    drop(s);
     Ok(new_puzzle)
 }

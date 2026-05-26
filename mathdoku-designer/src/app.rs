@@ -1,8 +1,9 @@
 #![allow(
-    clippy::future_not_send,       // WASM async is inherently single-threaded
-    clippy::unwrap_used,           // serde_wasm_bindgen / JsCast are infallible here
+    clippy::future_not_send,        // WASM async is inherently single-threaded
+    clippy::unwrap_used,            // serde_wasm_bindgen / JsCast are infallible here
     clippy::items_after_statements, // use wasm_bindgen::JsCast inside async blocks
-    clippy::too_many_lines         // App component is inherently long
+    clippy::too_many_lines,         // App component is inherently long
+    unused_results,                 // invoke/listen/Effect::new return values are fire-and-forget in WASM
 )]
 
 use mathdoku::Puzzle;

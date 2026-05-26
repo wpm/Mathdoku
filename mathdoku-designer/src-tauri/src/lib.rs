@@ -239,13 +239,13 @@ mod tests {
 
     fn app_with_state() -> tauri::App<tauri::test::MockRuntime> {
         let app = mock_app();
-        app.manage(Mutex::new(AppState::default()));
+        let _ = app.manage(Mutex::new(AppState::default()));
         app
     }
 
     fn app_with_puzzle(n: usize) -> tauri::App<tauri::test::MockRuntime> {
         let app = mock_app();
-        app.manage(Mutex::new(AppState {
+        let _ = app.manage(Mutex::new(AppState {
             puzzle: Some(Puzzle::new(n).unwrap()),
             ..AppState::default()
         }));
@@ -270,11 +270,11 @@ mod tests {
     #[test]
     fn new_puzzle_clears_existing_path() {
         let app = mock_app();
-        app.manage(Mutex::new(AppState {
+        let _ = app.manage(Mutex::new(AppState {
             path: Some("/old/path.mathdoku".to_string()),
             ..AppState::default()
         }));
-        new_puzzle(4, app.state::<Mutex<AppState>>()).unwrap();
+        let _ = new_puzzle(4, app.state::<Mutex<AppState>>()).unwrap();
         let binding = app.state::<Mutex<AppState>>();
         let s = binding.lock().unwrap();
         assert!(s.path.is_none());
@@ -335,7 +335,7 @@ mod tests {
             .unwrap()
             .to_string();
 
-        save_puzzle(
+        let _ = save_puzzle(
             path.clone(),
             app.handle().clone(),
             app.state::<Mutex<AppState>>(),
@@ -413,7 +413,7 @@ mod tests {
     #[test]
     fn get_doc_state_returns_current_values() {
         let app = mock_app();
-        app.manage(Mutex::new(AppState {
+        let _ = app.manage(Mutex::new(AppState {
             dirty: true,
             path: Some("/some/path.mathdoku".to_string()),
             ..AppState::default()
