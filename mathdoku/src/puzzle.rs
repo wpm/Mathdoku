@@ -23,7 +23,7 @@ struct PuzzleWire {
 /// column constraints have been applied as far as they can be inferred. Every
 /// public method that returns a new `Puzzle` upholds this invariant by
 /// propagating to a new fixpoint before returning.
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct Puzzle {
     n: usize,
     values: Box<[Values]>,

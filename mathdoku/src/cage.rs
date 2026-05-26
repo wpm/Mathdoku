@@ -16,7 +16,7 @@ use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 
 /// A polyomino with an [`Operation`] constraining its cell values.
-#[derive(Debug, Clone, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct Cage {
     polyomino: Polyomino,
     operation: Operation,
@@ -93,7 +93,7 @@ impl PartialOrd for Cage {
 }
 
 /// An [`Operator`] paired with a numeric target value imposed on a [`Cage`]'s cells.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct Operation {
     pub operator: Operator,
     pub target: M,
@@ -113,7 +113,7 @@ impl Display for Operation {
 }
 
 /// The arithmetic operation a [`Cage`] imposes on its cells.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Operator {
     /// Cells sum to the target.
     Add,

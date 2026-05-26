@@ -48,7 +48,7 @@ impl Cell {
 }
 
 /// The set of values in `1..=9` that a cell contains, stored as a bitmap.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Default)]
 pub struct Values(u16);
 
 impl Values {
