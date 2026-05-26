@@ -7,7 +7,7 @@ use tauri::image::Image;
 use tauri::menu::{AboutMetadata, Menu, MenuItemBuilder, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Emitter, Manager, Runtime, WindowEvent};
 
-use commands::{read_recent, AppState, SaveEnvelope, SAVE_VERSION};
+use commands::{AppState, SAVE_VERSION, SaveEnvelope, read_recent};
 
 const EVENT_NEW: &str = "menu-new";
 const EVENT_OPEN: &str = "menu-open";
@@ -201,8 +201,8 @@ pub fn run() {
 mod tests {
     use super::*;
     use commands::{
-        get_doc_state, get_puzzle, load_puzzle, new_puzzle, recent_path, save_puzzle, SaveEnvelope,
-        SAVE_VERSION,
+        SAVE_VERSION, SaveEnvelope, get_doc_state, get_puzzle, load_puzzle, new_puzzle,
+        recent_path, save_puzzle,
     };
 
     // Serialize tests that read/write the shared on-disk recent file.
@@ -356,23 +356,27 @@ mod tests {
     fn save_puzzle_errors_on_bad_path() {
         let app = app_with_puzzle(4);
         let bad_path = "/nonexistent/dir/puzzle.mathdoku".to_string();
-        assert!(save_puzzle(
-            bad_path,
-            app.handle().clone(),
-            app.state::<Mutex<AppState>>()
-        )
-        .is_err());
+        assert!(
+            save_puzzle(
+                bad_path,
+                app.handle().clone(),
+                app.state::<Mutex<AppState>>()
+            )
+            .is_err()
+        );
     }
 
     #[test]
     fn load_puzzle_errors_on_missing_file() {
         let app = app_with_state();
-        assert!(load_puzzle(
-            "/no/such/file.mathdoku".to_string(),
-            app.handle().clone(),
-            app.state::<Mutex<AppState>>(),
-        )
-        .is_err());
+        assert!(
+            load_puzzle(
+                "/no/such/file.mathdoku".to_string(),
+                app.handle().clone(),
+                app.state::<Mutex<AppState>>(),
+            )
+            .is_err()
+        );
     }
 
     #[test]

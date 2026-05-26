@@ -226,10 +226,10 @@ fn assign_colors(n: usize, slots: &[Vec<(usize, usize)>]) -> (Vec<usize>, Vec<Ve
         let mut used = std::collections::HashSet::new();
         for &(r, c) in cells {
             for (nr, nc) in neighbors(r, c, n) {
-                if let Some(j) = cell_slot[nr][nc] {
-                    if j != i {
-                        used.insert(color[j]);
-                    }
+                if let Some(j) = cell_slot[nr][nc]
+                    && j != i
+                {
+                    used.insert(color[j]);
                 }
             }
         }

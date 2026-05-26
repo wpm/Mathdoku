@@ -107,6 +107,8 @@ mod tests {
     use rand::SeedableRng;
     use rand_chacha::ChaCha8Rng;
 
+    use std::collections::{HashMap, HashSet};
+
     use super::*;
 
     /// Returns true if `ls` is a valid n×n Latin square: each row and each
@@ -114,19 +116,14 @@ mod tests {
     #[allow(clippy::cast_possible_truncation)]
     fn validate_latin_square(ls: &[Vec<N>]) -> bool {
         let n = ls.len();
-        let expected: std::collections::HashSet<N> = (1..=(n as N)).collect();
+        let expected: HashSet<N> = (1..=(n as N)).collect();
         for row in ls {
-            if row
-                .iter()
-                .copied()
-                .collect::<std::collections::HashSet<N>>()
-                != expected
-            {
+            if row.iter().copied().collect::<HashSet<N>>() != expected {
                 return false;
             }
         }
         for c in 0..n {
-            let col: std::collections::HashSet<N> = ls.iter().map(|r| r[c]).collect();
+            let col: HashSet<N> = ls.iter().map(|r| r[c]).collect();
             if col != expected {
                 return false;
             }
@@ -154,8 +151,7 @@ mod tests {
         // of them should appear at least once; tolerance is loose so the test
         // does not flake on rare seeds.
         let mut rng = ChaCha8Rng::seed_from_u64(42);
-        let mut counts: std::collections::HashMap<Vec<Vec<N>>, usize> =
-            std::collections::HashMap::new();
+        let mut counts: HashMap<Vec<Vec<N>>, usize> = HashMap::new();
         for _ in 0..1200 {
             let ls = generate_latin_square(3, &mut rng);
             *counts.entry(ls).or_insert(0) += 1;

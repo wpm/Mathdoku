@@ -3,7 +3,7 @@ name = "mathdoku-designer"
 version = "0.1.0"
 description = "Mathdoku Designer"
 authors = ["W.P. McNeill"]
-edition = "2021"
+edition = "2024"
 
 [lib]
 name = "mathdoku_designer_lib"

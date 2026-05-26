@@ -25,16 +25,15 @@ cargo clippy --all-targets -- \
   -D clippy::print_stderr \
   2>&1
 
-echo "==> cargo clippy (mathdoku-designer)"
-(cd mathdoku-designer && cargo clippy --all-targets 2>&1)
-
 echo "==> cargo doc"
 RUSTDOCFLAGS="-D warnings" cargo doc --no-deps 2>&1
 
 echo "==> cargo test"
 cargo test --lib 2>&1
 
-echo "==> cargo test (mathdoku-designer)"
-(cd mathdoku-designer && cargo test 2>&1)
+echo "==> mathdoku-designer checks"
+(cd mathdoku-designer && \
+  cargo clippy --all-targets 2>&1 && \
+  cargo test 2>&1)
 
 echo "==> Pre-commit checks passed"
