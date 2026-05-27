@@ -632,7 +632,11 @@ fn singleton_digit_commit(state: &State, key: &str) -> Option<SingletonDigitComm
     let active = state.active;
 
     // Covered by a committed cage → no shortcut.
-    if state.puzzle.cages().any(|cage| cage.cells().contains(&active)) {
+    if state
+        .puzzle
+        .cages()
+        .any(|cage| cage.cells().contains(&active))
+    {
         return None;
     }
     // Mid-draw inside a multi-cell provisional region → no shortcut.
@@ -811,7 +815,10 @@ mod tests {
             "the unrelated provisional cage should be retained"
         );
         assert!(
-            !commit.parked.iter().any(|p| p.cells() == vec![Cell::new(2, 2)]),
+            !commit
+                .parked
+                .iter()
+                .any(|p| p.cells() == vec![Cell::new(2, 2)]),
             "the provisional singleton at the active cell should be dropped"
         );
     }
