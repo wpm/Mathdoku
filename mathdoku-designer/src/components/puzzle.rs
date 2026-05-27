@@ -11,7 +11,7 @@
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use mathdoku::{Cage, Cell, Grid, M, Operator, Polyomino, operators};
+use mathdoku::{Cage, Cell, Grid, M, Operation, Operator, Polyomino, operators};
 use mathdoku_designer_shared::State;
 
 use super::cage::Cage as CageComponent;
@@ -110,8 +110,6 @@ pub fn Puzzle(
     let partial_solution = partial_solution_kd;
     let cage_cells_static = cage_cells;
     let num_cages = cages.len();
-    // Per-cell permitted values, for the digit-key singleton shortcut.
-    let domains_kd = domains.clone();
 
     // Helper: apply a lightweight navigation state change (no undo entry).
     let set_state = move |new_st: State| {
@@ -445,42 +443,26 @@ pub fn Puzzle(
                 // Multi-cell, or a Without-Solution singleton: show the operation selector.
                 open_selector.run(poly);
             }
-            // Without-Solution: typing a permitted digit in an uncovered cell
-            // immediately commits a singleton Given cage with that value.
-            digit
-                if st.solution.is_none()
-                    && digit.len() == 1
-                    && digit.as_bytes()[0].is_ascii_digit() =>
-            {
-                let Ok(value) = digit.parse::<u8>() else {
-                    return;
-                };
-                let active_cell = Cell::new(r, c);
-                let covered = partial_solution.cage_index_at(r, c).is_some()
-                    || st
-                        .provisional_cages
-                        .iter()
-                        .any(|p| p.cells().contains(&active_cell));
-                if covered || !domains_kd[r][c].contains(&value) {
-                    return;
+            // Without-Solution: typing a feasible digit immediately commits a
+            // singleton Given cage at the active cell. The whole decision (mode,
+            // cell coverage, and global feasibility) lives in the pure
+            // `singleton_digit_commit` helper.
+            key_str => {
+                if let Some(commit) = singleton_digit_commit(&st, key_str) {
+                    ev.prevent_default();
+                    commit_cage(
+                        &commit.poly,
+                        Operator::Given,
+                        Some(commit.target),
+                        commit.parked,
+                        undo_stack,
+                        redo_stack,
+                        designer_state,
+                        on_puzzle_change,
+                        on_error,
+                    );
                 }
-                ev.prevent_default();
-                let Ok(poly) = Polyomino::from_cells(&[active_cell]) else {
-                    return;
-                };
-                commit_cage(
-                    &poly,
-                    Operator::Given,
-                    Some(M::from(value)),
-                    st.provisional_cages,
-                    undo_stack,
-                    redo_stack,
-                    designer_state,
-                    on_puzzle_change,
-                    on_error,
-                );
             }
-            _ => {}
         }
     };
 
@@ -618,6 +600,73 @@ type CageList = Vec<(Vec<Cell>, Cage)>;
 
 // ---- Helpers ----
 
+/// A singleton `Given` cage to commit from a digit keypress, with the
+/// provisional cages to retain afterwards.
+struct SingletonDigitCommit {
+    /// The single-cell polyomino to commit.
+    poly: Polyomino,
+    /// Provisional cages to keep (all except one already occupying the cell).
+    parked: std::collections::BTreeSet<Polyomino>,
+    /// The chosen `Given` target value.
+    target: M,
+}
+
+/// Decides whether a digit keypress should immediately commit a singleton
+/// `Given` cage at the active cell in Without-Solution mode.
+///
+/// Returns `None` (no shortcut) when any of these hold: the puzzle has a fixed
+/// solution (With-Solution mode), `key` is not a single ASCII digit, the active
+/// cell is covered by a committed cage, the active cell belongs to a
+/// *multi-cell* provisional cage, or the value is not a globally-feasible
+/// `Given` target for the cell. A provisional *singleton* already at the cell is
+/// treated like an empty cell — the commit replaces it.
+///
+/// Feasibility uses the same [`crate::feasibility::is_globally_feasible`]
+/// predicate the value dropdown applies per target, so the digit shortcut and
+/// the dropdown always agree on which values are allowed.
+fn singleton_digit_commit(state: &State, key: &str) -> Option<SingletonDigitCommit> {
+    if state.solution.is_some() || key.len() != 1 {
+        return None;
+    }
+    let value = key.parse::<u8>().ok()?;
+    let active = state.active;
+
+    // Covered by a committed cage → no shortcut.
+    if state.puzzle.cages().any(|cage| cage.cells().contains(&active)) {
+        return None;
+    }
+    // Mid-draw inside a multi-cell provisional region → no shortcut.
+    if let Some(p) = state
+        .provisional_cages
+        .iter()
+        .find(|p| p.cells().contains(&active))
+        && p.len() > 1
+    {
+        return None;
+    }
+
+    let poly = Polyomino::from_cells(&[active]).ok()?;
+    let target = M::from(value);
+    let cage = Cage::new(poly.clone(), Operation::new(Operator::Given, target));
+    if !crate::feasibility::is_globally_feasible(&state.puzzle, &cage) {
+        return None;
+    }
+
+    // Drop a provisional singleton already at the cell (the commit replaces it);
+    // keep every other provisional cage.
+    let parked = state
+        .provisional_cages
+        .iter()
+        .filter(|p| !p.cells().contains(&active))
+        .cloned()
+        .collect();
+    Some(SingletonDigitCommit {
+        poly,
+        parked,
+        target,
+    })
+}
+
 /// Advances the provisional cage one step during Shift+Arrow drawing.
 ///
 /// Finds the provisional cage containing `(r, c)` (or starts a new singleton),
@@ -679,13 +728,92 @@ fn step_provisional_cage(r: usize, c: usize, tr: usize, tc: usize, state: State)
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::panic)]
 mod tests {
-    use super::step_provisional_cage;
-    use mathdoku::{Cell, Polyomino};
+    use super::{singleton_digit_commit, step_provisional_cage};
+    use mathdoku::{Cage, Cell, Operation, Operator, Polyomino};
     use mathdoku_designer_shared::State;
 
     fn poly(positions: &[(usize, usize)]) -> Polyomino {
         let cells: Vec<Cell> = positions.iter().map(|&(r, c)| Cell::new(r, c)).collect();
         Polyomino::from_cells(&cells).unwrap()
+    }
+
+    fn given_cage(r: usize, c: usize, target: u64) -> Cage {
+        Cage::new(poly(&[(r, c)]), Operation::new(Operator::Given, target))
+    }
+
+    #[test]
+    fn digit_commits_feasible_value_on_empty_cell() {
+        let mut st = State::new(4).unwrap();
+        st.active = Cell::new(1, 1);
+        // 3 is feasible in an empty 4×4.
+        let commit = singleton_digit_commit(&st, "3").unwrap();
+        assert_eq!(commit.target, 3);
+        assert_eq!(commit.poly.cells(), vec![Cell::new(1, 1)]);
+        assert!(commit.parked.is_empty());
+    }
+
+    #[test]
+    fn digit_rejects_non_digit_and_multichar_keys() {
+        let st = State::new(4).unwrap();
+        assert!(singleton_digit_commit(&st, "Enter").is_none());
+        assert!(singleton_digit_commit(&st, "a").is_none());
+    }
+
+    #[test]
+    fn digit_rejected_in_with_solution_mode() {
+        let mut st = State::new_with_solution(4).unwrap();
+        st.active = Cell::new(0, 0);
+        assert!(singleton_digit_commit(&st, "1").is_none());
+    }
+
+    #[test]
+    fn digit_rejected_when_value_is_globally_infeasible() {
+        let mut st = State::new(4).unwrap();
+        st.active = Cell::new(0, 0);
+        // 9 can never appear in a 4×4 grid.
+        assert!(singleton_digit_commit(&st, "9").is_none());
+    }
+
+    #[test]
+    fn digit_rejected_on_cell_in_committed_cage() {
+        let mut st = State::new(4).unwrap();
+        st.puzzle = st.puzzle.insert_cage(given_cage(0, 0, 2)).unwrap();
+        st.active = Cell::new(0, 0);
+        assert!(singleton_digit_commit(&st, "3").is_none());
+    }
+
+    #[test]
+    fn digit_rejected_on_cell_in_multicell_provisional_cage() {
+        let mut st = State::new(4).unwrap();
+        assert!(st.provisional_cages.insert(poly(&[(0, 0), (0, 1)])));
+        st.active = Cell::new(0, 0);
+        assert!(singleton_digit_commit(&st, "3").is_none());
+    }
+
+    #[test]
+    fn digit_commits_over_provisional_singleton_and_drops_it() {
+        let mut st = State::new(4).unwrap();
+        // A provisional singleton at the active cell behaves like an empty cell.
+        assert!(st.provisional_cages.insert(poly(&[(2, 2)])));
+        // An unrelated provisional cage must survive the commit.
+        assert!(st.provisional_cages.insert(poly(&[(0, 0), (0, 1)])));
+        st.active = Cell::new(2, 2);
+
+        // 1 is feasible in an empty 4×4.
+        let commit = singleton_digit_commit(&st, "1").unwrap();
+        assert_eq!(commit.target, 1);
+        assert_eq!(commit.parked.len(), 1);
+        assert!(
+            commit
+                .parked
+                .iter()
+                .any(|p| p.cells() == vec![Cell::new(0, 0), Cell::new(0, 1)]),
+            "the unrelated provisional cage should be retained"
+        );
+        assert!(
+            !commit.parked.iter().any(|p| p.cells() == vec![Cell::new(2, 2)]),
+            "the provisional singleton at the active cell should be dropped"
+        );
     }
 
     fn cells_of(p: &Polyomino) -> Vec<(usize, usize)> {

@@ -102,8 +102,10 @@ test.describe('Without-Solution singleton cages', () => {
     await expect(selectorLabels(page).filter({ hasText: /^3$/ })).toBeVisible();
     await expect(selectorLabels(page).filter({ hasText: '#' })).toHaveCount(0);
 
-    // Picking a value commits the singleton cage with that target.
+    // Picking a value commits the cage: the dropdown closes (its other value tabs
+    // disappear) and the committed Given cage keeps the "3" label.
     await selectorLabels(page).filter({ hasText: /^3$/ }).click();
+    await expect(selectorLabels(page).filter({ hasText: /^1$/ })).toHaveCount(0);
     await expect(selectorLabels(page).filter({ hasText: /^3$/ })).toBeVisible();
   });
 });
