@@ -7,6 +7,8 @@ export interface TauriStubOptions {
   openDialogPath?: string | null;
   // Path returned by get_doc_state after a save.
   savedPath?: string | null;
+  // When true, the initial state is Without-Solution (solution = null).
+  withoutSolution?: boolean;
 }
 
 // Stub window.__TAURI__ before page load.
@@ -30,19 +32,23 @@ export async function installTauriStubs(
   const saveDialogPath = opts.saveDialogPath ?? null;
   const openDialogPath = opts.openDialogPath ?? null;
   const savedPath = opts.savedPath ?? null;
+  const withoutSolution = opts.withoutSolution ?? false;
 
   await page.addInitScript(
-    ({ puzzle, saveDialogPath, openDialogPath, savedPath }) => {
+    ({ puzzle, saveDialogPath, openDialogPath, savedPath, withoutSolution }) => {
       let currentPath: string | null = savedPath;
+      // Mode flag: With-Solution serializes a non-null `solution`, Without-Solution null.
+      let hasSolution = !withoutSolution;
 
       // Wrap a bare { n, cages? } puzzle into the State wire format that the
       // Rust backend now returns: { puzzle, solution, current, active, provisional_cages }.
+      // `solution` is null in Without-Solution mode.
       type BareP = { n: number; cages?: unknown[] } | null;
       const wrapState = (p: BareP) =>
         p
           ? {
               puzzle: p,
-              solution: { n: p.n },
+              solution: hasSolution ? { n: p.n } : null,
               current: { n: p.n },
               active: { row: 0, column: 0 },
               provisional_cages: [],
@@ -55,6 +61,20 @@ export async function installTauriStubs(
             if (cmd === 'get_puzzle') return Promise.resolve(wrapState(puzzle as BareP));
             if (cmd === 'get_doc_state')
               return Promise.resolve({ dirty: false, path: currentPath });
+            if (cmd === 'new_empty' || cmd === 'new_latin_square') {
+              const n = (args as { n?: number } | undefined)?.n ?? 9;
+              hasSolution = cmd === 'new_latin_square';
+              puzzle = { n, cages: [] };
+              return Promise.resolve(wrapState(puzzle as BareP));
+            }
+            if (cmd === 'fix') {
+              hasSolution = true;
+              return Promise.resolve(wrapState(puzzle as BareP));
+            }
+            if (cmd === 'unfix') {
+              hasSolution = false;
+              return Promise.resolve(wrapState(puzzle as BareP));
+            }
             if (cmd === 'save_puzzle') {
               const path =
                 (args as { path?: string } | undefined)?.path ?? saveDialogPath;
@@ -83,14 +103,17 @@ export async function installTauriStubs(
             }
             if (cmd === 'add_region') {
               // Add the cells as a new cage and return a State.
-              const typedArgs = args as { cells?: { row: number; column: number }[]; operator?: string } | undefined;
+              const typedArgs = args as { cells?: { row: number; column: number }[]; operator?: string; target?: number | null } | undefined;
               const cells = typedArgs?.cells ?? [];
               const operator = typedArgs?.operator ?? 'Given';
               const currentPuzzle = puzzle as BareP;
               if (!currentPuzzle) return Promise.resolve(null);
+              // Without-Solution mode supplies the target; With-Solution derives it.
+              const target =
+                typedArgs?.target ?? (operator === 'Given' ? 1 : 0);
               const newCage = {
                 polyomino: cells.map(({ row, column }) => ({ row, column })),
-                operation: { operator, target: operator === 'Given' ? 1 : 0 },
+                operation: { operator, target },
               };
               const cages = [...(currentPuzzle.cages ?? []), newCage];
               puzzle = { n: currentPuzzle.n, cages };
@@ -108,7 +131,7 @@ export async function installTauriStubs(
         },
       };
     },
-    { puzzle, saveDialogPath, openDialogPath, savedPath },
+    { puzzle, saveDialogPath, openDialogPath, savedPath, withoutSolution },
   );
 }
 

@@ -1,6 +1,7 @@
 mod app;
 mod cage_commit;
 mod components;
+pub mod feasibility;
 pub mod geometry;
 pub mod ipc;
 pub mod keys;

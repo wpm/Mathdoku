@@ -167,11 +167,11 @@ fn try_restore<R: Runtime>(app: &AppHandle<R>) -> Option<Puzzle> {
     if envelope.version != SAVE_VERSION {
         return None;
     }
-    let current = envelope.solution.constrain(&envelope.puzzle).ok()?;
+    let current = constrain_current(envelope.solution.as_ref(), &envelope.puzzle).ok()?;
     let state = app.try_state::<Mutex<AppState>>()?;
     let mut s = state.lock().ok()?;
     s.puzzle = Some(envelope.puzzle.clone());
-    s.solution = Some(envelope.solution);
+    s.solution = envelope.solution;
     s.current = Some(current);
     s.path = Some(path);
     s.dirty = false;
@@ -202,7 +202,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            new_puzzle,
+            new_empty,
             new_latin_square,
             save_puzzle,
             load_puzzle,
@@ -213,6 +213,8 @@ pub fn run() {
             quit_app,
             add_region,
             remove_region,
+            fix,
+            unfix,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -228,12 +230,12 @@ mod tests {
     use serde::Serialize;
     use serde_json::{json, to_string, to_string_pretty};
 
-    use mathdoku::Grid;
+    use mathdoku::{Cell, Grid, Operator};
 
     use super::*;
     use commands::{
-        SAVE_VERSION, SaveEnvelope, get_doc_state, get_puzzle, load_puzzle, new_puzzle,
-        recent_path, save_puzzle,
+        SAVE_VERSION, SaveEnvelope, get_doc_state, get_puzzle, load_puzzle, new_empty, recent_path,
+        save_puzzle,
     };
 
     // Serialize tests that read/write the shared on-disk recent file.
@@ -280,29 +282,32 @@ mod tests {
         app
     }
 
-    // ---- new_puzzle ----
+    // ---- new_empty ----
 
     #[test]
-    fn new_puzzle_sets_puzzle_and_dirty() {
+    fn new_empty_sets_puzzle_and_dirty() {
         let app = app_with_state();
-        let result = new_puzzle(4, app.state::<Mutex<AppState>>()).unwrap();
+        let result = new_empty(4, app.state::<Mutex<AppState>>()).unwrap();
         assert_eq!(result.puzzle.n(), 4);
+        // Without-Solution mode: no solution snapshot.
+        assert!(result.solution.is_none());
         let binding = app.state::<Mutex<AppState>>();
         let s = binding.lock().unwrap();
         assert!(s.puzzle.is_some());
+        assert!(s.solution.is_none());
         assert!(s.dirty);
         assert!(s.path.is_none());
         drop(s);
     }
 
     #[test]
-    fn new_puzzle_clears_existing_path() {
+    fn new_empty_clears_existing_path() {
         let app = mock_app();
         let _ = app.manage(Mutex::new(AppState {
             path: Some("/old/path.mathdoku".to_string()),
             ..AppState::default()
         }));
-        let _ = new_puzzle(4, app.state::<Mutex<AppState>>()).unwrap();
+        let _ = new_empty(4, app.state::<Mutex<AppState>>()).unwrap();
         let binding = app.state::<Mutex<AppState>>();
         let s = binding.lock().unwrap();
         assert!(s.path.is_none());
@@ -310,9 +315,50 @@ mod tests {
     }
 
     #[test]
-    fn new_puzzle_rejects_invalid_size() {
+    fn new_empty_rejects_invalid_size() {
         let app = app_with_state();
-        assert!(new_puzzle(0, app.state::<Mutex<AppState>>()).is_err());
+        assert!(new_empty(0, app.state::<Mutex<AppState>>()).is_err());
+    }
+
+    // ---- add_region target (Without-Solution mode) ----
+
+    #[test]
+    fn add_region_uses_author_target_without_solution() {
+        let app = app_with_state();
+        let _ = new_empty(4, app.state::<Mutex<AppState>>()).unwrap();
+        let cells = vec![Cell::new(0, 0), Cell::new(0, 1)];
+        let st = add_region(
+            cells,
+            Operator::Add,
+            Some(7),
+            app.state::<Mutex<AppState>>(),
+        )
+        .unwrap();
+        let cage = st.puzzle.cages().next().unwrap();
+        assert_eq!(cage.operation().target, 7);
+        assert!(st.solution.is_none());
+    }
+
+    // ---- fix / unfix ----
+
+    #[test]
+    fn fix_errs_when_not_unique() {
+        let app = app_with_state();
+        // An empty 3×3 Without-Solution puzzle has many completions.
+        let _ = new_empty(3, app.state::<Mutex<AppState>>()).unwrap();
+        assert!(commands::fix(app.state::<Mutex<AppState>>()).is_err());
+    }
+
+    #[test]
+    fn unfix_clears_solution() {
+        let app = app_with_state();
+        let _ = new_latin_square(3, app.state::<Mutex<AppState>>()).unwrap();
+        let st = commands::unfix(app.state::<Mutex<AppState>>()).unwrap();
+        assert!(st.solution.is_none());
+        let binding = app.state::<Mutex<AppState>>();
+        let s = binding.lock().unwrap();
+        assert!(s.solution.is_none());
+        drop(s);
     }
 
     // ---- save_puzzle / load_puzzle round-trip ----
@@ -504,7 +550,7 @@ mod tests {
         let envelope = SaveEnvelope {
             version: SAVE_VERSION,
             puzzle,
-            solution,
+            solution: Some(solution),
         };
         fs::write(&puzzle_path, to_string_pretty(&envelope).unwrap()).unwrap();
 

@@ -165,7 +165,10 @@ fn primary_btn_style() -> String {
 #[component]
 fn SizeModal(
     default_n: usize,
-    on_create: Callback<usize>,
+    /// Creates a With-Solution puzzle (random Latin square) of the chosen size.
+    on_create_with_solution: Callback<usize>,
+    /// Creates an empty Without-Solution puzzle of the chosen size.
+    on_create_empty: Callback<usize>,
     on_cancel: Callback<()>,
     /// When true, Escape, backdrop click, and the Cancel button are all disabled.
     /// Used on first launch when no puzzle exists yet.
@@ -242,7 +245,7 @@ fn SizeModal(
                     "; outline-offset: 2px; }"
                 </style>
                 <p style=title_style()>"New puzzle"</p>
-                <p style=body_style()>"Choose a grid size."</p>
+                <p style=body_style()>"Choose a grid size, then how to author it."</p>
                 <div style="display:flex;align-items:center;gap:8px;margin-bottom:20px;">
                     <label style=format!("font-size:13px;color:{INK};")>
                         "Size: "
@@ -276,10 +279,17 @@ fn SizeModal(
                     )}
                     <button
                         class="sz-btn"
-                        style=primary_btn_style()
-                        on:click=move |_| on_create.run(chosen.get_untracked())
+                        style=neutral_btn_style()
+                        on:click=move |_| on_create_empty.run(chosen.get_untracked())
                     >
-                        "Create"
+                        "Empty"
+                    </button>
+                    <button
+                        class="sz-btn"
+                        style=primary_btn_style()
+                        on:click=move |_| on_create_with_solution.run(chosen.get_untracked())
+                    >
+                        "With Solution"
                     </button>
                 </div>
             </div>
@@ -436,20 +446,25 @@ pub fn App() -> impl IntoView {
         close_cb.forget();
     });
 
-    let on_create = Callback::new(move |n: usize| {
+    // Both creation paths share the same post-create bookkeeping; they differ
+    // only in which Tauri command builds the initial State.
+    let install_new_state = move |result: Result<State, ipc::IpcError>| match result {
+        Ok(st) => {
+            current_path.set(None);
+            undo_stack.update(std::vec::Vec::clear);
+            redo_stack.update(std::vec::Vec::clear);
+            pending_commit.set(None);
+            designer_state.set(Some(st));
+        }
+        Err(e) => error_msg.set(Some(e.to_string())),
+    };
+    let on_create_with_solution = Callback::new(move |n: usize| {
         show_size_modal.set(false);
-        spawn_local(async move {
-            match ipc::new_latin_square(n).await {
-                Ok(st) => {
-                    current_path.set(None);
-                    undo_stack.update(std::vec::Vec::clear);
-                    redo_stack.update(std::vec::Vec::clear);
-                    pending_commit.set(None);
-                    designer_state.set(Some(st));
-                }
-                Err(e) => error_msg.set(Some(e.to_string())),
-            }
-        });
+        spawn_local(async move { install_new_state(ipc::new_latin_square(n).await) });
+    });
+    let on_create_empty = Callback::new(move |n: usize| {
+        show_size_modal.set(false);
+        spawn_local(async move { install_new_state(ipc::new_empty(n).await) });
     });
     let on_create_cancel = Callback::new(move |(): ()| show_size_modal.set(false));
 
@@ -498,7 +513,8 @@ pub fn App() -> impl IntoView {
             {move || show_size_modal.get().then(|| view! {
                 <SizeModal
                     default_n=designer_state.get().map_or(9, |st| st.puzzle.n())
-                    on_create=on_create
+                    on_create_with_solution=on_create_with_solution
+                    on_create_empty=on_create_empty
                     on_cancel=on_create_cancel
                     mandatory=designer_state.get().is_none()
                 />
