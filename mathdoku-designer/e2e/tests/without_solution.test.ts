@@ -80,11 +80,34 @@ test.describe('Without-Solution cage commit', () => {
     await expect(selectorLabels(page).filter({ hasText: /^\+$/ })).toBeVisible();
     await selectorLabels(page).filter({ hasText: /^\+$/ }).click();
 
-    // Step two: the target sub-picker. {1,2} sums to 3, so +3 is feasible.
-    await expect(selectorLabels(page).filter({ hasText: /^\+3$/ })).toBeVisible();
-    await selectorLabels(page).filter({ hasText: /^\+3$/ }).click();
+    // Step two: the native target dropdown. {1,2} sums to 3, so 3 is a feasible
+    // Add target. Options carry the bare number, so select by its value.
+    const targetSelect = page.locator('.grid-svg select.target-select');
+    await expect(targetSelect).toBeVisible();
+    // The dropdown grabs focus the moment it appears.
+    await expect(targetSelect).toBeFocused();
+    await targetSelect.selectOption('3');
 
     // The committed cage shows its +3 label and the provisional outline is gone.
+    await expect(page.locator('.grid-svg text').filter({ hasText: /^\+3$/ })).toBeVisible();
+  });
+
+  test('target dropdown is selectable from the keyboard by typing the number', async ({ page }) => {
+    await installTauriStubs(page, { n: 3 }, { withoutSolution: true });
+    await gotoApp(page);
+    await waitForGrid(page);
+    await page.locator('.grid-svg').focus();
+
+    // Draw {(0,0),(0,1)}, open the selector, and choose the Add operator.
+    await page.keyboard.press(SHIFT_ARROW_RIGHT);
+    await page.keyboard.press(ENTER);
+    await selectorLabels(page).filter({ hasText: /^\+$/ }).click();
+
+    // The focused dropdown accepts the target by typing just the number (no operator).
+    const targetSelect = page.locator('.grid-svg select.target-select');
+    await expect(targetSelect).toBeFocused();
+    await page.keyboard.press('3');
+
     await expect(page.locator('.grid-svg text').filter({ hasText: /^\+3$/ })).toBeVisible();
   });
 });
