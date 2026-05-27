@@ -264,8 +264,7 @@ fn operator_strip_view(
                 let tab_y = y + pad;
                 let tx = tab_x + tab_w / 2.0;
                 let ty = tab_y + tab_h / 2.0;
-                // `Given` renders with no symbol, so use a literal label for the strip.
-                let label = if op == Operator::Given { "#".to_owned() } else { op.to_string() };
+                let label = op.to_string();
                 view! {
                     <g
                         style="cursor:pointer;"
@@ -513,8 +512,15 @@ fn handle_key_without_solution(
                 .collect();
             match key {
                 ESCAPE => {
-                    pending.picked_operator.set(None);
-                    pending.selected_idx.set(0);
+                    // Singletons open straight on the value dropdown with no operator
+                    // strip behind it, so Escape cancels the commit outright rather
+                    // than backing out to a strip that was never shown.
+                    if pending.polyomino.len() == 1 {
+                        cancel_pending(pending, pending_commit, designer_state, on_state_change);
+                    } else {
+                        pending.picked_operator.set(None);
+                        pending.selected_idx.set(0);
+                    }
                 }
                 TAB | ARROW_DOWN | ARROW_UP if !targets.is_empty() => {
                     step(shift || key == ARROW_UP, targets.len());
@@ -1083,6 +1089,46 @@ mod tests {
                     on_state_change,
                 ));
                 assert!(pending_commit.get_untracked().is_none());
+            });
+        }
+
+        #[test]
+        fn without_solution_singleton_escape_cancels_instead_of_backing_out() {
+            Owner::new().with(|| {
+                let committed = RwSignal::new(None);
+                let on_commit =
+                    Callback::new(move |pair: (Operator, Option<M>)| committed.set(Some(pair)));
+                // A singleton opens straight on the value dropdown (picked = Given).
+                let p = PendingCommit {
+                    polyomino: poly(&[(0, 0)]),
+                    allowed: vec![Operator::Given],
+                    selected_idx: RwSignal::new(0usize),
+                    on_commit,
+                    feasible: Some(RwSignal::new(FeasibilityState::Ready(vec![
+                        (Operator::Given, 1),
+                        (Operator::Given, 2),
+                    ]))),
+                    picked_operator: RwSignal::new(Some(Operator::Given)),
+                };
+
+                let mut st = State::new(4).unwrap();
+                let _ = st.provisional_cages.insert(p.polyomino.clone());
+                let designer_state = RwSignal::new(st);
+                let pending_commit = RwSignal::new(Some(p.clone()));
+                let on_state_change = Callback::new(|_: State| {});
+
+                assert!(handle_key(
+                    ESCAPE,
+                    false,
+                    &p,
+                    pending_commit,
+                    designer_state,
+                    on_state_change,
+                ));
+                // No operator strip to fall back to — the commit is cancelled.
+                assert!(pending_commit.get_untracked().is_none());
+                assert!(designer_state.get_untracked().provisional_cages.is_empty());
+                assert!(committed.get_untracked().is_none());
             });
         }
 

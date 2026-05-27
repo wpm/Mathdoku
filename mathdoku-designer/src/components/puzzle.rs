@@ -110,6 +110,8 @@ pub fn Puzzle(
     let partial_solution = partial_solution_kd;
     let cage_cells_static = cage_cells;
     let num_cages = cages.len();
+    // Per-cell permitted values, for the digit-key singleton shortcut.
+    let domains_kd = domains.clone();
 
     // Helper: apply a lightweight navigation state change (no undo entry).
     let set_state = move |new_st: State| {
@@ -152,7 +154,10 @@ pub fn Puzzle(
             );
         });
         let selected_idx = RwSignal::new(0usize);
-        let picked_operator = RwSignal::new(None);
+        // Without-Solution singletons skip the operator step: pre-select Given so
+        // the picker opens straight onto the numeric value dropdown.
+        let picked_operator =
+            RwSignal::new((without_solution && poly.len() == 1).then_some(Operator::Given));
         // Without-Solution mode computes the globally-feasible (op, target) pairs
         // for the dropdown, showing a spinner via the Computing state meanwhile.
         let feasible = without_solution.then(|| {
@@ -439,6 +444,41 @@ pub fn Puzzle(
                 }
                 // Multi-cell, or a Without-Solution singleton: show the operation selector.
                 open_selector.run(poly);
+            }
+            // Without-Solution: typing a permitted digit in an uncovered cell
+            // immediately commits a singleton Given cage with that value.
+            digit
+                if st.solution.is_none()
+                    && digit.len() == 1
+                    && digit.as_bytes()[0].is_ascii_digit() =>
+            {
+                let Ok(value) = digit.parse::<u8>() else {
+                    return;
+                };
+                let active_cell = Cell::new(r, c);
+                let covered = partial_solution.cage_index_at(r, c).is_some()
+                    || st
+                        .provisional_cages
+                        .iter()
+                        .any(|p| p.cells().contains(&active_cell));
+                if covered || !domains_kd[r][c].contains(&value) {
+                    return;
+                }
+                ev.prevent_default();
+                let Ok(poly) = Polyomino::from_cells(&[active_cell]) else {
+                    return;
+                };
+                commit_cage(
+                    &poly,
+                    Operator::Given,
+                    Some(M::from(value)),
+                    st.provisional_cages,
+                    undo_stack,
+                    redo_stack,
+                    designer_state,
+                    on_puzzle_change,
+                    on_error,
+                );
             }
             _ => {}
         }

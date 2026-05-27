@@ -72,3 +72,38 @@ test.describe('Without-Solution cage commit', () => {
     await expect(page.locator('.grid-svg text').filter({ hasText: /^\+3$/ })).toBeVisible();
   });
 });
+
+test.describe('Without-Solution singleton cages', () => {
+  test('typing a permitted digit immediately creates a singleton cage', async ({ page }) => {
+    await installTauriStubs(page, { n: 3 }, { withoutSolution: true });
+    await gotoApp(page);
+    await waitForGrid(page);
+    await page.locator('.grid-svg').focus();
+
+    // The active cell starts at (0,0); 2 is a permitted value in an empty 3×3.
+    await page.keyboard.press('2');
+
+    // A committed Given cage labelled "2" appears with no selector step. Cage and
+    // selector labels are weight 700, isolating it from the cell's domain digits.
+    await expect(selectorLabels(page).filter({ hasText: /^2$/ })).toBeVisible();
+  });
+
+  test('singleton picker opens on the value dropdown, skipping the operator step', async ({ page }) => {
+    await installTauriStubs(page, { n: 3 }, { withoutSolution: true });
+    await gotoApp(page);
+    await waitForGrid(page);
+    await page.locator('.grid-svg').focus();
+
+    // Enter on the empty active cell opens the singleton picker directly.
+    await page.keyboard.press(ENTER);
+
+    // The dropdown lists numeric values (1, 2, 3) — no '#' operator header.
+    await expect(selectorLabels(page).filter({ hasText: /^1$/ })).toBeVisible();
+    await expect(selectorLabels(page).filter({ hasText: /^3$/ })).toBeVisible();
+    await expect(selectorLabels(page).filter({ hasText: '#' })).toHaveCount(0);
+
+    // Picking a value commits the singleton cage with that target.
+    await selectorLabels(page).filter({ hasText: /^3$/ }).click();
+    await expect(selectorLabels(page).filter({ hasText: /^3$/ })).toBeVisible();
+  });
+});
