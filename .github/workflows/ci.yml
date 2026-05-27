@@ -24,15 +24,8 @@ jobs:
           toolchain: nightly-2026-03-25
           components: rustfmt, clippy
 
-      - name: Cache cargo registry & build
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-checks-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-checks-
+      - name: Cache cargo registry & build artifacts
+        uses: Swatinem/rust-cache@v2
 
       # ── fmt ──────────────────────────────────────────────────────────────
       - name: cargo fmt (mathdoku)
@@ -106,15 +99,10 @@ jobs:
         if: matrix.target == 'aarch64-unknown-linux-gnu'
         run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
 
-      - name: Cache cargo registry & build
-        uses: actions/cache@v4
+      - name: Cache cargo registry & build artifacts
+        uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-${{ matrix.target }}-build-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-${{ matrix.target }}-build-
+          key: ${{ matrix.target }}
 
       - name: cargo build --release
         run: cargo build --release --target ${{ matrix.target }}
