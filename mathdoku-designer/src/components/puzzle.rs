@@ -4,7 +4,7 @@
     clippy::cast_precision_loss,
     clippy::cast_sign_loss,
     clippy::cast_possible_truncation,
-    clippy::items_after_statements, // local serialization structs defined inside event handlers
+    clippy::items_after_statements, // `use wasm_bindgen::JsCast` inside the focus Effect
     clippy::needless_range_loop,    // 2D index loops are clearer with explicit row/col indices
     unused_results,                 // Effect::new/HashSet::insert/Vec::pop are fire-and-forget in reactive WASM code
 )]

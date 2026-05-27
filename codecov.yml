@@ -1,0 +1,19 @@
+# Coverage gating.
+#
+# The frontend WASM IPC glue (the wasm_bindgen externs and async invoke/dialog
+# wrappers in mathdoku-designer/src) calls into `window.__TAURI__` and is
+# exercised by the Playwright end-to-end suite, not by host `cargo llvm-cov`
+# unit tests. It therefore reports as uncovered even though it is tested.
+#
+# So that adding such glue does not block PRs: patch coverage is informational
+# (reported, never failing), and project coverage tolerates the small drops
+# that untestable code introduces.
+coverage:
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 1%
+    patch:
+      default:
+        informational: true
