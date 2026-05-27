@@ -1,6 +1,6 @@
 # ADR-0001: Without-Solution authoring mode for Mathdoku Designer
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-05-27
 **Deciders:** Bill McNeill (Mathdoku owner)
 
@@ -145,16 +145,6 @@ flowchart TD
     I -- No --> K[Continue authoring]
 ```
 
-## Action Items
+## Implementation
 
-1. [ ] Add the "delete cage" affordance to Designer (prerequisite, independent of mode split).
-2. [ ] Change `State.solution` from `Grid` to `Option<Grid>` in `mathdoku-designer/shared/src/lib.rs`; update `State::new` and all `State` consumers.
-3. [ ] Add the two-button new-puzzle modal (*Empty* / *With Solution*) and wire it through to `State` construction.
-4. [ ] Thread `Option<u8>` (rather than `u8`) for `solution_value` through `Cell` for the Without-Solution branch; confirm the existing `Cell` rendering already handles `None`.
-5. [ ] Extend the feasibility query: a helper on `PartialSolution` (or a new module) that takes a candidate `(Polyomino, Operator, target)` and returns a bool by extending the puzzle and consuming the first item of `Grid::solutions(&puzzle)`.
-6. [ ] Extend the dropdown query: enumerate all globally-feasible `(op, target)` pairs for a candidate region against the current cage set. Decide between one composite call and per-pair calls based on engine ergonomics.
-7. [ ] Add a coarse cache for dropdown query results keyed on `(committed-cage-set version, candidate-region cells)`, returning the full set of feasible `(op, target)` pairs. Invalidate on every commit.
-8. [ ] Add the target-picker dropdown branch to `OperationSelector` (`mathdoku-designer/src/components/operation_selector.rs`); add the empty-state inline message, cfg-gated to Without-Solution mode.
-9. [ ] Add `fix` and `unfix` as `State` methods; gate `fix` on `solution_count == 1`.
-10. [ ] Confirm `SolutionCount` (`mathdoku-designer/src/components/solution_count.rs`) needs no behavioural change beyond removing any latent zero-solutions assumptions, since the invariant guarantees `count >= 1` in Without-Solution mode.
-11. [ ] Add the spinner on dropdown open; do not implement prefetch unless a follow-up profiling pass shows it is needed.
+Tracked in [issue #25](https://github.com/wpm/Mathdoku/issues/25). This ADR records the decision; the issue is the source of truth for the implementation work and its acceptance criteria.
