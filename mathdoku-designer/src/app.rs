@@ -24,25 +24,28 @@ extern "C" {
     async fn listen(event: &str, handler: &js_sys::Function) -> JsValue;
 }
 
-async fn call_save_puzzle() -> Option<String> {
+/// Saves the current puzzle. `Ok(None)` means the user cancelled the save
+/// dialog, `Ok(Some(path))` means the write succeeded, and `Err(e)` means the
+/// write failed and the caller must surface the error.
+async fn call_save_puzzle() -> Result<Option<String>, ipc::IpcError> {
     let state = ipc::get_doc_state().await;
     let path = match state.path {
         Some(p) => Some(p),
         None => ipc::save_puzzle_dialog().await,
     };
     if let Some(path) = path {
-        let _ = ipc::save_puzzle(path.clone()).await;
-        return Some(path);
+        ipc::save_puzzle(path.clone()).await?;
+        return Ok(Some(path));
     }
-    None
+    Ok(None)
 }
 
-async fn call_save_as_puzzle() -> Option<String> {
+async fn call_save_as_puzzle() -> Result<Option<String>, ipc::IpcError> {
     if let Some(path) = ipc::save_puzzle_dialog().await {
-        let _ = ipc::save_puzzle(path.clone()).await;
-        return Some(path);
+        ipc::save_puzzle(path.clone()).await?;
+        return Ok(Some(path));
     }
-    None
+    Ok(None)
 }
 
 async fn call_load_puzzle() -> Result<Option<State>, String> {
@@ -385,8 +388,10 @@ pub fn App() -> impl IntoView {
 
         let save_cb = Closure::wrap(Box::new(move |_: JsValue| {
             spawn_local(async move {
-                if let Some(path) = call_save_puzzle().await {
-                    current_path.set(Some(path));
+                match call_save_puzzle().await {
+                    Ok(Some(path)) => current_path.set(Some(path)),
+                    Ok(None) => {} // user cancelled dialog
+                    Err(e) => error_msg.set(Some(e.to_string())),
                 }
             });
         }) as Box<dyn Fn(JsValue)>);
@@ -395,8 +400,10 @@ pub fn App() -> impl IntoView {
 
         let save_as_cb = Closure::wrap(Box::new(move |_: JsValue| {
             spawn_local(async move {
-                if let Some(path) = call_save_as_puzzle().await {
-                    current_path.set(Some(path));
+                match call_save_as_puzzle().await {
+                    Ok(Some(path)) => current_path.set(Some(path)),
+                    Ok(None) => {} // user cancelled dialog
+                    Err(e) => error_msg.set(Some(e.to_string())),
                 }
             });
         }) as Box<dyn Fn(JsValue)>);
@@ -449,8 +456,10 @@ pub fn App() -> impl IntoView {
     let on_unsaved_save = Callback::new(move |(): ()| {
         show_unsaved_modal.set(false);
         spawn_local(async move {
-            call_save_puzzle().await;
-            ipc::quit_app().await;
+            match call_save_puzzle().await {
+                Ok(_) => ipc::quit_app().await,
+                Err(e) => error_msg.set(Some(e.to_string())),
+            }
         });
     });
     let on_unsaved_discard = Callback::new(move |(): ()| {
