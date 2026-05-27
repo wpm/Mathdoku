@@ -139,7 +139,7 @@ pub fn Puzzle(
         let on_commit = Callback::new(move |op: Operator| {
             pending_commit.set(None);
             commit_cage(
-                poly_for_cb.clone(),
+                &poly_for_cb,
                 op,
                 parked.clone(),
                 undo_stack,
@@ -328,7 +328,10 @@ pub fn Puzzle(
                     if partial_solution.cage_index_at(r, c).is_some() {
                         return; // covered cell, nothing to do
                     }
-                    Polyomino::from_cells(&[active_cell]).expect("singleton is always valid")
+                    let Ok(p) = Polyomino::from_cells(&[active_cell]) else {
+                        return; // should never happen for a single cell
+                    };
+                    p
                 };
                 // Singleton: Given is the only operator — commit immediately.
                 if operators(&poly) == [Operator::Given] {
@@ -339,7 +342,7 @@ pub fn Puzzle(
                         .cloned()
                         .collect();
                     commit_cage(
-                        poly,
+                        &poly,
                         Operator::Given,
                         parked,
                         undo_stack,
@@ -502,7 +505,9 @@ fn step_provisional_cage(r: usize, c: usize, tr: usize, tc: usize, state: State)
     let (region, mut remaining): (Polyomino, BTreeSet<Polyomino>) = match active {
         None => {
             // No region contains current — start a new singleton.
-            let new_region = Polyomino::from_cells(&[current]).expect("singleton is always valid");
+            let Ok(new_region) = Polyomino::from_cells(&[current]) else {
+                return state;
+            };
             (new_region, state.provisional_cages.clone())
         }
         Some(poly) => {
@@ -512,16 +517,16 @@ fn step_provisional_cage(r: usize, c: usize, tr: usize, tc: usize, state: State)
                 .filter(|p| *p != &poly)
                 .cloned()
                 .collect();
-            match poly.insert(current) {
-                Ok(extended) => (extended, rest),
-                Err(_) => {
-                    // Current cell disconnected from this cage — park it and start fresh.
-                    let mut parked = rest;
-                    parked.insert(poly);
-                    let new_region =
-                        Polyomino::from_cells(&[current]).expect("singleton is always valid");
-                    (new_region, parked)
-                }
+            if let Ok(extended) = poly.insert(current) {
+                (extended, rest)
+            } else {
+                // Current cell disconnected from this cage — park it and start fresh.
+                let mut parked = rest;
+                parked.insert(poly);
+                let Ok(new_region) = Polyomino::from_cells(&[current]) else {
+                    return state;
+                };
+                (new_region, parked)
             }
         }
     };

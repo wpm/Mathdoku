@@ -38,7 +38,7 @@ pub fn OperationSelector() -> impl IntoView {
         let a = anchor(&pending.polyomino.cells());
         let (x, y) = origin(cell_size, a.row, a.column);
 
-        let tab_w = cell_size.min(56.0).max(44.0);
+        let tab_w = cell_size.clamp(44.0, 56.0);
         let tab_h = 28.0;
         let pad = 4.0;
         let gap = 2.0;
@@ -63,10 +63,10 @@ pub fn OperationSelector() -> impl IntoView {
                 if all_determined && target.is_none() {
                     return None; // structurally invalid for these cell values
                 }
-                let label = match target {
-                    Some(t) => Operation::new(op.clone(), t).to_string(),
-                    None => op.to_string(),
-                };
+                let label = target.map_or_else(
+                    || op.to_string(),
+                    |t| Operation::new(op.clone(), t).to_string(),
+                );
                 Some((op.clone(), label))
             })
             .collect();
@@ -88,11 +88,11 @@ pub fn OperationSelector() -> impl IntoView {
                 />
                 // Operator tabs
                 {ops.into_iter().enumerate().map(|(i, (op, label))| {
-                    let tab_x = x + pad + (tab_w + gap) * i as f64;
+                    let tab_x = (tab_w + gap).mul_add(i as f64, x + pad);
                     let tab_y = y + pad;
                     let tx = tab_x + tab_w / 2.0;
                     let ty = tab_y + tab_h / 2.0;
-                    let on_commit = on_commit;
+
                     view! {
                         <g
                             style="cursor:pointer;"
@@ -165,7 +165,7 @@ fn compute_target(
         Operator::Divide => {
             let hi = vals[0].max(vals[1]);
             let lo = vals[0].min(vals[1]);
-            if lo == 0 || hi % lo != 0 {
+            if lo == 0 || !hi.is_multiple_of(lo) {
                 return None;
             }
             hi / lo
@@ -237,13 +237,9 @@ pub fn handle_key(
             pending.on_commit.run(op);
             true
         }
-        key_str => {
-            if let Some(op) = key_to_operator(key_str, &pending.allowed) {
-                pending.on_commit.run(op);
-                true
-            } else {
-                false
-            }
-        }
+        key_str => key_to_operator(key_str, &pending.allowed).is_some_and(|op| {
+            pending.on_commit.run(op);
+            true
+        }),
     }
 }
