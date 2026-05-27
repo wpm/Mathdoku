@@ -1,3 +1,11 @@
+//! Arithmetic multiset generators used to enumerate valid cage value assignments.
+//!
+//! Each public function takes the grid size `n` (max cell value), the cage size or
+//! target value, and returns an iterator over non-decreasing tuples — the
+//! *multisets* from which [`crate::tuples::tuples`] then generates all permutations.
+
+#![allow(clippy::cast_possible_truncation)] // targets/ratios are differences of values in 1..=9
+
 use std::iter::once;
 
 use crate::Error;
@@ -14,8 +22,7 @@ pub fn addition_multisets(n: N, k: usize, s: M) -> impl Iterator<Item = Tuple> {
 /// Returns an iterator over all 2-element tuples `[i, j]` with `j - i == d` and `1 <= i < j <=
 /// max`.
 pub fn subtraction_multisets(max: N, d: M) -> impl Iterator<Item = Tuple> {
-    #[allow(clippy::cast_possible_truncation)] // d is a difference of values in 1..=9, fits in N
-    let d = d as N;
+    let d = d as N; // d is a difference of values in 1..=9, fits in N
     (1..=max.saturating_sub(d)).map(move |i| vec![i, i + d])
 }
 
@@ -28,8 +35,7 @@ pub fn multiplication_multisets(n: N, k: usize, s: M) -> impl Iterator<Item = Tu
 /// Returns an iterator over all 2-element tuples `[i, j]` with `j / i == q` and `1 <= i < j <=
 /// max`.
 pub fn division_multisets(max: N, q: M) -> impl Iterator<Item = Tuple> {
-    #[allow(clippy::cast_possible_truncation)] // q is a ratio of values in 1..=9, fits in N
-    let q = q as N;
+    let q = q as N; // q is a ratio of values in 1..=9, fits in N
     (1..=max / q).map(move |i| vec![i, i * q])
 }
 

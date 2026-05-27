@@ -41,7 +41,7 @@ impl Display for Operator {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let s = match self {
             Self::Add => "+",
-            Self::Subtract => "-",
+            Self::Subtract => "−",
             Self::Multiply => "×",
             Self::Divide => "÷",
             Self::Given => "",
@@ -58,8 +58,63 @@ pub fn operators(polynomial: &Polyomino) -> Vec<Operator> {
             Operator::Subtract,
             Operator::Multiply,
             Operator::Divide,
-            Operator::Given,
         ],
         _ => vec![Operator::Add, Operator::Multiply],
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::{l_shape, pair, singleton};
+
+    #[test]
+    fn operation_display_add() {
+        assert_eq!(Operation::new(Operator::Add, 5).to_string(), "+5");
+    }
+
+    #[test]
+    fn operation_display_subtract() {
+        assert_eq!(Operation::new(Operator::Subtract, 2).to_string(), "−2");
+    }
+
+    #[test]
+    fn operation_display_multiply() {
+        assert_eq!(Operation::new(Operator::Multiply, 12).to_string(), "×12");
+    }
+
+    #[test]
+    fn operation_display_divide() {
+        assert_eq!(Operation::new(Operator::Divide, 3).to_string(), "÷3");
+    }
+
+    #[test]
+    fn operation_display_given_shows_only_target() {
+        assert_eq!(Operation::new(Operator::Given, 7).to_string(), "7");
+    }
+
+    #[test]
+    fn operators_singleton() {
+        assert_eq!(operators(&singleton()), vec![Operator::Given]);
+    }
+
+    #[test]
+    fn operators_pair() {
+        let ops = operators(&pair());
+        assert!(ops.contains(&Operator::Add));
+        assert!(ops.contains(&Operator::Subtract));
+        assert!(ops.contains(&Operator::Multiply));
+        assert!(ops.contains(&Operator::Divide));
+        assert!(!ops.contains(&Operator::Given));
+    }
+
+    #[test]
+    fn operators_large() {
+        let ops = operators(&l_shape());
+        assert!(ops.contains(&Operator::Add));
+        assert!(ops.contains(&Operator::Multiply));
+        assert!(!ops.contains(&Operator::Subtract));
+        assert!(!ops.contains(&Operator::Divide));
+        assert!(!ops.contains(&Operator::Given));
     }
 }

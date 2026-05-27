@@ -1,4 +1,4 @@
-//! [`SelectionOverlay`] component: mode-dependent cell/slot highlight.
+//! [`SelectionOverlay`] component: active cell highlight and provisional region overlay.
 
 #![allow(
     clippy::cast_precision_loss,
@@ -10,33 +10,44 @@
 use std::collections::HashSet;
 
 use leptos::prelude::*;
-use mathdoku_designer_shared::Mode;
+use mathdoku::Cell;
 
-use super::puzzle::{GridContext, MARGIN};
+use crate::geometry::origin;
+use super::puzzle::InteractionState;
 
 use crate::theme::{ACCENT, PROVISIONAL_FILL, PROVISIONAL_STROKE};
 const SELECTION: f64 = 3.5;
 
-const fn origin(cell: f64, row: usize, col: usize) -> (f64, f64) {
-    (
-        (col as f64).mul_add(cell, MARGIN),
-        (row as f64).mul_add(cell, MARGIN),
-    )
+/// Provisional region fill rectangles only — rendered below gridlines so the
+/// thin cell boundaries remain equally visible inside and outside the region.
+#[component]
+pub fn ProvisionalFills() -> impl IntoView {
+    #[allow(clippy::panic)]
+    let ctx = use_context::<InteractionState>()
+        .unwrap_or_else(|| panic!("ProvisionalFills must be inside Puzzle"));
+    let InteractionState { designer_state, cell_size: cell, .. } = ctx;
+
+    move || {
+        use leptos::prelude::IntoAny;
+        let st = designer_state.get();
+        st.provisional_cages.iter().flat_map(|region| {
+            region.cells().into_iter().map(move |c| {
+                let (x, y) = origin(cell, c.row, c.column);
+                view! { <rect x=x y=y width=cell height=cell fill=PROVISIONAL_FILL /> }.into_any()
+            })
+        }).collect::<Vec<_>>()
+    }
 }
 
-/// Reactive highlight overlay. Reads grid context for mode and selection state.
+/// Provisional region border strokes and active cell highlight — rendered above gridlines.
 #[component]
 pub fn SelectionOverlay() -> impl IntoView {
     #[allow(clippy::panic)]
-    let ctx = use_context::<GridContext>()
+    let ctx = use_context::<InteractionState>()
         .unwrap_or_else(|| panic!("SelectionOverlay must be inside Puzzle"));
-    let GridContext {
-        mode,
-        selected_cell,
-        selected_slot,
-        slot_cells,
-        provisional_region,
-        cell,
+    let InteractionState {
+        designer_state,
+        cell_size: cell,
         ..
     } = ctx;
 
@@ -44,89 +55,49 @@ pub fn SelectionOverlay() -> impl IntoView {
         use leptos::prelude::IntoAny;
         let line_w = SELECTION;
         let inset = line_w / 2.0;
+        let st = designer_state.get();
 
         let mut elements: Vec<_> = Vec::new();
 
-        // Provisional region overlay (always drawn when non-empty).
-        let region = provisional_region.get();
-        if !region.is_empty() {
-            let cell_set: HashSet<(usize, usize)> = region.iter().copied().collect();
-            for &(r, c) in &region {
-                let (x, y) = origin(cell, r, c);
-                // Fill rect.
-                elements.push(
-                    view! {
-                        <rect x=x y=y width=cell height=cell fill=PROVISIONAL_FILL />
-                    }
-                    .into_any(),
-                );
-                // Border lines on outer edges.
+        // Provisional region border strokes.
+        for region in &st.provisional_cages {
+            let cell_set: HashSet<Cell> = region.cells().into_iter().collect();
+            for c in region.cells() {
+                let (x, y) = origin(cell, c.row, c.column);
                 let stroke = PROVISIONAL_STROKE;
-                if r == 0 || !cell_set.contains(&(r - 1, c)) {
+                if c.row == 0 || !cell_set.contains(&Cell::new(c.row - 1, c.column)) {
                     let (x1, x2, yy) = (x + inset, x + cell - inset, y + inset);
                     elements.push(view! { <line x1=x1 y1=yy x2=x2 y2=yy stroke=stroke stroke-width=line_w stroke-linecap="square" /> }.into_any());
                 }
-                if !cell_set.contains(&(r + 1, c)) {
+                if !cell_set.contains(&Cell::new(c.row + 1, c.column)) {
                     let (x1, x2, yy) = (x + inset, x + cell - inset, y + cell - inset);
                     elements.push(view! { <line x1=x1 y1=yy x2=x2 y2=yy stroke=stroke stroke-width=line_w stroke-linecap="square" /> }.into_any());
                 }
-                if c == 0 || !cell_set.contains(&(r, c - 1)) {
+                if c.column == 0 || !cell_set.contains(&Cell::new(c.row, c.column - 1)) {
                     let (xx, y1, y2) = (x + inset, y + inset, y + cell - inset);
                     elements.push(view! { <line x1=xx y1=y1 x2=xx y2=y2 stroke=stroke stroke-width=line_w stroke-linecap="square" /> }.into_any());
                 }
-                if !cell_set.contains(&(r, c + 1)) {
+                if !cell_set.contains(&Cell::new(c.row, c.column + 1)) {
                     let (xx, y1, y2) = (x + cell - inset, y + inset, y + cell - inset);
                     elements.push(view! { <line x1=xx y1=y1 x2=xx y2=y2 stroke=stroke stroke-width=line_w stroke-linecap="square" /> }.into_any());
                 }
             }
         }
 
-        // Mode-dependent selection overlay.
-        match mode.get() {
-            Mode::Cell => {
-                let (row, col) = selected_cell.get();
-                let (x, y) = origin(cell, row, col);
-                elements.push(
-                    view! {
-                        <rect
-                            x={x + inset} y={y + inset}
-                            width={cell - line_w} height={cell - line_w}
-                            fill="none"
-                            stroke=ACCENT
-                            stroke-width=line_w
-                        />
-                    }
-                    .into_any(),
-                );
+        // Active cell selection rect.
+        let (x, y) = origin(cell, st.active.row, st.active.column);
+        elements.push(
+            view! {
+                <rect
+                    x={x + inset} y={y + inset}
+                    width={cell - line_w} height={cell - line_w}
+                    fill="none"
+                    stroke=ACCENT
+                    stroke-width=line_w
+                />
             }
-            Mode::Slot => {
-                let idx = selected_slot.get();
-                let Some(cells) = slot_cells.get(idx) else {
-                    return elements;
-                };
-                let cell_set: HashSet<(usize, usize)> = cells.iter().copied().collect();
-                for &(r, c) in cells {
-                    let (x, y) = origin(cell, r, c);
-                    let stroke = ACCENT;
-                    if r == 0 || !cell_set.contains(&(r - 1, c)) {
-                        let (x1, x2, yy) = (x + inset, x + cell - inset, y + inset);
-                        elements.push(view! { <line x1=x1 y1=yy x2=x2 y2=yy stroke=stroke stroke-width=line_w stroke-linecap="square" /> }.into_any());
-                    }
-                    if !cell_set.contains(&(r + 1, c)) {
-                        let (x1, x2, yy) = (x + inset, x + cell - inset, y + cell - inset);
-                        elements.push(view! { <line x1=x1 y1=yy x2=x2 y2=yy stroke=stroke stroke-width=line_w stroke-linecap="square" /> }.into_any());
-                    }
-                    if c == 0 || !cell_set.contains(&(r, c - 1)) {
-                        let (xx, y1, y2) = (x + inset, y + inset, y + cell - inset);
-                        elements.push(view! { <line x1=xx y1=y1 x2=xx y2=y2 stroke=stroke stroke-width=line_w stroke-linecap="square" /> }.into_any());
-                    }
-                    if !cell_set.contains(&(r, c + 1)) {
-                        let (xx, y1, y2) = (x + cell - inset, y + inset, y + cell - inset);
-                        elements.push(view! { <line x1=xx y1=y1 x2=xx y2=y2 stroke=stroke stroke-width=line_w stroke-linecap="square" /> }.into_any());
-                    }
-                }
-            }
-        }
+            .into_any(),
+        );
 
         elements
     }

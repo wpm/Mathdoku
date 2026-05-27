@@ -1,5 +1,6 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { installTauriStubs, gotoApp, waitForGrid } from './helpers';
+import { ARROW_DOWN, ARROW_LEFT, ARROW_RIGHT, ENTER, ESCAPE, SHIFT_ARROW_LEFT, SHIFT_ARROW_RIGHT, TAB } from './keys';
 
 // Empty 3×3: no cages.
 const EMPTY_3X3 = { n: 3 };
@@ -15,137 +16,264 @@ const PUZZLE_WITH_CAGE = {
 const PROVISIONAL = '#7b4f9e';
 const ACCENT = '#1a4e7a';
 
-async function setup(page: import('@playwright/test').Page, puzzle: unknown = EMPTY_3X3) {
+async function setup(page: Page, puzzle: unknown = EMPTY_3X3) {
   await installTauriStubs(page, puzzle);
   await gotoApp(page);
   await waitForGrid(page);
   await page.locator('.grid-svg').focus();
 }
 
+const provisionalLines = (page: Page) =>
+  page.locator(`.grid-svg line[stroke="${PROVISIONAL}"]`);
+const accentLines = (page: Page) =>
+  page.locator(`.grid-svg line[stroke="${ACCENT}"]`);
+const accentRect = (page: Page) =>
+  page.locator(`.grid-svg rect[stroke="${ACCENT}"]`);
+
 test.describe('provisional region', () => {
   test('Shift+Arrow on uncovered cell draws provisional outline', async ({ page }) => {
     await setup(page);
-    await page.keyboard.press('Shift+ArrowRight');
+    await page.keyboard.press(SHIFT_ARROW_RIGHT);
 
-    const lines = page.locator(`.grid-svg line[stroke="${PROVISIONAL}"]`);
-    await expect(lines).not.toHaveCount(0);
+    await expect(provisionalLines(page)).not.toHaveCount(0);
   });
 
   test('provisional region has distinct color from selection', async ({ page }) => {
     await setup(page);
-    await page.keyboard.press('Shift+ArrowRight');
+    await page.keyboard.press(SHIFT_ARROW_RIGHT);
 
-    // Provisional lines exist in purple.
-    await expect(page.locator(`.grid-svg line[stroke="${PROVISIONAL}"]`)).not.toHaveCount(0);
-    // Accent selection rect also exists (Cell Mode).
-    await expect(page.locator(`.grid-svg rect[stroke="${ACCENT}"]`)).toHaveCount(1);
+    await expect(provisionalLines(page)).not.toHaveCount(0);
+    await expect(accentRect(page)).toHaveCount(1);
   });
 
   test('Shift+Arrow on covered cell does nothing', async ({ page }) => {
     await setup(page, PUZZLE_WITH_CAGE);
     // (0,0) is covered by the cage. Default selection starts at (0,0).
-    await page.keyboard.press('Shift+ArrowRight');
+    await page.keyboard.press(SHIFT_ARROW_RIGHT);
 
-    // No provisional lines should appear.
-    await expect(page.locator(`.grid-svg line[stroke="${PROVISIONAL}"]`)).toHaveCount(0);
+    await expect(provisionalLines(page)).toHaveCount(0);
   });
 
   test('Shift+Arrow when target cell is covered does nothing', async ({ page }) => {
     await setup(page, PUZZLE_WITH_CAGE);
-    // Move to (0,1) which is uncovered; target right (0,2) is also uncovered.
-    await page.keyboard.press('ArrowRight');
-    // Move to (0,2).
-    await page.keyboard.press('ArrowRight');
-    // Target left (0,1) is uncovered, but (0,0) is covered. Try going left from (0,1):
-    await page.keyboard.press('ArrowLeft'); // now at (0,1)
-    await page.keyboard.press('Shift+ArrowLeft'); // target (0,0) is covered — should do nothing
+    await page.keyboard.press(ARROW_RIGHT);
+    await page.keyboard.press(ARROW_RIGHT);
+    await page.keyboard.press(ARROW_LEFT); // now at (0,1)
+    await page.keyboard.press(SHIFT_ARROW_LEFT); // target (0,0) is covered — should do nothing
 
-    await expect(page.locator(`.grid-svg line[stroke="${PROVISIONAL}"]`)).toHaveCount(0);
+    await expect(provisionalLines(page)).toHaveCount(0);
   });
 
   test('multiple Shift+Arrow presses grow the provisional region', async ({ page }) => {
     await setup(page);
-    await page.keyboard.press('Shift+ArrowRight');
-    const count1 = await page.locator(`.grid-svg line[stroke="${PROVISIONAL}"]`).count();
-    await page.keyboard.press('Shift+ArrowRight');
-    const count2 = await page.locator(`.grid-svg line[stroke="${PROVISIONAL}"]`).count();
+    await page.keyboard.press(SHIFT_ARROW_RIGHT);
+    const count1 = await provisionalLines(page).count();
+    await page.keyboard.press(SHIFT_ARROW_RIGHT);
+    const count2 = await provisionalLines(page).count();
 
     // A 3-cell row has more outer edges than a 2-cell row (10 vs 6).
     expect(count2).toBeGreaterThan(count1);
   });
 
-  test('Escape clears the provisional region', async ({ page }) => {
+  test('Escape in operation selector deletes the provisional cage', async ({ page }) => {
     await setup(page);
-    await page.keyboard.press('Shift+ArrowRight');
-    await expect(page.locator(`.grid-svg line[stroke="${PROVISIONAL}"]`)).not.toHaveCount(0);
+    await page.keyboard.press(SHIFT_ARROW_RIGHT); // draw {(0,0),(0,1)}
+    await page.keyboard.press(ENTER); // open selector
+    await expect(provisionalLines(page)).not.toHaveCount(0);
 
-    await page.keyboard.press('Escape');
-    await expect(page.locator(`.grid-svg line[stroke="${PROVISIONAL}"]`)).toHaveCount(0);
+    await page.keyboard.press(ESCAPE); // dismiss selector and delete provisional cage
+    await expect(provisionalLines(page)).toHaveCount(0);
+  });
+
+  test('Escape in provisional cage without selector open deletes the provisional cage', async ({ page }) => {
+    await setup(page);
+    await page.keyboard.press(SHIFT_ARROW_RIGHT); // draw {(0,0),(0,1)}, cursor at (0,1)
+    await expect(provisionalLines(page)).not.toHaveCount(0);
+
+    await page.keyboard.press(ESCAPE); // cursor at (0,1) is in the provisional cage — deletes it
+    await expect(provisionalLines(page)).toHaveCount(0); // region deleted
   });
 
   test('regular Arrow moves cursor without clearing provisional region', async ({ page }) => {
     await setup(page);
-    await page.keyboard.press('Shift+ArrowRight'); // draw cell (0,0), move to (0,1)
-    await page.keyboard.press('ArrowDown'); // move to (1,1), region stays
+    await page.keyboard.press(SHIFT_ARROW_RIGHT); // draw cell (0,0), move to (0,1)
+    await page.keyboard.press(ARROW_DOWN); // move to (1,1), region stays
 
-    await expect(page.locator(`.grid-svg line[stroke="${PROVISIONAL}"]`)).not.toHaveCount(0);
+    await expect(provisionalLines(page)).not.toHaveCount(0);
   });
 
-  test('Shift+Arrow from disconnected cell restarts provisional region', async ({ page }) => {
+  test('Shift+Arrow from disconnected cell parks old cage and starts new one', async ({ page }) => {
     await setup(page);
-    await page.keyboard.press('Shift+ArrowRight'); // draw (0,0), now at (0,1)
-    await page.keyboard.press('ArrowDown'); // move to (1,1)
-    await page.keyboard.press('ArrowDown'); // move to (2,1) — not adjacent to region
-    const countBefore = await page.locator(`.grid-svg line[stroke="${PROVISIONAL}"]`).count();
+    await page.keyboard.press(SHIFT_ARROW_RIGHT); // draw (0,0), now at (0,1)
+    await page.keyboard.press(ARROW_DOWN); // move to (1,1)
+    await page.keyboard.press(ARROW_DOWN); // move to (2,1) — not adjacent to region
+    const countBefore = await provisionalLines(page).count();
 
-    // (2,1) is not adjacent to the existing region {(0,0)}; should restart.
-    await page.keyboard.press('Shift+ArrowRight'); // draw (2,1), move to (2,2)
-    const countAfter = await page.locator(`.grid-svg line[stroke="${PROVISIONAL}"]`).count();
+    // (2,1) is not adjacent to the existing region {(0,0),(0,1)}; parks it and starts fresh.
+    await page.keyboard.press(SHIFT_ARROW_RIGHT); // draw (2,1), move to (2,2)
+    const countAfter = await provisionalLines(page).count();
 
-    // After restart, region is {(2,1),(2,2)}: 6 outer edges (2-cell domino).
-    expect(countAfter).toBe(6);
+    // Both regions visible: parked {(0,0),(0,1)} (6 edges) + new {(2,1),(2,2)} (6 edges) = 12.
+    expect(countAfter).toBeGreaterThan(countBefore);
+    expect(countAfter).toBe(12);
   });
 
   test('Enter on uncovered cell with no provisional creates singleton region', async ({ page }) => {
     await setup(page);
-    await page.keyboard.press('Enter');
+    await page.keyboard.press(ENTER);
 
-    // Should enter Slot Mode (accent lines appear, no accent rect).
-    await expect(page.locator(`.grid-svg line[stroke="${ACCENT}"]`)).not.toHaveCount(0);
-    await expect(page.locator(`.grid-svg rect[stroke="${ACCENT}"]`)).toHaveCount(0);
-    // No provisional lines.
-    await expect(page.locator(`.grid-svg line[stroke="${PROVISIONAL}"]`)).toHaveCount(0);
+    // After committing, active cell stays in place — accent rect visible, no provisional lines.
+    await expect(accentRect(page)).toHaveCount(1);
+    await expect(provisionalLines(page)).toHaveCount(0);
   });
 
   test('Enter on covered cell with no provisional does nothing', async ({ page }) => {
     await setup(page, PUZZLE_WITH_CAGE);
     // (0,0) is covered.
-    await page.keyboard.press('Enter');
+    await page.keyboard.press(ENTER);
 
     // Still in Cell Mode.
-    await expect(page.locator(`.grid-svg rect[stroke="${ACCENT}"]`)).toHaveCount(1);
+    await expect(accentRect(page)).toHaveCount(1);
   });
 
-  test('Enter commits provisional region and enters Slot Mode', async ({ page }) => {
+  test('Enter then operator commits provisional region and returns to active cell', async ({ page }) => {
     await setup(page);
-    await page.keyboard.press('Shift+ArrowRight'); // draw (0,0), move to (0,1)
-    await page.keyboard.press('Enter'); // commit {(0,0)}
+    await page.keyboard.press(SHIFT_ARROW_RIGHT); // draw {(0,0),(0,1)}, move to (0,1)
+    await page.keyboard.press(ENTER); // open operation selector
+    await page.keyboard.press('+'); // choose Add
 
-    // Slot Mode: accent lines, no accent rect.
-    await expect(page.locator(`.grid-svg line[stroke="${ACCENT}"]`)).not.toHaveCount(0);
-    await expect(page.locator(`.grid-svg rect[stroke="${ACCENT}"]`)).toHaveCount(0);
-    // Provisional cleared.
-    await expect(page.locator(`.grid-svg line[stroke="${PROVISIONAL}"]`)).toHaveCount(0);
+    // After committing, active cell stays in place — accent rect visible, provisional cleared.
+    await expect(accentRect(page)).toHaveCount(1);
+    await expect(provisionalLines(page)).toHaveCount(0);
+  });
+
+  test('Escape from operation selector deletes the provisional cage', async ({ page }) => {
+    await setup(page);
+    await page.keyboard.press(SHIFT_ARROW_RIGHT); // draw {(0,0),(0,1)}
+    await page.keyboard.press(ENTER); // open selector
+    await page.keyboard.press(ESCAPE); // dismiss selector and delete provisional cage
+
+    // Provisional cage is gone — no provisional lines.
+    await expect(provisionalLines(page)).toHaveCount(0);
+    // No cage was committed (no accent lines, accent rect still shows selection).
+    await expect(accentLines(page)).toHaveCount(0);
+    await expect(accentRect(page)).toHaveCount(1);
+  });
+
+  test('Tab does not exit operation selector', async ({ page }) => {
+    await setup(page);
+    await page.keyboard.press(SHIFT_ARROW_RIGHT);
+    await page.keyboard.press(ENTER); // open selector
+
+    // Verify selector is visible.
+    await expect(page.locator('.grid-svg text[font-weight="700"]').filter({ hasText: '+' })).toBeVisible();
+
+    await page.keyboard.press(TAB); // should be swallowed by selector
+
+    // Selector still visible (Tab was caught by selector, not dismissed).
+    await expect(page.locator('.grid-svg text[font-weight="700"]').filter({ hasText: '+' })).toBeVisible();
+    // No accent lines (those are a Slot Mode artifact that no longer exists).
+    await expect(accentLines(page)).toHaveCount(0);
+  });
+
+  test('ArrowRight moves highlight forward in operation selector', async ({ page }) => {
+    await setup(page);
+    await page.keyboard.press(SHIFT_ARROW_RIGHT); // draw {(0,0),(0,1)}
+    await page.keyboard.press(ENTER);
+
+    const labels = page.locator('.grid-svg text[font-weight="700"]');
+    // First tab (+) starts highlighted — its fill is ACCENT (dark), text is light.
+    // After ArrowRight the second tab (−) should become highlighted.
+    // We verify by checking the selector is still open.
+    await page.keyboard.press(ARROW_RIGHT);
+    await expect(labels.filter({ hasText: '+' })).toBeVisible(); // selector still open
+    await expect(accentLines(page)).toHaveCount(0);              // no accent lines
+  });
+
+  test('ArrowLeft moves highlight backward in operation selector', async ({ page }) => {
+    await setup(page);
+    await page.keyboard.press(SHIFT_ARROW_RIGHT);
+    await page.keyboard.press(ENTER);
+
+    // Move right twice, then back left once — should stay in selector throughout.
+    await page.keyboard.press(ARROW_RIGHT);
+    await page.keyboard.press(ARROW_RIGHT);
+    await page.keyboard.press(ARROW_LEFT);
+    await expect(page.locator('.grid-svg text[font-weight="700"]').filter({ hasText: '+' })).toBeVisible();
+    await expect(accentLines(page)).toHaveCount(0); // no accent lines
+  });
+
+  test('Enter commits highlighted tab in operation selector', async ({ page }) => {
+    await setup(page);
+    await page.keyboard.press(SHIFT_ARROW_RIGHT);
+    await page.keyboard.press(ENTER); // open selector, + highlighted
+
+    await page.keyboard.press(ARROW_RIGHT); // move to −
+    await page.keyboard.press(ENTER);       // commit −
+
+    // After committing, active cell stays in place — accent rect visible, provisional cleared.
+    await expect(accentRect(page)).toHaveCount(1);
+    await expect(provisionalLines(page)).toHaveCount(0);
+  });
+
+  test('3-cell provisional shows only Add and Multiply in operation selector', async ({ page }) => {
+    await setup(page);
+    await page.keyboard.press(SHIFT_ARROW_RIGHT); // draw {(0,0),(0,1)}
+    await page.keyboard.press(SHIFT_ARROW_RIGHT); // draw {(0,0),(0,1),(0,2)}
+    await page.keyboard.press(ENTER); // open operation selector
+
+    const selectorLabels = page.locator('.grid-svg text[font-weight="700"]');
+    // Should show "+" and "×" only — not "−" or "÷".
+    await expect(selectorLabels.filter({ hasText: '+' })).toBeVisible();
+    await expect(selectorLabels.filter({ hasText: '×' })).toBeVisible();
+    await expect(selectorLabels.filter({ hasText: '−' })).toHaveCount(0);
+    await expect(selectorLabels.filter({ hasText: '÷' })).toHaveCount(0);
   });
 
   test('committed singleton cage shows "1" label', async ({ page }) => {
     await setup(page);
-    await page.keyboard.press('Enter'); // commit singleton at (0,0) → Given/1 cage
+    await page.keyboard.press(ENTER); // commit singleton at (0,0) → Given/1 cage
 
     // The add_region stub returns a Given/1 cage for a singleton.
     // Given cages display only the target number as label.
     await expect(
       page.locator('.grid-svg text[font-weight="700"]').filter({ hasText: /^1$/ }),
     ).toBeVisible();
+  });
+});
+
+test.describe('Escape demotes committed cage', () => {
+  test('Escape on a committed cage demotes it to provisional', async ({ page }) => {
+    await setup(page);
+    await page.keyboard.press(ENTER); // commit singleton at (0,0)
+    await expect(page.locator('.grid-svg text[font-weight="700"]').filter({ hasText: /^1$/ })).toBeVisible();
+
+    await page.keyboard.press(ESCAPE); // demote cage back to provisional
+    // The cage label is gone (cage removed from committed cages).
+    await expect(page.locator('.grid-svg text[font-weight="700"]').filter({ hasText: /^1$/ })).toHaveCount(0);
+    // The cell is now provisional (purple outline visible).
+    await expect(provisionalLines(page)).not.toHaveCount(0);
+  });
+
+  test('Escape on a committed multi-cell cage opens operation selector', async ({ page }) => {
+    await setup(page);
+    await page.keyboard.press(SHIFT_ARROW_RIGHT); // draw {(0,0),(0,1)}
+    await page.keyboard.press(ENTER);
+    await page.keyboard.press('+'); // commit as Add cage
+    // Cage label includes target (e.g. "+0") — verify cage is committed.
+    await expect(page.locator('.grid-svg text[font-weight="700"]')).toHaveCount(1);
+
+    await page.keyboard.press(ESCAPE); // demote cage back to provisional + open selector
+    // The committed cage label is gone; operation selector tabs appear instead.
+    // Selector shows multiple tabs (at least +), so count increases or stays same but cage label gone.
+    await expect(page.locator('.grid-svg text[font-weight="700"]')).not.toHaveCount(1);
+  });
+
+  test('Escape on uncovered cell does nothing', async ({ page }) => {
+    await setup(page);
+    // (0,0) is uncovered and has no provisional cage.
+    await page.keyboard.press(ESCAPE);
+    await expect(provisionalLines(page)).toHaveCount(0);
+    await expect(accentRect(page)).toHaveCount(1);
   });
 });

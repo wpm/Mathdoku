@@ -5,7 +5,7 @@
   "identifier": "com.mcneill.mathdoku-designer",
   "build": {
     "beforeDevCommand": {
-      "script": "lsof -ti:1420 | grep -q . || trunk serve",
+      "script": "cd .. && trunk serve",
       "wait": false,
       "dev": true
     },

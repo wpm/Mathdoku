@@ -8,9 +8,101 @@
 
 use leptos::prelude::*;
 
-use crate::theme::{INK, INK3, SANS};
+use crate::theme::{GREEN, INK, INK3, SANS};
+
+/// Background rect and domain digits for a single grid cell.
+#[component]
+#[allow(clippy::needless_pass_by_value)] // Leptos component props must be owned
+pub fn Cell(
+    x: f64,
+    y: f64,
+    cell: f64,
+    domain: Vec<u8>,
+    fill: &'static str,
+    /// Top margin reserved for the cage op label.
+    top_margin: f64,
+    /// Grid dimension n (used for fallback layout).
+    n: usize,
+    /// The correct solution value for this cell, if known. When present and the
+    /// domain has multiple candidates, this value is rendered larger and in green.
+    solution_value: Option<u8>,
+) -> impl IntoView {
+    let zone_w = 2.0f64.mul_add(-DOMAIN_EDGE, cell);
+    let zone_h = cell - top_margin - DOMAIN_EDGE;
+    let domain_f = (zone_h / 3.5).clamp(7.0, zone_h);
+
+    let mut glyphs: Vec<(f64, f64, String, f64, &'static str, &'static str)> = Vec::new();
+
+    if domain.len() == 1 {
+        let singleton_f = (cell * 0.5).max(12.0);
+        glyphs.push((
+            x + cell / 2.0,
+            y + cell / 2.0,
+            domain[0].to_string(),
+            singleton_f,
+            INK,
+            "600",
+        ));
+    } else if !domain.is_empty() {
+        let zone_x = x + DOMAIN_EDGE;
+        let zone_y = y + top_margin;
+        let solution_f = (domain_f * 1.35).min(zone_h);
+        if let Some(pips) = domain_layout(domain.len()) {
+            for (i, &(fx, fy)) in pips.iter().enumerate() {
+                if let Some(&v) = domain.get(i) {
+                    let is_solution = solution_value == Some(v);
+                    glyphs.push((
+                        f64::from(fx).mul_add(zone_w, zone_x),
+                        f64::from(fy).mul_add(zone_h, zone_y),
+                        v.to_string(),
+                        if is_solution { solution_f } else { domain_f },
+                        if is_solution { GREEN } else { INK3 },
+                        if is_solution { "600" } else { "normal" },
+                    ));
+                }
+            }
+        } else {
+            // Fallback for count > 9: sub×sub grid.
+            let sub = (n as f64).sqrt().ceil() as usize;
+            let sub_w = zone_w / sub as f64;
+            let sub_h = zone_h / sub as f64;
+            for (i, &v) in domain.iter().enumerate() {
+                let sr = i / sub;
+                let sc = i % sub;
+                let is_solution = solution_value == Some(v);
+                glyphs.push((
+                    (sc as f64 + 0.5).mul_add(sub_w, zone_x),
+                    (sr as f64 + 0.5).mul_add(sub_h, zone_y),
+                    v.to_string(),
+                    if is_solution { solution_f } else { domain_f },
+                    if is_solution { GREEN } else { INK3 },
+                    if is_solution { "600" } else { "normal" },
+                ));
+            }
+        }
+    }
+
+    view! {
+        <rect x=x y=y width=cell height=cell fill=fill />
+        {glyphs.into_iter().map(|(cx, cy, label, font_size, color, weight)| view! {
+            <text
+                x=cx y=cy
+                text-anchor="middle"
+                dominant-baseline="central"
+                font-family=SANS
+                font-size=font_size
+                font-weight=weight
+                fill=color
+            >{label}</text>
+        }).collect::<Vec<_>>()}
+    }
+}
 
 const DOMAIN_EDGE: f64 = 4.0;
+
+fn domain_layout(count: usize) -> Option<&'static [(f32, f32)]> {
+    LAYOUTS.get(count.wrapping_sub(1)).copied()
+}
 
 // Pip positions as (x, y) fractions in [0,1]² for 1–9 domain values.
 // 1–6 follow standard die faces; 7–9 are symmetric extensions.
@@ -70,89 +162,3 @@ const LAYOUTS: [&[(f32, f32)]; 9] = [
         (0.75, 0.85),
     ],
 ];
-
-fn domain_layout(count: usize) -> Option<&'static [(f32, f32)]> {
-    LAYOUTS.get(count.wrapping_sub(1)).copied()
-}
-
-/// Background rect and domain digits for a single grid cell.
-#[component]
-#[allow(clippy::needless_pass_by_value)] // Leptos component props must be owned
-pub fn Cell(
-    x: f64,
-    y: f64,
-    cell: f64,
-    domain: Vec<u8>,
-    fill: &'static str,
-    /// Top margin reserved for the cage op label.
-    top_margin: f64,
-    /// Grid dimension n (used for fallback layout).
-    n: usize,
-) -> impl IntoView {
-    let zone_w = 2.0f64.mul_add(-DOMAIN_EDGE, cell);
-    let zone_h = cell - top_margin - DOMAIN_EDGE;
-    let domain_f = (zone_h / 3.5).clamp(7.0, zone_h);
-
-    let mut glyphs: Vec<(f64, f64, String, f64, &'static str, &'static str)> = Vec::new();
-
-    if domain.len() == 1 {
-        let singleton_f = (cell * 0.5).max(12.0);
-        glyphs.push((
-            x + cell / 2.0,
-            y + cell / 2.0,
-            domain[0].to_string(),
-            singleton_f,
-            INK,
-            "600",
-        ));
-    } else if !domain.is_empty() {
-        let zone_x = x + DOMAIN_EDGE;
-        let zone_y = y + top_margin;
-        if let Some(pips) = domain_layout(domain.len()) {
-            for (i, &(fx, fy)) in pips.iter().enumerate() {
-                if let Some(&v) = domain.get(i) {
-                    glyphs.push((
-                        f64::from(fx).mul_add(zone_w, zone_x),
-                        f64::from(fy).mul_add(zone_h, zone_y),
-                        v.to_string(),
-                        domain_f,
-                        INK3,
-                        "normal",
-                    ));
-                }
-            }
-        } else {
-            // Fallback for count > 9: sub×sub grid.
-            let sub = (n as f64).sqrt().ceil() as usize;
-            let sub_w = zone_w / sub as f64;
-            let sub_h = zone_h / sub as f64;
-            for (i, &v) in domain.iter().enumerate() {
-                let sr = i / sub;
-                let sc = i % sub;
-                glyphs.push((
-                    (sc as f64 + 0.5).mul_add(sub_w, zone_x),
-                    (sr as f64 + 0.5).mul_add(sub_h, zone_y),
-                    v.to_string(),
-                    domain_f,
-                    INK3,
-                    "normal",
-                ));
-            }
-        }
-    }
-
-    view! {
-        <rect x=x y=y width=cell height=cell fill=fill />
-        {glyphs.into_iter().map(|(cx, cy, label, font_size, color, weight)| view! {
-            <text
-                x=cx y=cy
-                text-anchor="middle"
-                dominant-baseline="central"
-                font-family=SANS
-                font-size=font_size
-                font-weight=weight
-                fill=color
-            >{label}</text>
-        }).collect::<Vec<_>>()}
-    }
-}

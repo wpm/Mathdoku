@@ -2,29 +2,48 @@
 //! frontend (`src`). Keeping them here avoids duplicating serde definitions
 //! and ensures both sides agree on a serialization format over the IPC bridge.
 
+use std::collections::BTreeSet;
+
+use mathdoku::{Cell, Grid, Polyomino, Puzzle};
 use serde::{Deserialize, Serialize};
-
-/// Which interaction mode the puzzle editor is in.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Mode {
-    #[default]
-    Cell,
-    Slot,
-}
-
-/// Persisted editor view state: which mode is active and where the selection is.
-#[derive(Clone, Default, Serialize, Deserialize)]
-pub struct ViewState {
-    pub mode: Mode,
-    pub cell_row: usize,
-    pub cell_col: usize,
-    pub slot_idx: usize,
-}
 
 /// Document state returned by `get_doc_state`.
 #[derive(Clone, Default, Serialize, Deserialize)]
 pub struct DocState {
     pub dirty: bool,
     pub path: Option<String>,
+}
+
+/// Full designer state: the unit of serialization for save files and undo/redo.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct State {
+    /// Cage structure being designed.
+    pub puzzle: Puzzle,
+    /// The fixed Latin Square generated when the puzzle was created.
+    pub solution: Grid,
+    /// Working grid: cell domains constrained by the current cages.
+    pub current: Grid,
+    /// The currently active cell.
+    pub active: Cell,
+    /// Provisional cage regions: disjoint from each other and from puzzle cages.
+    pub provisional_cages: BTreeSet<Polyomino>,
+}
+
+impl State {
+    /// Creates a new blank `State` for an *n*×*n* puzzle with no solution or cages.
+    ///
+    /// # Errors
+    /// Returns an error if `n` is invalid for `Puzzle` or `Grid`.
+    pub fn new(n: usize) -> Result<Self, String> {
+        let puzzle = Puzzle::new(n).map_err(|e| e.to_string())?;
+        let solution = Grid::new(n).map_err(|e| e.to_string())?;
+        let current = solution.clone();
+        Ok(Self {
+            puzzle,
+            solution,
+            current,
+            active: Cell::new(0, 0),
+            provisional_cages: BTreeSet::new(),
+        })
+    }
 }

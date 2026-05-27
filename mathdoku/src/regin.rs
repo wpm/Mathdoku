@@ -10,6 +10,8 @@
 //! Reference: Jean-Charles Régin, "A filtering algorithm for constraints of
 //! difference in CSPs", *AAAI-94*, 1994, pp. 362–367.
 
+#![allow(clippy::similar_names)] // var/val, ip/jp/kp are domain idioms in matching/SCC algorithms
+
 use crate::Values;
 use crate::cell::N;
 use std::collections::HashMap;
@@ -20,7 +22,6 @@ use std::collections::HashMap;
 /// A value survives for a variable iff some assignment of distinct values (one
 /// per variable, each within its domain) uses it; if no such complete
 /// assignment exists, every domain empties.
-#[allow(clippy::similar_names)]
 pub fn regin_gac(domains: &[Values]) -> Vec<Values> {
     let n = domains.len();
     if n == 0 {
@@ -118,7 +119,6 @@ pub fn regin_gac(domains: &[Values]) -> Vec<Values> {
     result
 }
 
-#[allow(clippy::similar_names)]
 fn augment(
     var: usize,
     indexed_domains: &[Vec<usize>],

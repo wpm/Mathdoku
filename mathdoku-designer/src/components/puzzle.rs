@@ -1,306 +1,80 @@
 //! Puzzle component: SVG root, layout, interaction, and subcomponent orchestration.
-//!
-//! # Interaction modes
-//!
-//! The puzzle is always in one of two **interaction modes**:
-//!
-//! ## Cell Mode
-//! The fundamental unit of selection is an individual grid cell.
-//! - One cell is selected at a time, shown with a heavier outline.
-//! - Arrow keys move the selection; movement stops at the puzzle boundary.
-//! - Tab or Shift-Tab switches to Slot Mode, selecting the slot that contains the current cell.
-//!
-//! ## Slot Mode
-//! The fundamental unit of selection is a cage or region slot (a polyomino).
-//! - One slot is selected at a time; all cells of that slot receive a heavier outline.
-//! - Tab advances to the next slot in polyomino order (wrapping around).
-//! - Shift-Tab moves to the previous slot (wrapping around).
-//! - An arrow key switches back to Cell Mode, placing the selection at the anchor cell of the
-//!   current slot and then moving one step in that direction.
 
 #![allow(
     clippy::cast_precision_loss,
     clippy::cast_sign_loss,
     clippy::cast_possible_truncation,
     clippy::items_after_statements, // local serialization structs defined inside event handlers
+    clippy::needless_range_loop,    // 2D index loops are clearer with explicit row/col indices
     unused_results,                 // invoke/Effect::new/HashSet::insert/Vec::pop are fire-and-forget in reactive WASM code
 )]
 
-use std::collections::HashSet;
-use std::sync::{Arc, Mutex, PoisonError};
-
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use mathdoku::{Cage as MathdokoCage, Cell as MathdokuCell, Puzzle as KenkenPuzzle};
-use mathdoku_designer_shared::{Mode, ViewState};
+use mathdoku::{Cage, Cell, Grid, Operator, Polyomino, operators};
+use mathdoku_designer_shared::State;
 use serde::Serialize;
-use serde_wasm_bindgen::{from_value, to_value};
+use serde_wasm_bindgen::to_value;
 use wasm_bindgen::prelude::*;
 
-use super::cage::Cage;
+use super::cage::Cage as CageComponent;
 use super::cage_stats::CageStats;
-use super::cell::Cell;
-use super::selection::SelectionOverlay;
+use super::cell::Cell as CellComponent;
+use crate::cage_commit::{commit_cage, demote_cage};
+use crate::geometry::{MARGIN, THICK, THIN, anchor, assign_colors, cell_size, is_thick, op_font, origin};
+use crate::partial_solution::PartialSolution;
+use super::operation_selector::{handle_key, OperationSelector, PendingCommit};
+use super::selection::{ProvisionalFills, SelectionOverlay};
 use super::solution_count::SolutionCount;
 
+use crate::keys::{ARROW_DOWN, ARROW_LEFT, ARROW_RIGHT, ARROW_UP, ENTER, ESCAPE, TAB};
 use crate::theme::{BG, CAGE_PALETTE, INK, LINE, OP_INSET};
-
-// ---- visual constants (pub for SelectionOverlay) ----
-pub const MARGIN: f64 = 14.0;
-const THICK: f64 = 2.2;
-const THIN: f64 = 0.5;
-
-// ---- context ----
-
-/// Puzzle and its cage list, shared via context for on-demand viable-count queries.
-///
-/// The `Mutex` is needed only to satisfy `Send + Sync` for `provide_context`; on
-/// single-threaded WASM there is never actual contention.
-#[derive(Clone)]
-pub struct PuzzleRef(Arc<PuzzleRefInner>);
-
-struct PuzzleRefInner {
-    puzzle: Mutex<KenkenPuzzle>,
-    /// Cages in slot order.
-    cages: Vec<MathdokoCage>,
-    /// Grid size.
-    n: usize,
-}
-
-impl PuzzleRef {
-    fn new(puzzle: KenkenPuzzle, cages: Vec<MathdokoCage>, n: usize) -> Self {
-        Self(Arc::new(PuzzleRefInner {
-            puzzle: Mutex::new(puzzle),
-            cages,
-            n,
-        }))
-    }
-
-    /// Returns the number of solutions, or `None` if not all cells are covered by cages.
-    pub fn solution_count(&self) -> Option<usize> {
-        let puzzle = self.0.puzzle.lock().unwrap_or_else(PoisonError::into_inner);
-        let n = self.0.n;
-        // Return None if not all cells are covered by a cage.
-        let covered: HashSet<_> = puzzle.cages().flat_map(MathdokoCage::cells).collect();
-        if covered.len() < n * n {
-            return None;
-        }
-        Some(puzzle.solutions().count())
-    }
-
-    /// Returns `(multisets, tuples)` for `slot_idx`.
-    pub fn viable_counts(&self, slot_idx: usize) -> Option<(usize, usize)> {
-        let cage = self.0.cages.get(slot_idx)?;
-        let puzzle = self.0.puzzle.lock().unwrap_or_else(PoisonError::into_inner);
-        let n = self.0.n as u8;
-        // Get current domain for each cell in the cage.
-        let cell_domains: Vec<HashSet<u8>> = cage
-            .cells()
-            .into_iter()
-            .map(|cell| {
-                puzzle
-                    .cell_values(cell)
-                    .map(|v| v.values().into_iter().collect())
-                    .unwrap_or_default()
-            })
-            .collect();
-        // Count tuples that are consistent with current domains.
-        let tuples: Vec<_> = cage.tuples(n).collect();
-        let valid_tuples: Vec<_> = tuples
-            .iter()
-            .filter(|t| {
-                t.iter()
-                    .zip(&cell_domains)
-                    .all(|(v, domain)| domain.contains(v))
-            })
-            .collect();
-        // Multisets: unique sorted value sets among valid tuples.
-        let multisets: HashSet<Vec<u8>> = valid_tuples
-            .iter()
-            .map(|t| {
-                let mut s = (*t).clone();
-                s.sort_unstable();
-                s
-            })
-            .collect();
-        Some((multisets.len(), valid_tuples.len()))
-    }
-}
-
-/// An entry in the undo queue. Both provisional-region edits and puzzle
-/// mutations go into the same queue so a single Cmd-Z walks back all changes.
-#[derive(Clone)]
-#[allow(dead_code)]
-pub enum UndoEntry {
-    /// One Shift+Arrow step that grew the provisional region by one cell.
-    /// Undo: pop the last cell from the provisional region.
-    AddProvisionalCell,
-    /// A region was committed (Enter). Undo: remove the region from the puzzle
-    /// (via `remove_region` command) and restore the puzzle to `old_puzzle`.
-    CommitRegion {
-        /// The cells that form the committed region (for the `remove_region` call).
-        cells: Vec<(usize, usize)>,
-    },
-}
-
-/// Shared grid state provided to all sub-components via context.
-#[derive(Clone)]
-pub struct GridContext {
-    pub mode: RwSignal<Mode>,
-    pub selected_cell: RwSignal<(usize, usize)>,
-    pub selected_slot: RwSignal<usize>,
-    /// Cells for each slot, in slot order.
-    pub slot_cells: Vec<Vec<(usize, usize)>>,
-    /// Slot index for each cell, indexed by [row][col].
-    pub cell_slot: Vec<Vec<Option<usize>>>,
-    /// Puzzle reference for on-demand viable-count queries.
-    pub puzzle_ref: PuzzleRef,
-    /// Cell size in SVG units.
-    pub cell: f64,
-    /// Cells forming the provisional region being drawn (empty = none).
-    pub provisional_region: RwSignal<Vec<(usize, usize)>>,
-    /// Undo queue: most-recent entry last.
-    #[allow(dead_code)]
-    pub undo_stack: RwSignal<Vec<UndoEntry>>,
-}
-
-// ---- layout helpers ----
-
-/// Returns the cell side length in SVG units for an *n*×*n* grid.
-pub fn cell_size(n: usize) -> f64 {
-    let viewport = 600.0_f64;
-    2.0f64.mul_add(-MARGIN, viewport) / (n as f64).max(1.0)
-}
-
-/// Returns the cage-label font size for a given cell side length.
-pub fn op_font(cell: f64) -> f64 {
-    (cell * 0.16).max(10.0)
-}
-
-/// Returns the SVG `(x, y)` top-left corner of the cell at `(row, col)`.
-pub const fn origin(cell: f64, row: usize, col: usize) -> (f64, f64) {
-    (
-        (col as f64).mul_add(cell, MARGIN),
-        (row as f64).mul_add(cell, MARGIN),
-    )
-}
-
-/// Returns the anchor cell of a slot: the topmost cell in the leftmost column.
-pub fn anchor(cells: &[(usize, usize)]) -> (usize, usize) {
-    cells
-        .iter()
-        .copied()
-        .min_by_key(|&(r, c)| (c, r))
-        .unwrap_or((0, 0))
-}
-
-fn neighbors(r: usize, c: usize, n: usize) -> Vec<(usize, usize)> {
-    let mut out = Vec::new();
-    if r > 0 {
-        out.push((r - 1, c));
-    }
-    if c > 0 {
-        out.push((r, c - 1));
-    }
-    if r + 1 < n {
-        out.push((r + 1, c));
-    }
-    if c + 1 < n {
-        out.push((r, c + 1));
-    }
-    out
-}
-
-fn assign_colors(n: usize, slots: &[Vec<(usize, usize)>]) -> (Vec<usize>, Vec<Vec<Option<usize>>>) {
-    let mut cell_slot = vec![vec![None::<usize>; n]; n];
-    for (i, cells) in slots.iter().enumerate() {
-        for &(r, c) in cells {
-            cell_slot[r][c] = Some(i);
-        }
-    }
-    let mut color = vec![0usize; slots.len()];
-    for (i, cells) in slots.iter().enumerate() {
-        let mut used = HashSet::new();
-        for &(r, c) in cells {
-            for (nr, nc) in neighbors(r, c, n) {
-                if let Some(j) = cell_slot[nr][nc]
-                    && j != i
-                {
-                    used.insert(color[j]);
-                }
-            }
-        }
-        let mut k = 0;
-        while used.contains(&k) {
-            k += 1;
-        }
-        color[i] = k;
-    }
-    (color, cell_slot)
-}
-
-const fn is_thick(a: Option<usize>, b: Option<usize>) -> bool {
-    match (a, b) {
-        (Some(x), Some(y)) => x != y,
-        _ => true,
-    }
-}
-
-// ---- Tauri IPC ----
-
-#[wasm_bindgen]
-extern "C" {
-    #[wasm_bindgen(js_namespace = ["window", "__TAURI__", "core"])]
-    async fn invoke(cmd: &str, args: JsValue) -> JsValue;
-}
-
-// ---- Puzzle component ----
-
-/// Each slot is a list of (row, col) pairs and the cage covering it.
-type SlotList = Vec<(Vec<(usize, usize)>, MathdokoCage)>;
 
 #[component]
 #[allow(clippy::needless_pass_by_value, clippy::too_many_lines)]
 pub fn Puzzle(
-    puzzle: KenkenPuzzle,
-    initial_view: ViewState,
-    on_puzzle_change: Callback<(KenkenPuzzle, ViewState)>,
+    state: State,
+    undo_stack: RwSignal<Vec<State>>,
+    redo_stack: RwSignal<Vec<State>>,
+    pending_commit: RwSignal<Option<PendingCommit>>,
+    on_puzzle_change: Callback<State>,
+    on_state_change: Callback<State>,
     on_error: Callback<String>,
 ) -> impl IntoView {
-    let n = puzzle.n();
+    let n = state.puzzle.n();
     let cell = cell_size(n);
     let op_f = op_font(cell);
     let top_margin = 2.0f64.mul_add(OP_INSET, op_f);
 
-    // Collect slots in polyomino order (canonical for Tab traversal).
-    let slots: SlotList = puzzle
+    // Collect cages in polyomino order (canonical for Tab traversal).
+    let cages: CageList = state.puzzle
         .cages()
-        .map(|cage| {
-            let cells = cage
-                .cells()
-                .into_iter()
-                .map(|c| (c.row, c.column))
-                .collect();
-            (cells, cage.clone())
-        })
+        .map(|cage| (cage.cells(), cage.clone()))
         .collect();
 
-    let slot_cells: Vec<Vec<(usize, usize)>> = slots.iter().map(|(c, _)| c.clone()).collect();
-    let slot_cages: Vec<MathdokoCage> = slots.iter().map(|(_, cage)| cage.clone()).collect();
-    let (colors, cell_slot) = assign_colors(n, &slot_cells);
+    let cage_cells: Vec<Vec<Cell>> = cages.iter().map(|(c, _)| c.clone()).collect();
+    let (colors, cage_index) = assign_colors(n, &cage_cells);
 
-    // Per-cell domains.
+    // Propagate cage constraints from an unconstrained grid so each cell's
+    // domain shows all values still possible given the cages, not just the solution.
+    let propagated = Grid::new(n)
+        .and_then(|g| g.constrain(&state.puzzle))
+        .unwrap_or_else(|_| state.current.clone());
     let mut domains = vec![vec![vec![]; n]; n];
+    let mut solution_values = vec![vec![None::<u8>; n]; n];
     for (r, row) in domains.iter_mut().enumerate() {
         for (c, cell_domain) in row.iter_mut().enumerate() {
-            let cell_ref = MathdokuCell::new(r, c);
-            if let Ok(vals) = puzzle.cell_values(cell_ref) {
+            let cell_ref = Cell::new(r, c);
+            if let Ok(vals) = propagated.cell_values(cell_ref) {
                 *cell_domain = vals.values();
+            }
+            if let Ok(sv) = state.solution.cell_values(cell_ref) {
+                solution_values[r][c] = sv.values().first().copied();
             }
         }
     }
 
-    let puzzle_ref = PuzzleRef::new(puzzle, slot_cages, n);
+    let partial_solution = PartialSolution::new(state.puzzle.clone(), state.current.clone());
 
     let grid_size = cell * n as f64;
     let total = 2.0f64.mul_add(MARGIN, grid_size);
@@ -308,270 +82,222 @@ pub fn Puzzle(
 
     // ---- Interaction state ----
 
-    let mode = RwSignal::new(initial_view.mode);
-    let selected_cell = RwSignal::new((initial_view.cell_row, initial_view.cell_col));
-    let selected_slot = RwSignal::new(initial_view.slot_idx);
-    let provisional_region: RwSignal<Vec<(usize, usize)>> = RwSignal::new(Vec::new());
-    let undo_stack: RwSignal<Vec<UndoEntry>> = RwSignal::new(Vec::new());
+    // `designer_state` is the single source of truth for active cell and provisional cages.
+    let designer_state: RwSignal<State> = RwSignal::new(state);
 
-    provide_context(GridContext {
-        mode,
-        selected_cell,
-        selected_slot,
-        slot_cells: slot_cells.clone(),
-        cell_slot: cell_slot.clone(),
-        puzzle_ref,
-        cell,
-        provisional_region,
-        undo_stack,
+    let partial_solution_kd = partial_solution.clone();
+    provide_context(InteractionState {
+        designer_state,
+        partial_solution,
+        cell_size: cell,
+        pending_commit,
     });
 
-    // Persist view state whenever mode/cell/slot changes.
+    // Persist the active cell whenever it changes.
     Effect::new(move |_| {
         #[derive(Serialize)]
         struct Args {
-            view: ViewState,
+            active: Cell,
         }
-        let view = ViewState {
-            mode: mode.get(),
-            cell_row: selected_cell.get().0,
-            cell_col: selected_cell.get().1,
-            slot_idx: selected_slot.get(),
-        };
+        let active = designer_state.get().active;
         spawn_local(async move {
-            if let Ok(args) = to_value(&Args { view }) {
-                invoke("set_view_state", args).await;
+            if let Ok(args) = to_value(&Args { active }) {
+                invoke("set_active_cell", args).await;
             }
         });
     });
 
-    let slot_cells_static = slot_cells;
-    let num_slots = slots.len();
-    let cell_slot_kd = cell_slot.clone();
+    let partial_solution = partial_solution_kd;
+    let cage_cells_static = cage_cells;
+    let num_cages = cages.len();
 
-    // Returns true if (r, c) is edge-connected to any cell in `region`.
-    let is_adjacent = |region: &[(usize, usize)], r: usize, c: usize| {
-        region
+    // Helper: apply a lightweight navigation state change (no undo entry).
+    let set_state = move |new_st: State| {
+        on_state_change.run(new_st.clone());
+        designer_state.set(new_st);
+    };
+
+    // Helper: open the operation selector for a given polyomino.
+    // Used by Enter (provisional → selector) and Escape (committed cage → demote → selector).
+    // Singletons (Given only) are skipped — they stay as provisional cages without a selector.
+    let open_selector = Callback::new(move |poly: Polyomino| {
+        let allowed = operators(&poly);
+        if allowed == [Operator::Given] {
+            return; // singleton: stays as a provisional cage, no selector needed
+        }
+        let st = designer_state.get_untracked();
+        let poly_for_cb = poly.clone();
+        let parked: std::collections::BTreeSet<Polyomino> = st.provisional_cages
             .iter()
-            .any(|&(pr, pc)| (pr == r && pc.abs_diff(c) == 1) || (pc == c && pr.abs_diff(r) == 1))
+            .filter(|p| p.cells() != poly.cells())
+            .cloned()
+            .collect();
+        let on_commit = Callback::new(move |op: Operator| {
+            pending_commit.set(None);
+            commit_cage(
+                poly_for_cb.clone(), op,
+                parked.clone(), undo_stack, redo_stack,
+                designer_state, on_puzzle_change, on_error,
+            );
+        });
+        let selected_idx = RwSignal::new(0usize);
+        pending_commit.set(Some(PendingCommit { polyomino: poly, allowed, selected_idx, on_commit }));
+    });
+
+    // Helper: swap the undo/redo stacks and apply the restored state.
+    let apply_history = move |from: RwSignal<Vec<State>>, to: RwSignal<Vec<State>>| {
+        if let Some(restored) = from.get_untracked().last().cloned() {
+            from.update(|s| { s.pop(); });
+            to.update(|s| s.push(designer_state.get_untracked()));
+            on_state_change.run(restored.clone());
+            on_puzzle_change.run(restored.clone());
+            designer_state.set(restored);
+        }
     };
 
     let on_keydown = move |ev: leptos::ev::KeyboardEvent| {
         let key = ev.key();
         let shift = ev.shift_key();
-        match mode.get_untracked() {
-            Mode::Cell => {
-                let (r, c) = selected_cell.get_untracked();
+        let st = designer_state.get_untracked();
+        let (r, c) = (st.active.row, st.active.column);
 
-                // Shift+Arrow: provisional region drawing.
-                if shift
-                    && matches!(
-                        key.as_str(),
-                        "ArrowUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight"
-                    )
-                {
-                    ev.prevent_default();
-                    // Current cell must be uncovered.
-                    if cell_slot_kd[r][c].is_some() {
-                        return;
-                    }
-                    // Compute target cell.
-                    let target = match key.as_str() {
-                        "ArrowUp" if r > 0 => Some((r - 1, c)),
-                        "ArrowDown" if r + 1 < n => Some((r + 1, c)),
-                        "ArrowLeft" if c > 0 => Some((r, c - 1)),
-                        "ArrowRight" if c + 1 < n => Some((r, c + 1)),
-                        _ => None,
+        // Operation selector intercepts all keys when active.
+        if let Some(p) = pending_commit.get_untracked() {
+            ev.prevent_default();
+            handle_key(key.as_str(), shift, &p, pending_commit, designer_state, on_state_change);
+            return;
+        }
+
+        // Cmd+Z: undo. Cmd+Shift+Z: redo.
+        if ev.meta_key() && key.as_str() == "z" {
+            ev.prevent_default();
+            if shift {
+                apply_history(redo_stack, undo_stack);
+            } else {
+                apply_history(undo_stack, redo_stack);
+            }
+            return;
+        }
+
+        // Shift+Arrow: provisional cage drawing.
+        if shift
+            && matches!(
+                key.as_str(),
+                ARROW_UP | ARROW_DOWN | ARROW_LEFT | ARROW_RIGHT
+            )
+        {
+            ev.prevent_default();
+            // Current cell must be uncovered.
+            if partial_solution.cage_index_at(r, c).is_some() {
+                return;
+            }
+            // Compute target cell.
+            let target = match key.as_str() {
+                ARROW_UP if r > 0 => Some((r - 1, c)),
+                ARROW_DOWN if r + 1 < n => Some((r + 1, c)),
+                ARROW_LEFT if c > 0 => Some((r, c - 1)),
+                ARROW_RIGHT if c + 1 < n => Some((r, c + 1)),
+                _ => None,
+            };
+            let Some((tr, tc)) = target else { return };
+            // Target must be uncovered.
+            if partial_solution.cage_index_at(tr, tc).is_some() {
+                return;
+            }
+            set_state(step_provisional_cage(r, c, tr, tc, st));
+            return;
+        }
+
+        match key.as_str() {
+            ARROW_UP if r > 0 => {
+                ev.prevent_default();
+                set_state(State { active: Cell::new(r - 1, c), ..st });
+            }
+            ARROW_DOWN if r + 1 < n => {
+                ev.prevent_default();
+                set_state(State { active: Cell::new(r + 1, c), ..st });
+            }
+            ARROW_LEFT if c > 0 => {
+                ev.prevent_default();
+                set_state(State { active: Cell::new(r, c - 1), ..st });
+            }
+            ARROW_RIGHT if c + 1 < n => {
+                ev.prevent_default();
+                set_state(State { active: Cell::new(r, c + 1), ..st });
+            }
+            ARROW_UP | ARROW_DOWN | ARROW_LEFT | ARROW_RIGHT => {
+                ev.prevent_default(); // at boundary — consume but don't move
+            }
+            TAB => {
+                ev.prevent_default();
+                if num_cages > 0 {
+                    let here = Cell::new(r, c);
+                    let current_cage = cage_cells_static
+                        .iter()
+                        .position(|cells| cells.contains(&here))
+                        .unwrap_or(0);
+                    let next_cage = if shift {
+                        if current_cage == 0 { num_cages - 1 } else { current_cage - 1 }
+                    } else {
+                        (current_cage + 1) % num_cages
                     };
-                    let Some((tr, tc)) = target else { return };
-                    // Target must be uncovered.
-                    if cell_slot_kd[tr][tc].is_some() {
-                        return;
+                    set_state(State { active: anchor(&cage_cells_static[next_cage]), ..st });
+                }
+            }
+            ESCAPE => {
+                ev.prevent_default();
+                let active_cell = Cell::new(r, c);
+                if let Some(cage_idx) = partial_solution.cage_index_at(r, c) {
+                    // Active cell is in a committed cage — demote it to provisional.
+                    let cells = cage_cells_static[cage_idx].clone();
+                    demote_cage(
+                        cells, undo_stack, redo_stack,
+                        designer_state, on_puzzle_change, open_selector, on_error,
+                    );
+                } else if let Some(poly) = st.provisional_cages.iter()
+                    .find(|p| p.cells().contains(&active_cell))
+                    .cloned()
+                {
+                    // Active cell is in a provisional cage — delete it.
+                    let mut new_st = st.clone();
+                    new_st.provisional_cages.remove(&poly);
+                    set_state(new_st);
+                } // else: uncovered cell — do nothing
+            }
+            ENTER => {
+                ev.prevent_default();
+                let active_cell = Cell::new(r, c);
+                // Cells to commit: active provisional cage, or a fresh singleton.
+                let poly = if let Some(p) = st.provisional_cages
+                    .iter()
+                    .find(|p| p.cells().contains(&active_cell))
+                    .cloned()
+                {
+                    p
+                } else {
+                    if partial_solution.cage_index_at(r, c).is_some() {
+                        return; // covered cell, nothing to do
                     }
-                    let mut region = provisional_region.get_untracked();
-                    if region.is_empty() {
-                        // Start new provisional region from current cell.
-                        region.push((r, c));
-                        undo_stack.update(|s| s.push(UndoEntry::AddProvisionalCell));
-                    } else if !is_adjacent(&region, r, c) {
-                        // Current cell not connected to existing region: restart.
-                        region.clear();
-                        undo_stack.update(|s| {
-                            while matches!(s.last(), Some(UndoEntry::AddProvisionalCell)) {
-                                s.pop();
-                            }
-                        });
-                        region.push((r, c));
-                        undo_stack.update(|s| s.push(UndoEntry::AddProvisionalCell));
-                    } else if !region.contains(&(r, c)) {
-                        // Current cell is adjacent but not yet in region.
-                        region.push((r, c));
-                        undo_stack.update(|s| s.push(UndoEntry::AddProvisionalCell));
-                    }
-                    // Always add the target cell.
-                    if !region.contains(&(tr, tc)) {
-                        region.push((tr, tc));
-                        undo_stack.update(|s| s.push(UndoEntry::AddProvisionalCell));
-                    }
-                    provisional_region.set(region);
-                    selected_cell.set((tr, tc));
+                    Polyomino::from_cells(&[active_cell]).expect("singleton is always valid")
+                };
+                // Singleton: Given is the only operator — commit immediately.
+                if operators(&poly) == [Operator::Given] {
+                    let parked: std::collections::BTreeSet<Polyomino> = st.provisional_cages
+                        .iter()
+                        .filter(|p| p.cells() != poly.cells())
+                        .cloned()
+                        .collect();
+                    commit_cage(
+                        poly, Operator::Given,
+                        parked, undo_stack, redo_stack,
+                        designer_state, on_puzzle_change, on_error,
+                    );
                     return;
                 }
-
-                match key.as_str() {
-                    "ArrowUp" => {
-                        ev.prevent_default();
-                        if r > 0 {
-                            selected_cell.set((r - 1, c));
-                        }
-                    }
-                    "ArrowDown" => {
-                        ev.prevent_default();
-                        if r + 1 < n {
-                            selected_cell.set((r + 1, c));
-                        }
-                    }
-                    "ArrowLeft" => {
-                        ev.prevent_default();
-                        if c > 0 {
-                            selected_cell.set((r, c - 1));
-                        }
-                    }
-                    "ArrowRight" => {
-                        ev.prevent_default();
-                        if c + 1 < n {
-                            selected_cell.set((r, c + 1));
-                        }
-                    }
-                    "Tab" => {
-                        ev.prevent_default();
-                        if num_slots > 0 {
-                            let slot_idx = slot_cells_static
-                                .iter()
-                                .position(|cells| cells.contains(&(r, c)))
-                                .unwrap_or(0);
-                            selected_slot.set(slot_idx);
-                            mode.set(Mode::Slot);
-                        }
-                    }
-                    "Escape" => {
-                        ev.prevent_default();
-                        let region = provisional_region.get_untracked();
-                        if !region.is_empty() {
-                            provisional_region.set(Vec::new());
-                            undo_stack.update(|s| {
-                                while matches!(s.last(), Some(UndoEntry::AddProvisionalCell)) {
-                                    s.pop();
-                                }
-                            });
-                        }
-                    }
-                    "Enter" => {
-                        ev.prevent_default();
-                        #[derive(Serialize)]
-                        struct CellArg {
-                            row: usize,
-                            column: usize,
-                        }
-                        #[derive(Serialize)]
-                        struct AddRegionArgs {
-                            cells: Vec<CellArg>,
-                        }
-                        let region = provisional_region.get_untracked();
-                        // Cells to commit: provisional region, or singleton current cell.
-                        let commit_cells = if region.is_empty() {
-                            if cell_slot_kd[r][c].is_some() {
-                                return; // covered cell, nothing to do
-                            }
-                            vec![(r, c)]
-                        } else {
-                            region
-                        };
-                        let cells_arg: Vec<CellArg> = commit_cells
-                            .iter()
-                            .map(|&(row, column)| CellArg { row, column })
-                            .collect();
-                        spawn_local(async move {
-                            let args = to_value(&AddRegionArgs { cells: cells_arg });
-                            let Ok(args) = args else { return };
-                            let result = invoke("add_region", args).await;
-                            if let Some(e) = result.as_string() {
-                                on_error.run(e);
-                                return;
-                            }
-                            let Ok(new_puzzle) = from_value::<KenkenPuzzle>(result) else {
-                                return;
-                            };
-                            // Find the slot index of the new cage in the new puzzle.
-                            let commit_set: HashSet<_> = commit_cells.iter().copied().collect();
-                            let new_slot_idx = new_puzzle
-                                .cages()
-                                .position(|cage| {
-                                    let cells: HashSet<_> = cage
-                                        .cells()
-                                        .into_iter()
-                                        .map(|c| (c.row, c.column))
-                                        .collect();
-                                    cells == commit_set
-                                })
-                                .unwrap_or(0);
-                            provisional_region.set(Vec::new());
-                            undo_stack.update(|s| {
-                                // Replace provisional cell entries with a single CommitRegion
-                                // entry.
-                                while matches!(s.last(), Some(UndoEntry::AddProvisionalCell)) {
-                                    s.pop();
-                                }
-                                s.push(UndoEntry::CommitRegion {
-                                    cells: commit_cells,
-                                });
-                            });
-                            let new_view = ViewState {
-                                mode: Mode::Slot,
-                                cell_row: 0,
-                                cell_col: 0,
-                                slot_idx: new_slot_idx,
-                            };
-                            on_puzzle_change.run((new_puzzle, new_view));
-                        });
-                    }
-                    _ => {}
-                }
+                // Multi-cell: show the operation selector.
+                open_selector.run(poly);
             }
-            Mode::Slot => {
-                let idx = selected_slot.get_untracked();
-                match key.as_str() {
-                    "Tab" if !ev.shift_key() => {
-                        ev.prevent_default();
-                        selected_slot.set((idx + 1) % num_slots.max(1));
-                    }
-                    "Tab" => {
-                        ev.prevent_default();
-                        selected_slot.set(if idx == 0 {
-                            num_slots.saturating_sub(1)
-                        } else {
-                            idx - 1
-                        });
-                    }
-                    "ArrowUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight" => {
-                        ev.prevent_default();
-                        let anchor_cell = slot_cells_static
-                            .get(idx)
-                            .map_or((0, 0), |cells| anchor(cells));
-                        selected_cell.set(anchor_cell);
-                        mode.set(Mode::Cell);
-                        let (r, c) = anchor_cell;
-                        match key.as_str() {
-                            "ArrowUp" if r > 0 => selected_cell.set((r - 1, c)),
-                            "ArrowDown" if r + 1 < n => selected_cell.set((r + 1, c)),
-                            "ArrowLeft" if c > 0 => selected_cell.set((r, c - 1)),
-                            "ArrowRight" if c + 1 < n => selected_cell.set((r, c + 1)),
-                            _ => {}
-                        }
-                    }
-                    _ => {}
-                }
-            }
+            _ => {}
         }
     };
 
@@ -581,28 +307,28 @@ pub fn Puzzle(
         .flat_map(|r| (0..n).map(move |c| (r, c)))
         .map(|(r, c)| {
             let (x, y) = origin(cell, r, c);
-            let fill = cell_slot[r][c].map_or(BG, |i| CAGE_PALETTE[colors[i] % CAGE_PALETTE.len()]);
+            let fill = cage_index[r][c].map_or(BG, |i| CAGE_PALETTE[colors[i] % CAGE_PALETTE.len()]);
             let domain = domains[r][c].clone();
-            view! { <Cell x=x y=y cell=cell domain=domain fill=fill top_margin=top_margin n=n /> }
+            let solution_value = solution_values[r][c];
+            view! { <CellComponent x=x y=y cell=cell domain=domain fill=fill top_margin=top_margin n=n solution_value=solution_value /> }
         })
         .collect();
 
-    let slots_view: Vec<_> = slots
+    let cages_view: Vec<_> = cages
         .iter()
         .map(|(cells, cage)| {
-            let (ar, ac) = anchor(cells);
-            let (x, y) = origin(cell, ar, ac);
+            let a = anchor(cells);
+            let (x, y) = origin(cell, a.row, a.column);
             let operation = cage.operation();
-            view! { <Cage x=x y=y op_f=op_f operation=operation /> }.into_any()
+            view! { <CageComponent x=x y=y op_f=op_f operation=operation /> }.into_any()
         })
         .collect();
 
     // Gridlines.
     let mut lines = Vec::new();
-    #[allow(clippy::needless_range_loop)]
     for r in 0..n.saturating_sub(1) {
         for c in 0..n {
-            let thick = is_thick(cell_slot[r][c], cell_slot[r + 1][c]);
+            let thick = is_thick(cage_index[r][c], cage_index[r + 1][c]);
             let (stroke, width) = if thick { (INK, THICK) } else { (LINE, THIN) };
             let x1 = origin(cell, 0, c).0;
             let x2 = x1 + cell;
@@ -612,10 +338,9 @@ pub fn Puzzle(
             });
         }
     }
-    #[allow(clippy::needless_range_loop)]
     for c in 0..n.saturating_sub(1) {
         for r in 0..n {
-            let thick = is_thick(cell_slot[r][c], cell_slot[r][c + 1]);
+            let thick = is_thick(cage_index[r][c], cage_index[r][c + 1]);
             let (stroke, width) = if thick { (INK, THICK) } else { (LINE, THIN) };
             let x = origin(cell, 0, c + 1).0;
             let y1 = origin(cell, r, 0).1;
@@ -626,8 +351,9 @@ pub fn Puzzle(
         }
     }
 
-    // Autofocus on mount.
+    // Focus the SVG on mount and whenever the operation selector opens/closes.
     Effect::new(move |_| {
+        let _ = pending_commit.get(); // re-run when selector changes
         use wasm_bindgen::JsCast;
         if let Some(el) = web_sys::window()
             .and_then(|w| w.document())
@@ -650,7 +376,8 @@ pub fn Puzzle(
             >
                 <rect x="0" y="0" width=total height=total fill=BG />
                 {cells_view}
-                {slots_view}
+                {cages_view}
+                <ProvisionalFills />
                 {lines}
                 <rect
                     x=MARGIN y=MARGIN
@@ -660,6 +387,7 @@ pub fn Puzzle(
                     stroke-width=THICK
                 />
                 <SelectionOverlay />
+                <OperationSelector />
             </svg>
             <div class="puzzle-footer">
                 <CageStats />
@@ -669,202 +397,90 @@ pub fn Puzzle(
     }
 }
 
-// ---- tests ----
+// ---- context ----
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use mathdoku::operation::{Operation, Operator};
-    #[test]
-    fn cell_size_divides_viewport_evenly() {
-        let c = cell_size(4);
-        assert!((c - 2.0f64.mul_add(-MARGIN, 600.0) / 4.0).abs() < 1e-10);
-    }
+/// Interaction state provided to all sub-components via context.
+#[derive(Clone)]
+pub struct InteractionState {
+    /// Single source of truth: active cell and provisional cages.
+    pub designer_state: RwSignal<State>,
+    /// Cage structure and constrained domains for on-demand queries.
+    pub partial_solution: PartialSolution,
+    /// Cell size in SVG units.
+    pub cell_size: f64,
+    /// Cells awaiting operator selection before being committed as a cage.
+    pub pending_commit: RwSignal<Option<PendingCommit>>,
+}
 
-    #[test]
-    fn cell_size_never_zero_for_n_zero() {
-        assert!(cell_size(0) > 0.0);
-    }
+// ---- Tauri IPC ----
 
-    #[test]
-    fn cell_size_decreases_with_larger_n() {
-        assert!(cell_size(4) > cell_size(9));
-    }
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(js_namespace = ["window", "__TAURI__", "core"])]
+    async fn invoke(cmd: &str, args: JsValue) -> JsValue;
+}
 
-    #[test]
-    fn origin_row_zero_col_zero_is_margin() {
-        let c = cell_size(4);
-        assert_eq!(origin(c, 0, 0), (MARGIN, MARGIN));
-    }
+/// Each entry is the cells of a cage (in library order) and the `Cage` itself.
+type CageList = Vec<(Vec<Cell>, Cage)>;
 
-    #[test]
-    fn origin_advances_by_cell_size() {
-        let c = cell_size(4);
-        let (x0, y0) = origin(c, 0, 0);
-        let (x1, y1) = origin(c, 1, 1);
-        assert!((x1 - x0 - c).abs() < 1e-10);
-        assert!((y1 - y0 - c).abs() < 1e-10);
-    }
+// ---- Helpers ----
 
-    #[test]
-    fn op_font_scales_with_cell() {
-        let large = op_font(100.0);
-        let small = op_font(50.0);
-        assert!(large > small);
-    }
+/// Advances the provisional cage one step during Shift+Arrow drawing.
+///
+/// Finds the provisional cage containing `(r, c)` (or starts a new singleton),
+/// extends it to include `(tr, tc)`, and returns the updated `State`.
+/// If `(r, c)` is disconnected from every existing provisional cage, the active
+/// one is left as-is and a new singleton is started.
+fn step_provisional_cage(
+    r: usize,
+    c: usize,
+    tr: usize,
+    tc: usize,
+    state: State,
+) -> State {
+    use std::collections::BTreeSet;
+    let current = Cell::new(r, c);
+    let target = Cell::new(tr, tc);
 
-    #[test]
-    fn op_font_minimum_is_ten() {
-        assert!((op_font(0.0) - 10.0).abs() < 1e-10);
-    }
+    // Find the provisional cage that contains (or is adjacent to) current.
+    let active = state.provisional_cages
+        .iter()
+        .find(|p| p.cells().contains(&current))
+        .cloned();
 
-    #[test]
-    fn op_label_add() {
-        assert_eq!(
-            super::super::cage::op_label(&Operation::new(Operator::Add, 5)),
-            "+5"
-        );
-    }
+    let (region, mut remaining): (Polyomino, BTreeSet<Polyomino>) = match active {
+        None => {
+            // No region contains current — start a new singleton.
+            let new_region = Polyomino::from_cells(&[current]).expect("singleton is always valid");
+            (new_region, state.provisional_cages.clone())
+        }
+        Some(poly) => {
+            let rest: BTreeSet<Polyomino> = state.provisional_cages
+                .iter()
+                .filter(|p| *p != &poly)
+                .cloned()
+                .collect();
+            match poly.insert(current) {
+                Ok(extended) => (extended, rest),
+                Err(_) => {
+                    // Current cell disconnected from this cage — park it and start fresh.
+                    let mut parked = rest;
+                    parked.insert(poly);
+                    let new_region = Polyomino::from_cells(&[current]).expect("singleton is always valid");
+                    (new_region, parked)
+                }
+            }
+        }
+    };
 
-    #[test]
-    fn op_label_subtract() {
-        assert_eq!(
-            super::super::cage::op_label(&Operation::new(Operator::Subtract, 2)),
-            "\u{2212}2"
-        );
-    }
+    // Extend to include target (guaranteed adjacent — one step from current).
+    let region = region.insert(target).unwrap_or(region);
 
-    #[test]
-    fn op_label_multiply() {
-        assert_eq!(
-            super::super::cage::op_label(&Operation::new(Operator::Multiply, 12)),
-            "\u{00d7}12"
-        );
-    }
-
-    #[test]
-    fn op_label_divide() {
-        assert_eq!(
-            super::super::cage::op_label(&Operation::new(Operator::Divide, 3)),
-            "\u{00f7}3"
-        );
-    }
-
-    #[test]
-    fn op_label_given_shows_only_target() {
-        assert_eq!(
-            super::super::cage::op_label(&Operation::new(Operator::Given, 7)),
-            "7"
-        );
-    }
-
-    #[test]
-    fn neighbors_center_has_four() {
-        assert_eq!(neighbors(2, 2, 5).len(), 4);
-    }
-
-    #[test]
-    fn neighbors_corner_has_two() {
-        assert_eq!(neighbors(0, 0, 4).len(), 2);
-    }
-
-    #[test]
-    fn neighbors_edge_has_three() {
-        assert_eq!(neighbors(0, 2, 5).len(), 3);
-    }
-
-    #[test]
-    fn neighbors_1x1_grid_is_empty() {
-        assert!(neighbors(0, 0, 1).is_empty());
-    }
-
-    #[test]
-    fn anchor_single_cell() {
-        assert_eq!(anchor(&[(3, 2)]), (3, 2));
-    }
-
-    #[test]
-    fn anchor_picks_leftmost_then_topmost() {
-        assert_eq!(anchor(&[(1, 0), (0, 1)]), (1, 0));
-    }
-
-    #[test]
-    fn anchor_tiebreaks_by_row() {
-        assert_eq!(anchor(&[(2, 1), (0, 1)]), (0, 1));
-    }
-
-    #[test]
-    fn anchor_empty_returns_default() {
-        assert_eq!(anchor(&[]), (0, 0));
-    }
-
-    #[test]
-    fn is_thick_both_same_slot_is_thin() {
-        assert!(!is_thick(Some(0), Some(0)));
-    }
-
-    #[test]
-    fn is_thick_different_slots_is_thick() {
-        assert!(is_thick(Some(0), Some(1)));
-    }
-
-    #[test]
-    fn is_thick_one_none_is_thick() {
-        assert!(is_thick(Some(0), None));
-        assert!(is_thick(None, Some(0)));
-    }
-
-    #[test]
-    fn is_thick_both_none_is_thick() {
-        assert!(is_thick(None, None));
-    }
-
-    #[test]
-    fn assign_colors_empty_slots() {
-        let (colors, _) = assign_colors(4, &[]);
-        assert_eq!(colors, Vec::<usize>::new());
-    }
-
-    #[test]
-    fn assign_colors_single_slot() {
-        let slots = vec![vec![(0, 0), (0, 1)]];
-        let (colors, _) = assign_colors(4, &slots);
-        assert_eq!(colors.len(), 1);
-    }
-
-    #[test]
-    fn assign_colors_adjacent_slots_get_different_colors() {
-        let slots = vec![vec![(0, 0)], vec![(0, 1)]];
-        let (colors, _) = assign_colors(4, &slots);
-        assert_ne!(colors[0], colors[1]);
-    }
-
-    #[test]
-    fn assign_colors_non_adjacent_slots_differ_from_their_neighbors() {
-        let slots = vec![vec![(0, 0)], vec![(0, 1)], vec![(0, 2)]];
-        let (colors, _) = assign_colors(4, &slots);
-        assert_ne!(colors[0], colors[1]);
-        assert_ne!(colors[1], colors[2]);
-    }
-
-    #[test]
-    fn assign_colors_four_adjacent_slots_get_distinct_colors() {
-        let slots: Vec<Vec<(usize, usize)>> = (0..4).map(|c| vec![(0, c)]).collect();
-        let (colors, _) = assign_colors(4, &slots);
-        assert_ne!(colors[0], colors[1]);
-        assert_ne!(colors[1], colors[2]);
-        assert_ne!(colors[2], colors[3]);
-    }
-
-    #[test]
-    fn mode_cell_and_slot_are_distinct() {
-        assert_ne!(Mode::Cell, Mode::Slot);
-    }
-
-    #[test]
-    fn mode_copy_is_independent() {
-        let a = Mode::Cell;
-        let b = a;
-        assert_eq!(a, b);
+    remaining.insert(region);
+    State {
+        active: Cell::new(tr, tc),
+        provisional_cages: remaining,
+        ..state
     }
 }
+

@@ -1,6 +1,8 @@
 //! Core puzzle generation: assigns operations and targets to cages over a
 //! solved Latin square.
 
+#![allow(clippy::cast_precision_loss)] // usize→f64 for Poisson mean/sample; values are small
+
 use std::collections::HashSet;
 
 use rand::{Rng, RngExt};
@@ -40,7 +42,6 @@ impl SizeDistribution {
     /// For `n = 0`, the same distribution is returned as for `n = 1`. The
     /// puzzle constructor rejects `n = 0` independently, so the degenerate
     /// case never propagates to sampling.
-    #[allow(clippy::cast_precision_loss)]
     pub fn default_for(n: usize) -> Self {
         Self {
             mean: n.max(1) as f64 / 3.0,
@@ -130,10 +131,6 @@ pub fn generate<R: Rng>(n: usize, rng: &mut R) -> Result<Puzzle, Error> {
 ///
 /// # Errors
 /// Returns `Error` if `n` is not in `1..=9`, or any error returned by `op`.
-///
-/// # Panics
-/// Panics if propagation after inserting a cage returns `None` (no solution
-/// exists), which is structurally unreachable when the tiling is valid.
 #[allow(clippy::cast_possible_truncation)]
 pub fn generate_with<R: Rng, F>(
     n: usize,
@@ -339,7 +336,6 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::cast_precision_loss)]
     fn poisson_empirical_mean_close_to_target() {
         let mut rng = ChaCha8Rng::seed_from_u64(123);
         for target in [0.5_f64, 1.0, 2.5, 4.0] {

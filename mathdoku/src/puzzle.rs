@@ -1,40 +1,35 @@
-//! The [`Puzzle`] type: an `n×n` grid with cage constraints.
+//! The [`Puzzle`] type: an `n×n` grid with cage constraints (no cell domains).
 
-use crate::Error::{InvalidGridSize, RegionConflict};
-use crate::arithmetic::Tuple;
+use crate::Error::InvalidGridSize;
+use crate::Error::RegionConflict;
 use crate::cage::Cage;
-use crate::operation::Operation;
-use crate::{Cell, Error, N, Polyomino, Values};
+use crate::{Error, Polyomino};
 use serde::de::Error as DeError;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::BTreeSet;
 
-// Serde wire format: flat struct with an n×n `values` array of cell domains.
-// `values` is optional on deserialization; absent means full domains for all cells.
+// Serde wire format.
 #[derive(Serialize, Deserialize)]
 struct PuzzleWire {
     n: usize,
     #[serde(default)]
-    values: Vec<Vec<Values>>,
-    #[serde(default)]
     cages: BTreeSet<Cage>,
 }
 
-/// An `n×n` Mathdoku grid.
+/// An `n×n` Mathdoku puzzle defined by its cage constraints.
 ///
-/// Every `Puzzle` is at a constraint-propagation fixpoint: all cage, row, and
-/// column constraints have been applied as far as they can be inferred. Every
-/// public method that returns a new `Puzzle` upholds this invariant by
-/// calling `constrain` before returning.
+/// A `Puzzle` stores only the structural information — the grid size and the set
+/// of cages — without any cell domain information. Cell domains live in [`Grid`].
+///
+/// [`Grid`]: crate::Grid
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct Puzzle {
     n: usize,
-    values: Box<[Values]>,
     cages: BTreeSet<Cage>,
 }
 
 impl Puzzle {
-    /// Creates an empty `n×n` puzzle with all cell domains initialized to `{1, ..., n}`.
+    /// Creates an empty `n×n` puzzle with no cages.
     ///
     /// # Errors
     /// Returns [`InvalidGridSize`] if `n` is not in `1..=9`.
@@ -44,226 +39,69 @@ impl Puzzle {
         }
         Ok(Self {
             n,
-            values: vec![Values::all(n); n * n].into_boxed_slice(),
             cages: BTreeSet::new(),
         })
     }
 
+    /// Returns the grid size `n` (puzzle is `n`×`n`).
     pub const fn n(&self) -> usize {
         self.n
     }
 
-    /// Returns an iterator over all solutions to this puzzle.
-    ///
-    /// Each item is a solved [`Puzzle`] where every cell domain is a singleton.
-    /// Uses MAC (Maintaining Arc Consistency): each branch is followed immediately by
-    /// constraint propagation before the next branch is chosen.
-    ///
-    /// The iterator yields [`Err`] and stops if a propagation error occurs (e.g. an
-    /// out-of-bounds cell). Well-formed puzzles will never error.
-    pub fn solutions(&self) -> impl Iterator<Item = Result<Self, Error>> {
-        crate::puzzle_csp::Solutions::new(self)
-    }
-
-    /// Returns the cages in this puzzle in polyomino order.
+    /// Returns an iterator over all cages in this puzzle in polyomino order.
     pub fn cages(&self) -> impl Iterator<Item = &Cage> {
         self.cages.iter()
     }
 
-    /// Returns all valid ordered value assignments for `cage` in this puzzle.
+    /// Returns a new puzzle with `cage` added.
     ///
-    /// Each tuple assigns one value from `1..=n` to each cell in the cage, in
-    /// the cage's cell order. Tuples are in lexicographic order.
+    /// Returns `Ok(self.clone())` if `cage` is already present. Does not
+    /// propagate constraints — call [`Grid::constrain`] separately to apply the
+    /// new cage's constraints to a grid.
     ///
-    /// # Errors
-    /// Returns [`Error::InvalidCage`] if `cage` is not present in the puzzle.
-    #[allow(clippy::cast_possible_truncation)] // n is validated to 1..=9 in Puzzle::new
-    pub fn cage_tuples(&self, cage: &Cage) -> Result<Vec<Tuple>, Error> {
-        if !self.cages.contains(cage) {
-            return Err(Error::InvalidCage(cage.clone()));
-        }
-        Ok(cage.tuples(self.n as N).collect())
-    }
-
-    /// Returns a new puzzle with the cells of `cage` set to the values in the
-    /// tuple at `index` (tuples in the same lexicographic order as [`cage_tuples`]),
-    /// then propagated to a new constraint fixpoint.
-    ///
-    /// [`cage_tuples`]: Self::cage_tuples
+    /// [`Grid::constrain`]: crate::Grid::constrain
     ///
     /// # Errors
-    /// Returns [`Error::InvalidCage`] if `cage` is not present in the puzzle, or
-    /// [`Error::InvalidTupleIndex`] if `index` is out of range.
-    #[allow(clippy::cast_possible_truncation)] // n is validated to 1..=9 in Puzzle::new
-    pub fn set_cage_tuple(&self, cage: &Cage, index: usize) -> Result<Self, Error> {
-        if !self.cages.contains(cage) {
-            return Err(Error::InvalidCage(cage.clone()));
-        }
-        let tuples: Vec<_> = cage.tuples(self.n as N).collect();
-        let tuple = tuples
-            .get(index)
-            .ok_or(Error::InvalidTupleIndex(index, tuples.len()))?;
-        let mut puzzle = self.clone();
-        for (cell, &value) in cage.cells().iter().zip(tuple) {
-            puzzle = puzzle.set_cell_value(*cell, value)?;
-        }
-        puzzle.constrain()
-    }
-
-    /// # Errors
-    /// Returns [`Error::RegionConflict`] if `polyomino` overlaps an existing cage.
-    #[allow(clippy::todo)]
-    pub fn allowed_tuples(&self, polyomino: &Polyomino) -> Result<Vec<Operation>, Error> {
-        // TODO Error if the polyomino is outside puzzle bounds.
-        if self.intersects_cage(polyomino) {
-            return Err(RegionConflict(polyomino.clone()));
-        }
-        // TODO Loop over all possible tuples on the polyomino returned by cage::tuples.
-        // TODO Filter tuples by current cell values.
-        todo!()
-    }
-
-    /// Returns a new puzzle adding `cage` and propagating all constraints.
-    ///
-    /// # Errors
-    /// Returns an error if propagation fails (e.g. a cell is out of bounds).
+    /// Returns [`RegionConflict`] if `cage`'s polyomino overlaps an
+    /// existing cage's polyomino (but not if the cage is already present).
     pub fn insert_cage(&self, cage: Cage) -> Result<Self, Error> {
+        // If the cage is already present, return a clone without error.
+        if self.cages.contains(&cage) {
+            return Ok(self.clone());
+        }
         let polyomino = cage.polyomino();
         if self.intersects_cage(polyomino) {
             return Err(RegionConflict(polyomino.clone()));
         }
         let mut cages = self.cages.clone();
-        if !cages.insert(cage) {
-            return Ok(self.clone());
-        }
-        Self {
-            n: self.n,
-            values: self.values.clone(),
-            cages,
-        }
-        .constrain()
+        let _ = cages.insert(cage);
+        Ok(Self { n: self.n, cages })
     }
 
-    /// Returns a new puzzle with `cage` removed and constraints re-propagated.
+    /// Returns a new puzzle with `cage` removed.
     ///
-    /// Returns `self` unchanged if `cage` is not present.
+    /// Returns `self` unchanged if `cage` is not present. Does not re-propagate
+    /// constraints — call [`Grid::loosen`] separately to widen the affected cells.
     ///
-    /// All cell domains are reset to `{1..=n}` before propagation because removing
-    /// a cage can widen domains that it previously narrowed, and there is no way to
-    /// recover the pre-narrowing state without replaying from scratch.
-    ///
-    /// # Errors
-    /// Returns an error if propagation fails (e.g. a cell is out of bounds).
-    pub fn remove_cage(&self, cage: &Cage) -> Result<Self, Error> {
+    /// [`Grid::loosen`]: crate::Grid::loosen
+    #[must_use]
+    pub fn remove_cage(&self, cage: &Cage) -> Self {
         let mut cages = self.cages.clone();
-        if !cages.remove(cage) {
-            let polyomino = cage.polyomino();
-            return if self.intersects_cage(polyomino) {
-                Err(RegionConflict(polyomino.clone()))
-            } else {
-                Ok(self.clone())
-            };
-        }
-        Self {
-            n: self.n,
-            values: self.values.clone(),
-            cages,
-        }
-        .loosen(
-            &(0..self.n)
-                .flat_map(|r| (0..self.n).map(move |c| Cell::new(r, c)))
-                .collect::<Vec<_>>(),
-        )
+        let _ = cages.remove(cage);
+        Self { n: self.n, cages }
     }
 
-    /// Returns the current domain of `cell`.
-    ///
-    /// # Errors
-    /// Returns [`Error::InvalidCell`] if `cell` is outside the grid.
-    pub fn cell_values(&self, cell: Cell) -> Result<Values, Error> {
-        Ok(self.values[self.index(cell)?])
-    }
-
-    /// Returns a new puzzle with `cell`'s domain narrowed to the singleton `{n}`.
-    ///
-    /// # Errors
-    /// Returns [`Error::InvalidCell`] if `cell` is outside the grid.
-    pub(crate) fn set_cell_value(&self, cell: Cell, n: N) -> Result<Self, Error> {
-        self.set_domain(cell, Values::singleton(n))
-    }
-
-    /// Returns a new puzzle with `cell`'s domain replaced by `values`.
-    ///
-    /// # Errors
-    /// Returns [`Error::InvalidCell`] if `cell` is outside the grid.
-    pub(crate) fn set_domain(&self, cell: Cell, values: Values) -> Result<Self, Error> {
-        let i = self.index(cell)?;
-        let mut new_values = self.values.clone();
-        new_values[i] = values;
-        Ok(Self {
-            n: self.n,
-            values: new_values,
-            cages: self.cages.clone(),
-        })
-    }
     fn intersects_cage(&self, polyomino: &Polyomino) -> bool {
         self.cages
             .iter()
             .any(|cage| cage.polyomino().intersects(polyomino))
     }
-
-    const fn index(&self, cell: Cell) -> Result<usize, Error> {
-        if cell.row < self.n && cell.column < self.n {
-            Ok(cell.row * self.n + cell.column)
-        } else {
-            Err(Error::InvalidCell(cell))
-        }
-    }
-
-    /// Propagates all constraints to a fixpoint using generalized arc consistency.
-    ///
-    /// Runs Régin's GAC on every row and column (all-different) and every cage,
-    /// re-propagating any constraint adjacent to a cell whose domain shrinks, until
-    /// no further pruning is possible.
-    ///
-    /// # Errors
-    /// Returns an error if any cell is out of bounds during propagation.
-    fn constrain(&self) -> Result<Self, Error> {
-        crate::puzzle_csp::puzzle_fixpoint(self)
-    }
-
-    /// Returns a new puzzle with the domains of `cells` reset to `{1..=n}` and
-    /// all constraints re-propagated.
-    ///
-    /// This is the inverse of narrowing: use it when a constraint that was
-    /// previously narrowing those cells is removed and their domains may have
-    /// widened beyond what the remaining constraints require.
-    ///
-    /// # Errors
-    /// Returns an error if any cell is out of bounds or propagation fails.
-    fn loosen(&self, cells: &[Cell]) -> Result<Self, Error> {
-        let mut values = self.values.clone();
-        let full = Values::all(self.n);
-        for &cell in cells {
-            values[self.index(cell)?] = full;
-        }
-        Self {
-            n: self.n,
-            values,
-            cages: self.cages.clone(),
-        }
-        .constrain()
-    }
 }
 
 impl Serialize for Puzzle {
     fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        let rows: Vec<Vec<Values>> = (0..self.n)
-            .map(|r| (0..self.n).map(|c| self.values[r * self.n + c]).collect())
-            .collect();
         PuzzleWire {
             n: self.n,
-            values: rows,
             cages: self.cages.clone(),
         }
         .serialize(s)
@@ -277,29 +115,8 @@ impl<'de> Deserialize<'de> for Puzzle {
         if !(1..=9).contains(&n) {
             return Err(DeError::custom(format!("invalid grid size {n}")));
         }
-        let values: Box<[Values]> = if wire.values.is_empty() {
-            // Absent values field: initialize all cells to the full domain {1..=n}.
-            vec![Values::all(n); n * n].into_boxed_slice()
-        } else {
-            if wire.values.len() != n {
-                return Err(DeError::custom(format!(
-                    "expected {n} rows of values, got {}",
-                    wire.values.len()
-                )));
-            }
-            for (r, row) in wire.values.iter().enumerate() {
-                if row.len() != n {
-                    return Err(DeError::custom(format!(
-                        "row {r}: expected {n} columns, got {}",
-                        row.len()
-                    )));
-                }
-            }
-            wire.values.into_iter().flatten().collect()
-        };
         Ok(Self {
             n,
-            values,
             cages: wire.cages,
         })
     }
@@ -308,16 +125,20 @@ impl<'de> Deserialize<'de> for Puzzle {
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-    use serde_json::{Value, from_str, json, to_string};
+    use serde_json::{from_str, to_string};
 
     use super::*;
     use crate::M;
     use crate::cage::Cage;
-    use crate::operation::Operator::{Add, Divide, Given};
+    use crate::operation::Operator::{Add, Given};
     use crate::operation::{Operation, Operator};
     use crate::polyomino::Polyomino;
+
     fn cage_at(positions: &[(usize, usize)], operator: Operator, target: M) -> Cage {
-        let cells: Vec<Cell> = positions.iter().map(|&(r, c)| Cell::new(r, c)).collect();
+        let cells: Vec<crate::Cell> = positions
+            .iter()
+            .map(|&(r, c)| crate::Cell::new(r, c))
+            .collect();
         let poly = Polyomino::from_cells(&cells).unwrap();
         Cage::new(poly, Operation::new(operator, target))
     }
@@ -342,61 +163,9 @@ mod tests {
     }
 
     #[test]
-    fn new_domains_are_full() {
+    fn new_has_no_cages() {
         let p = Puzzle::new(4).unwrap();
-        let expected = Values::all(4);
-        for r in 0..4 {
-            for c in 0..4 {
-                assert_eq!(
-                    p.cell_values(Cell::new(r, c)).unwrap(),
-                    expected,
-                    "cell ({r},{c}) should have full domain"
-                );
-            }
-        }
-    }
-
-    // --- Puzzle::get_cell_values ---
-
-    #[test]
-    fn get_cell_values_out_of_bounds_returns_err() {
-        let p = Puzzle::new(3).unwrap();
-        assert!(matches!(
-            p.cell_values(Cell::new(3, 0)),
-            Err(Error::InvalidCell(_))
-        ));
-        assert!(matches!(
-            p.cell_values(Cell::new(0, 3)),
-            Err(Error::InvalidCell(_))
-        ));
-    }
-
-    // --- Puzzle::set_cell_values ---
-
-    #[test]
-    fn set_cell_values_narrows_domain() {
-        let p = Puzzle::new(4).unwrap();
-        let cell = Cell::new(1, 2);
-        let p2 = p.set_cell_value(cell, 3).unwrap();
-        assert_eq!(p2.cell_values(cell).unwrap(), Values::new(&[3]).unwrap());
-    }
-
-    #[test]
-    fn set_cell_values_is_non_destructive() {
-        let p = Puzzle::new(4).unwrap();
-        let cell = Cell::new(0, 0);
-        let _ = p.set_cell_value(cell, 2).unwrap();
-        // Original puzzle is unchanged.
-        assert_eq!(p.cell_values(cell).unwrap(), Values::all(4));
-    }
-
-    #[test]
-    fn set_cell_values_out_of_bounds_returns_err() {
-        let p = Puzzle::new(3).unwrap();
-        assert!(matches!(
-            p.set_cell_value(Cell::new(3, 0), 1),
-            Err(Error::InvalidCell(_))
-        ));
+        assert_eq!(p.cages().count(), 0);
     }
 
     // --- Puzzle::insert_cage ---
@@ -414,218 +183,85 @@ mod tests {
         let p = Puzzle::new(4).unwrap();
         let cage = cage_at(&[(0, 0)], Given, 3);
         let _ = p.insert_cage(cage);
-        // Original puzzle unchanged — still has no cages (domains still full).
-        assert_eq!(p.cell_values(Cell::new(0, 0)).unwrap(), Values::all(4));
-    }
-
-    // --- Puzzle::constrain ---
-
-    // Builds a fully caged 2×2 puzzle with four Given cages and verifies that
-    // constrain pins every cell to its given value.
-    //
-    //   [1][2]
-    //   [2][1]
-    //
-    // Four Given cages: (0,0)=1, (0,1)=2, (1,0)=2, (1,1)=1.
-    fn solved_2x2() -> Puzzle {
-        Puzzle::new(2)
-            .unwrap()
-            .insert_cage(cage_at(&[(0, 0)], Given, 1))
-            .unwrap()
-            .insert_cage(cage_at(&[(0, 1)], Given, 2))
-            .unwrap()
-            .insert_cage(cage_at(&[(1, 0)], Given, 2))
-            .unwrap()
-            .insert_cage(cage_at(&[(1, 1)], Given, 1))
-            .unwrap()
+        // Original puzzle unchanged — still has no cages.
+        assert_eq!(p.cages().count(), 0);
     }
 
     #[test]
-    fn constrain_given_cages_pin_all_cells() {
-        let fp = solved_2x2().constrain().unwrap();
-        assert_eq!(
-            fp.cell_values(Cell::new(0, 0)).unwrap(),
-            Values::new(&[1]).unwrap()
-        );
-        assert_eq!(
-            fp.cell_values(Cell::new(0, 1)).unwrap(),
-            Values::new(&[2]).unwrap()
-        );
-        assert_eq!(
-            fp.cell_values(Cell::new(1, 0)).unwrap(),
-            Values::new(&[2]).unwrap()
-        );
-        assert_eq!(
-            fp.cell_values(Cell::new(1, 1)).unwrap(),
-            Values::new(&[1]).unwrap()
-        );
+    fn insert_cage_duplicate_returns_self() {
+        let p = Puzzle::new(4).unwrap();
+        let cage = cage_at(&[(0, 0)], Given, 3);
+        let p2 = p.insert_cage(cage.clone()).unwrap();
+        let p3 = p2.insert_cage(cage).unwrap();
+        assert_eq!(p2, p3);
     }
 
     #[test]
-    fn constrain_is_idempotent() {
-        let p = solved_2x2();
-        let fp1 = p.constrain().unwrap();
-        let fp2 = fp1.constrain().unwrap();
-        assert_eq!(fp1, fp2);
-    }
-
-    #[test]
-    fn constrain_no_cages_unchanged() {
-        // Without cages, AllDifferent alone cannot pin any domain in a fresh puzzle.
-        let p = Puzzle::new(2).unwrap();
-        let fp = p.constrain().unwrap();
-        assert_eq!(fp, p);
-    }
-
-    // 2×2 with two arithmetic cages.
-    //
-    //   [?][?]     (0,0)+(0,1) = 3 (Add)    → only (1,2) or (2,1)
-    //   [?][?]     (1,0)÷(1,1) = 2 (Divide) → only (1,2) or (2,1)
-    //
-    // Both solutions [[1,2],[2,1]] and [[2,1],[1,2]] satisfy all constraints, so
-    // constrain cannot pin any cell — but it can prune each domain to {1,2}.
-    #[test]
-    fn constrain_arithmetic_cages_prune_2x2() {
-        let p = Puzzle::new(2)
+    fn insert_cage_overlap_returns_region_conflict() {
+        // A cage at (0,0)+(0,1) is already present; inserting a cage that
+        // shares cell (0,0) with a *different* polyomino is a region conflict.
+        let p = Puzzle::new(4)
             .unwrap()
             .insert_cage(cage_at(&[(0, 0), (0, 1)], Add, 3))
-            .unwrap()
-            .insert_cage(cage_at(&[(1, 0), (1, 1)], Divide, 2))
             .unwrap();
-        let fp = p.constrain().unwrap();
-        let expected = Values::new(&[1, 2]).unwrap();
-        for r in 0..2 {
-            for c in 0..2 {
-                assert_eq!(
-                    fp.cell_values(Cell::new(r, c)).unwrap(),
-                    expected,
-                    "cell ({r},{c}) should be pruned to {{1,2}}"
-                );
-            }
-        }
+        // This cage shares cell (0,0) with the existing cage but has a different polyomino.
+        let overlapping = cage_at(&[(0, 0)], Given, 1);
+        assert!(matches!(
+            p.insert_cage(overlapping),
+            Err(RegionConflict(_))
+        ));
     }
 
-    // --- Puzzle::solutions ---
-
-    // A 2×2 puzzle with no cages has two valid latin squares:
-    //   [[1,2],[2,1]] and [[2,1],[1,2]].
     #[test]
-    fn solutions_no_cages_yields_all_latin_squares() {
-        let p = Puzzle::new(2).unwrap();
-        let solutions: Vec<Puzzle> = p.solutions().map(Result::unwrap).collect();
-        assert_eq!(solutions.len(), 2);
-        for sol in &solutions {
-            for r in 0..2 {
-                for c in 0..2 {
-                    assert!(sol.cell_values(Cell::new(r, c)).unwrap().is_singleton());
-                }
-            }
-        }
+    fn insert_cage_accumulates_cages() {
+        let p = Puzzle::new(4).unwrap();
+        let c1 = cage_at(&[(0, 0)], Given, 1);
+        let c2 = cage_at(&[(0, 1)], Given, 2);
+        let p3 = p.insert_cage(c1).unwrap().insert_cage(c2).unwrap();
+        assert_eq!(p3.cages().count(), 2);
     }
 
-    // The solved_2x2 puzzle (all Given cages) already has a unique solution;
-    // solutions() should yield exactly that one.
+    // --- Puzzle::remove_cage ---
+
     #[test]
-    fn solutions_fully_caged_yields_one_solution() {
-        let solutions: Vec<Puzzle> = solved_2x2().solutions().map(Result::unwrap).collect();
-        assert_eq!(solutions.len(), 1);
-        let sol = &solutions[0];
-        assert_eq!(
-            sol.cell_values(Cell::new(0, 0)).unwrap(),
-            Values::new(&[1]).unwrap()
-        );
-        assert_eq!(
-            sol.cell_values(Cell::new(0, 1)).unwrap(),
-            Values::new(&[2]).unwrap()
-        );
-        assert_eq!(
-            sol.cell_values(Cell::new(1, 0)).unwrap(),
-            Values::new(&[2]).unwrap()
-        );
-        assert_eq!(
-            sol.cell_values(Cell::new(1, 1)).unwrap(),
-            Values::new(&[1]).unwrap()
-        );
+    fn remove_cage_removes_present_cage() {
+        let cage = cage_at(&[(0, 0)], Given, 1);
+        let p = Puzzle::new(4).unwrap().insert_cage(cage.clone()).unwrap();
+        let p2 = p.remove_cage(&cage);
+        assert_eq!(p2.cages().count(), 0);
     }
 
-    // A 2×2 puzzle with an impossible constraint (Add target=0 is unreachable) yields no solutions.
     #[test]
-    fn solutions_infeasible_yields_none() {
-        // Given cage with value 5 is out of range for a 2×2 (valid values: 1..=2).
-        let p = Puzzle::new(2)
+    fn remove_cage_absent_returns_self() {
+        let cage = cage_at(&[(0, 0)], Given, 1);
+        let p = Puzzle::new(4).unwrap();
+        let p2 = p.remove_cage(&cage);
+        assert_eq!(p, p2);
+    }
+
+    #[test]
+    fn remove_cage_is_non_destructive() {
+        let cage = cage_at(&[(0, 0)], Given, 1);
+        let p = Puzzle::new(4).unwrap().insert_cage(cage.clone()).unwrap();
+        let _ = p.remove_cage(&cage);
+        assert_eq!(p.cages().count(), 1);
+    }
+
+    // --- Puzzle::cages ---
+
+    #[test]
+    fn cages_returns_all_inserted_cages() {
+        let c1 = cage_at(&[(0, 0)], Given, 1);
+        let c2 = cage_at(&[(0, 1)], Add, 2);
+        let p = Puzzle::new(4)
             .unwrap()
-            .insert_cage(cage_at(&[(0, 0)], Given, 5))
+            .insert_cage(c1.clone())
+            .unwrap()
+            .insert_cage(c2.clone())
             .unwrap();
-        assert!(p.solutions().map(Result::unwrap).next().is_none());
-    }
-
-    // A mixed-arithmetic 2×2:
-    //   (0,0)+(0,1) = 3  →  only {(1,2),(2,1)}
-    //   (1,0) given = 2, (1,1) given = 1
-    // The unique solution is [[1,2],[2,1]].
-    #[test]
-    fn solutions_mixed_cages_unique_solution() {
-        let p = Puzzle::new(2)
-            .unwrap()
-            .insert_cage(cage_at(&[(0, 0), (0, 1)], Add, 3))
-            .unwrap()
-            .insert_cage(cage_at(&[(1, 0)], Given, 2))
-            .unwrap()
-            .insert_cage(cage_at(&[(1, 1)], Given, 1))
-            .unwrap();
-        let solutions: Vec<Puzzle> = p.solutions().map(Result::unwrap).collect();
-        assert_eq!(solutions.len(), 1);
-        let sol = &solutions[0];
-        assert_eq!(
-            sol.cell_values(Cell::new(0, 0)).unwrap(),
-            Values::new(&[1]).unwrap()
-        );
-        assert_eq!(
-            sol.cell_values(Cell::new(0, 1)).unwrap(),
-            Values::new(&[2]).unwrap()
-        );
-        assert_eq!(
-            sol.cell_values(Cell::new(1, 0)).unwrap(),
-            Values::new(&[2]).unwrap()
-        );
-        assert_eq!(
-            sol.cell_values(Cell::new(1, 1)).unwrap(),
-            Values::new(&[1]).unwrap()
-        );
-    }
-
-    // A 3×3 puzzle with three row-sum cages (each row sums to 6).
-    // There are multiple valid latin squares satisfying this, so we check
-    // solution quality rather than count: every solution must be fully
-    // assigned and each row must sum to 6.
-    #[test]
-    fn solutions_3x3_row_sum_cages_all_valid() {
-        let p = Puzzle::new(3)
-            .unwrap()
-            .insert_cage(cage_at(&[(0, 0), (0, 1), (0, 2)], Add, 6))
-            .unwrap()
-            .insert_cage(cage_at(&[(1, 0), (1, 1), (1, 2)], Add, 6))
-            .unwrap()
-            .insert_cage(cage_at(&[(2, 0), (2, 1), (2, 2)], Add, 6))
-            .unwrap();
-        let solutions: Vec<Puzzle> = p.solutions().map(Result::unwrap).collect();
-        assert!(!solutions.is_empty(), "should have at least one solution");
-        for sol in &solutions {
-            for r in 0..3 {
-                // Every cell is a singleton.
-                for c in 0..3 {
-                    assert!(
-                        sol.cell_values(Cell::new(r, c)).unwrap().is_singleton(),
-                        "cell ({r},{c}) should be singleton in every solution"
-                    );
-                }
-                // Each row sums to 6.
-                let row_sum: u32 = (0..3)
-                    .map(|c| u32::from(sol.cell_values(Cell::new(r, c)).unwrap().values()[0]))
-                    .sum();
-                assert_eq!(row_sum, 6, "row {r} should sum to 6");
-            }
-        }
+        let cages: Vec<_> = p.cages().cloned().collect();
+        assert!(cages.contains(&c1));
+        assert!(cages.contains(&c2));
     }
 
     // --- serde round-trip ---
@@ -645,46 +281,9 @@ mod tests {
 
     #[test]
     fn puzzle_deserialize_invalid_n_returns_err() {
-        let json = r#"{"n":0,"values":[],"cages":[]}"#;
+        let json = r#"{"n":0,"cages":[]}"#;
         assert!(from_str::<Puzzle>(json).is_err());
-        let json = r#"{"n":10,"values":[],"cages":[]}"#;
+        let json = r#"{"n":10,"cages":[]}"#;
         assert!(from_str::<Puzzle>(json).is_err());
-    }
-
-    #[test]
-    fn puzzle_deserialize_wrong_row_count_returns_err() {
-        // n=2 but only 1 row provided
-        let json = r#"{"n":2,"values":[[1,2]],"cages":[]}"#;
-        assert!(from_str::<Puzzle>(json).is_err());
-    }
-
-    #[test]
-    fn puzzle_deserialize_wrong_column_count_returns_err() {
-        // n=2 but rows have 3 columns
-        let json = r#"{"n":2,"values":[[1,2,3],[1,2,3]],"cages":[]}"#;
-        assert!(from_str::<Puzzle>(json).is_err());
-    }
-
-    #[test]
-    fn puzzle_serialize_values_are_row_major() {
-        let p = Puzzle::new(2)
-            .unwrap()
-            .set_cell_value(Cell::new(0, 0), 1)
-            .unwrap();
-        let json = to_string(&p).unwrap();
-        let v: Value = from_str(&json).unwrap();
-        // values[0][0] should be the singleton [1]
-        assert_eq!(v["values"][0][0], json!([1]));
-    }
-
-    #[test]
-    fn insert_cage_accumulates_cages() {
-        let p = Puzzle::new(4).unwrap();
-        let c1 = cage_at(&[(0, 0)], Given, 1);
-        let c2 = cage_at(&[(0, 1)], Given, 2);
-        let p3 = p.insert_cage(c1).unwrap().insert_cage(c2).unwrap();
-        // Both cages present — domains still accessible.
-        assert!(p3.cell_values(Cell::new(0, 0)).is_ok());
-        assert!(p3.cell_values(Cell::new(0, 1)).is_ok());
     }
 }

@@ -1,18 +1,21 @@
+//! Tauri backend for Mathdoku Designer.
+//!
+//! Manages the application menu, window lifecycle, startup restore, and the
+//! [`commands`] module that implements the Tauri IPC command handlers.
+
 pub mod commands;
 
 use std::fs;
-use std::path::Path;
-use std::sync::{Mutex, MutexGuard, OnceLock};
+use std::sync::Mutex;
 
-use serde::Serialize;
-use serde_json::{from_str, json, to_string, to_string_pretty};
+use serde_json::from_str;
 
 use mathdoku::Puzzle;
 use tauri::image::Image;
 use tauri::menu::{AboutMetadata, Menu, MenuItemBuilder, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Emitter, Manager, Runtime, WindowEvent};
 
-use commands::{AppState, SAVE_VERSION, SaveEnvelope, read_recent};
+use commands::*;
 
 const EVENT_NEW: &str = "menu-new";
 const EVENT_OPEN: &str = "menu-open";
@@ -22,6 +25,7 @@ const EVENT_REQUEST_CLOSE: &str = "request-close";
 
 // ---- menu ----
 
+/// Builds the application menu (File, Edit, View, Window; App menu on macOS).
 fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     let new = MenuItemBuilder::with_id("new", "New…")
         .accelerator("CmdOrCtrl+N")
@@ -115,6 +119,7 @@ fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     Menu::with_items(app, &[&file_menu, &edit_menu, &window_menu])
 }
 
+/// Translates menu item IDs into frontend events emitted over the Tauri event bus.
 #[allow(clippy::needless_pass_by_value)]
 fn handle_menu_event<R: Runtime>(app: &AppHandle<R>, event: tauri::menu::MenuEvent) {
     let event_name = match event.id().as_ref() {
@@ -127,6 +132,10 @@ fn handle_menu_event<R: Runtime>(app: &AppHandle<R>, event: tauri::menu::MenuEve
     let _ = app.emit(event_name, ());
 }
 
+/// Intercepts close requests when there are unsaved changes.
+///
+/// Prevents the window from closing and emits `request-close` so the
+/// frontend can show the Unsaved Changes modal.
 fn handle_window_event<R: Runtime>(window: &tauri::Window<R>, event: &WindowEvent) {
     let WindowEvent::CloseRequested { api, .. } = event else {
         return;
@@ -144,6 +153,12 @@ fn handle_window_event<R: Runtime>(window: &tauri::Window<R>, event: &WindowEven
 
 // ---- startup ----
 
+/// Attempts to restore the last session from the recent-file record.
+///
+/// Reads `last_open.json`, loads the referenced `.mathdoku` file, and
+/// populates [`AppState`] with the puzzle, solution, current grid, and view
+/// state. Returns the restored [`Puzzle`] on success, or `None` if no recent
+/// file exists, the file can't be read, or the save version is unsupported.
 fn try_restore<R: Runtime>(app: &AppHandle<R>) -> Option<Puzzle> {
     let record = read_recent(app)?;
     let path = record.path?;
@@ -152,12 +167,15 @@ fn try_restore<R: Runtime>(app: &AppHandle<R>) -> Option<Puzzle> {
     if envelope.version != SAVE_VERSION {
         return None;
     }
+    let current = envelope.solution.constrain(&envelope.puzzle).ok()?;
     let state = app.try_state::<Mutex<AppState>>()?;
     let mut s = state.lock().ok()?;
     s.puzzle = Some(envelope.puzzle.clone());
+    s.solution = Some(envelope.solution);
+    s.current = Some(current);
     s.path = Some(path);
     s.dirty = false;
-    s.view_state = record.view.unwrap_or_default();
+    s.active = record.active;
     drop(s);
     Some(envelope.puzzle)
 }
@@ -176,26 +194,26 @@ pub fn run() {
         .on_menu_event(handle_menu_event)
         .on_window_event(handle_window_event)
         .setup(|app| {
-            if try_restore(app.handle()).is_none() {
-                if let Ok(mut s) = app.state::<Mutex<AppState>>().lock() {
-                    s.puzzle = Some(Puzzle::new(9).expect("9 is a valid puzzle size"));
-                }
+            if try_restore(app.handle()).is_none()
+                && let Ok(mut s) = app.state::<Mutex<AppState>>().lock()
+            {
+                s.puzzle = Some(Puzzle::new(9).expect("9 is a valid puzzle size"));
             }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            commands::new_puzzle,
-            commands::generate_puzzle,
-            commands::save_puzzle,
-            commands::load_puzzle,
-            commands::get_doc_state,
-            commands::get_puzzle,
-            commands::get_view_state,
-            commands::set_view_state,
-            commands::set_window_title,
-            commands::quit_app,
-            commands::add_region,
-            commands::remove_region,
+            new_puzzle,
+            generate_puzzle,
+            new_latin_square,
+            save_puzzle,
+            load_puzzle,
+            get_doc_state,
+            get_puzzle,
+            set_active_cell,
+            set_window_title,
+            quit_app,
+            add_region,
+            remove_region,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -205,6 +223,13 @@ pub fn run() {
 #[allow(clippy::unwrap_used)]
 mod tests {
     use std::env::temp_dir;
+    use std::path::Path;
+    use std::sync::{MutexGuard, OnceLock};
+
+    use serde::Serialize;
+    use serde_json::{json, to_string, to_string_pretty};
+
+    use mathdoku::Grid;
 
     use super::*;
     use commands::{
@@ -262,7 +287,7 @@ mod tests {
     fn new_puzzle_sets_puzzle_and_dirty() {
         let app = app_with_state();
         let result = new_puzzle(4, app.state::<Mutex<AppState>>()).unwrap();
-        assert_eq!(result.n(), 4);
+        assert_eq!(result.puzzle.n(), 4);
         let binding = app.state::<Mutex<AppState>>();
         let s = binding.lock().unwrap();
         assert!(s.puzzle.is_some());
@@ -319,7 +344,7 @@ mod tests {
             app2.state::<Mutex<AppState>>(),
         )
         .unwrap();
-        assert_eq!(puzzle.n(), 5);
+        assert_eq!(puzzle.puzzle.n(), 5);
         let binding = app2.state::<Mutex<AppState>>();
         let s = binding.lock().unwrap();
         assert!(!s.dirty);
@@ -452,7 +477,7 @@ mod tests {
     fn get_puzzle_returns_puzzle_when_loaded() {
         let app = app_with_puzzle(6);
         let p = get_puzzle(app.state::<Mutex<AppState>>()).unwrap();
-        assert_eq!(p.n(), 6);
+        assert_eq!(p.puzzle.n(), 6);
     }
 
     // ---- try_restore ----
@@ -476,9 +501,11 @@ mod tests {
             .unwrap()
             .to_string();
         let puzzle = Puzzle::new(4).unwrap();
+        let solution = Grid::new(4).unwrap();
         let envelope = SaveEnvelope {
             version: SAVE_VERSION,
             puzzle,
+            solution,
         };
         fs::write(&puzzle_path, to_string_pretty(&envelope).unwrap()).unwrap();
 

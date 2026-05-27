@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { installTauriStubs, gotoApp, waitForGrid } from './helpers';
+import { ARROW_DOWN, ARROW_RIGHT } from './keys';
 
 const EMPTY_3 = { n: 3 };
 const ACCENT = '#1a4e7a';
@@ -22,7 +23,7 @@ test.describe('cell mode navigation', () => {
 
     // No explicit focus — the grid should auto-focus on mount.
     const before = await selectionRectXY(page);
-    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press(ARROW_DOWN);
     const after = await selectionRectXY(page);
 
     expect(after.y).toBeGreaterThan(before.y);
@@ -36,7 +37,7 @@ test.describe('cell mode navigation', () => {
     await page.locator('.grid-svg').focus();
 
     const before = await selectionRectXY(page);
-    await page.keyboard.press('ArrowRight');
+    await page.keyboard.press(ARROW_RIGHT);
     const after = await selectionRectXY(page);
 
     expect(after.x).toBeGreaterThan(before.x);

@@ -22,6 +22,7 @@ pub struct Cage {
 }
 
 impl Cage {
+    /// Creates a cage from a polyomino and an operation.
     pub const fn new(polyomino: Polyomino, operation: Operation) -> Self {
         Self {
             polyomino,
@@ -172,7 +173,7 @@ mod tests {
     #[test]
     fn operator_display() {
         assert_eq!(Operator::Add.to_string(), "+");
-        assert_eq!(Operator::Subtract.to_string(), "-");
+        assert_eq!(Operator::Subtract.to_string(), "−");
         assert_eq!(Operator::Multiply.to_string(), "×");
         assert_eq!(Operator::Divide.to_string(), "÷");
         assert_eq!(Operator::Given.to_string(), "");
@@ -183,7 +184,7 @@ mod tests {
     #[test]
     fn operation_display_with_symbol() {
         assert_eq!(Operation::new(Operator::Add, 12).to_string(), "+12");
-        assert_eq!(Operation::new(Operator::Subtract, 3).to_string(), "-3");
+        assert_eq!(Operation::new(Operator::Subtract, 3).to_string(), "−3");
         assert_eq!(Operation::new(Operator::Multiply, 24).to_string(), "×24");
         assert_eq!(Operation::new(Operator::Divide, 2).to_string(), "÷2");
     }

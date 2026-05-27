@@ -2,19 +2,7 @@
 
 use crate::theme::{INK, OP_INSET, SERIF};
 use leptos::prelude::*;
-use mathdoku::operation::{Operation, Operator};
-
-/// Formats a cage operation as a short label: `"+5"`, `"−2"`, `"×12"`, `"÷3"`, or `"7"`.
-pub fn op_label(op: &Operation) -> String {
-    let t = op.target;
-    match op.operator {
-        Operator::Add => format!("+{t}"),
-        Operator::Subtract => format!("\u{2212}{t}"),
-        Operator::Multiply => format!("\u{00d7}{t}"),
-        Operator::Divide => format!("\u{00f7}{t}"),
-        Operator::Given => format!("{t}"),
-    }
-}
+use mathdoku::Operation;
 
 /// Operation label rendered at the top-left of the cage's anchor cell.
 #[component]
@@ -28,7 +16,7 @@ pub fn Cage(
     op_f: f64,
     operation: Operation,
 ) -> impl IntoView {
-    let text = op_label(&operation);
+    let text = operation.to_string();
     view! {
         <text
             x={x + OP_INSET} y={y + OP_INSET}

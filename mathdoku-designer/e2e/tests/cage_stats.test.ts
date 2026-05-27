@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { installTauriStubs, gotoApp, waitForGrid } from './helpers';
+import { ARROW_DOWN, TAB } from './keys';
 
 // 3×3 puzzle: two cages.
 // Cage 0: cells (0,0),(0,1) — horizontal domino, Add(3) → 2 Tuples, 1 Multiset
@@ -21,18 +22,11 @@ const PUZZLE_3 = {
   ],
 };
 
-async function enterSlotMode(page: import('@playwright/test').Page) {
-  await waitForGrid(page);
-  await page.locator('.grid-svg').focus();
-  await page.keyboard.press('Tab');
-}
-
 test.describe('cage stats', () => {
-  test('no stats shown in Cell Mode when no cage selected', async ({
+  test('no stats shown when active cell is not in any cage', async ({
     page,
   }) => {
-    // Start at (0,0) in Cell Mode — that cell IS in a cage, so stats should show.
-    // Navigate to a cell NOT in any cage to confirm stats disappear.
+    // Start at (0,0) in Cell Mode — that cell IS in a cage. Navigate away.
     await installTauriStubs(page, {
       n: 3,
       cages: [
@@ -46,40 +40,33 @@ test.describe('cage stats', () => {
     await waitForGrid(page);
     await page.locator('.grid-svg').focus();
     // Move to (1,0) — not in any cage.
-    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press(ARROW_DOWN);
 
     await expect(page.locator('.cage-stats')).toBeHidden();
   });
 
-  test('Cell Mode: stats shown when active cell is in a cage', async ({
+  test('stats shown when active cell is in a cage', async ({
     page,
   }) => {
     await installTauriStubs(page, PUZZLE_3);
     await gotoApp(page);
     await waitForGrid(page);
 
-    // Default start: Cell Mode at (0,0), which is in the Add(3) domino.
+    // Default start at (0,0), which is in the Add(3) domino.
     // Add(3) over a 3×3 row pair: 2 tuples, 1 multiset.
     await expect(page.locator('.cage-stats')).toContainText('1 Multiset');
     await expect(page.locator('.cage-stats')).toContainText('2 Tuples');
   });
 
-  test('Slot Mode: stats shown for selected cage slot', async ({ page }) => {
+  test('Tab to next cage anchor updates stats', async ({ page }) => {
     await installTauriStubs(page, PUZZLE_3);
     await gotoApp(page);
-    await enterSlotMode(page); // selects slot 0: Add(3) domino
+    await waitForGrid(page);
+    await page.locator('.grid-svg').focus();
+    // Start at (0,0) in cage 0 (Add domino). Tab moves to cage 1 anchor (0,2).
+    await page.keyboard.press(TAB);
 
-    await expect(page.locator('.cage-stats')).toContainText('1 Multiset');
-    await expect(page.locator('.cage-stats')).toContainText('2 Tuples');
-  });
-
-  test('Slot Mode: advancing to next slot updates stats', async ({ page }) => {
-    await installTauriStubs(page, PUZZLE_3);
-    await gotoApp(page);
-    await enterSlotMode(page); // slot 0
-    await page.keyboard.press('Tab'); // slot 1: Given(3) singleton
-
-    // Singleton: exactly 1 viable tuple and 1 multiset.
+    // Singleton Given(3): exactly 1 viable tuple and 1 multiset.
     await expect(page.locator('.cage-stats')).toContainText('1 Multiset');
     await expect(page.locator('.cage-stats')).toContainText('1 Tuple');
   });
@@ -87,8 +74,9 @@ test.describe('cage stats', () => {
   test('"Tuple" is singular when count is 1', async ({ page }) => {
     await installTauriStubs(page, PUZZLE_3);
     await gotoApp(page);
-    await enterSlotMode(page);
-    await page.keyboard.press('Tab'); // Given(3) singleton → 1 Tuple
+    await waitForGrid(page);
+    await page.locator('.grid-svg').focus();
+    await page.keyboard.press(TAB); // Given(3) singleton → 1 Tuple
 
     await expect(page.locator('.cage-stats')).toContainText('1 Tuple');
     await expect(page.locator('.cage-stats')).not.toContainText('1 Tuples');
@@ -97,8 +85,9 @@ test.describe('cage stats', () => {
   test('"Tuple" is plural when count is > 1', async ({ page }) => {
     await installTauriStubs(page, PUZZLE_3);
     await gotoApp(page);
-    await enterSlotMode(page); // Add(3) domino → 2 Tuples
+    await waitForGrid(page);
 
+    // Default start at (0,0) in Add(3) domino → 2 Tuples.
     await expect(page.locator('.cage-stats')).toContainText('2 Tuples');
     await expect(page.locator('.cage-stats')).not.toContainText('2 Tuple,');
   });
@@ -108,7 +97,8 @@ test.describe('cage stats', () => {
   }) => {
     await installTauriStubs(page, PUZZLE_3);
     await gotoApp(page);
-    await enterSlotMode(page);
+    await waitForGrid(page);
+    await page.locator('.grid-svg').focus();
 
     const svgBox = await page.locator('.grid-svg').boundingBox();
     // The SVG viewBox is 600 units wide with MARGIN=14 before the grid border.

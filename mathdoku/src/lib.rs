@@ -7,14 +7,19 @@
 //! | [`Cell`] | A grid position identified by `(row, column)`. |
 //! | [`Values`] | A bitmap set of candidate values `1..=9` for a cell. |
 //! | [`Cage`] | A polyomino paired with an [`Operation`]. |
-//! | [`Puzzle`] | An `n×n` grid with a set of cages. |
+//! | [`Puzzle`] | An `n×n` cage structure (no cell domains). |
+//! | [`Grid`] | An `n×n` grid of cell domains. |
+//! | [`Tuple`] | An ordered assignment of values to the cells of a cage. |
 //!
 //! ## Entry points
 //!
-//! - **Generate** a random puzzle with [`generate::generate`] or [`generate::generate_with`]
+//! - **Generate** a random puzzle with [`generate()`] or [`generate::generate_with`]
 //!   (custom operation policy / cage-size distribution).
 //! - **Construct** a puzzle programmatically with [`Puzzle::new`] and [`Puzzle::insert_cage`].
-//! - **Inspect** cell domains with [`Puzzle::cell_values`].
+//! - **Inspect** cell domains with [`Grid::cell_values`].
+//! - **Solve** with [`Grid::solutions`].
+//! - **Enumerate cage assignments** with [`tuples()`].
+//! - **Query valid operators** for a polyomino with [`operators`].
 
 mod arithmetic;
 mod cage;
@@ -22,11 +27,12 @@ mod cell;
 mod csp;
 mod error;
 pub mod generate;
-mod latin_square;
+pub mod grid;
+mod grid_csp;
+pub mod latin_square;
 pub mod operation;
 mod polyomino;
 pub mod puzzle;
-mod puzzle_csp;
 mod regin;
 #[cfg(test)]
 mod test_utils;
@@ -36,7 +42,10 @@ pub use arithmetic::Tuple;
 pub use cage::Cage;
 pub use cell::{Cell, M, N, Values};
 pub use error::Error;
-pub use operation::Operation;
-pub use operation::Operator;
+pub use generate::generate;
+pub use grid::Grid;
+pub use latin_square::generate_latin_square;
+pub use operation::{Operation, Operator, operators};
 pub use polyomino::Polyomino;
 pub use puzzle::Puzzle;
+pub use tuples::tuples;

@@ -2300,6 +2300,7 @@ dependencies = [
 name = "mathdoku-designer-shared"
 version = "0.1.0"
 dependencies = [
+ "mathdoku",
  "serde",
 ]
 

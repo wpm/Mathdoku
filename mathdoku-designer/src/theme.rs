@@ -4,6 +4,7 @@ pub const BG: &str = "#f4efe6";
 pub const INK: &str = "#26221b";
 pub const INK2: &str = "#5c564a";
 pub const INK3: &str = "#8b8476";
+pub const GREEN: &str = "#3a7d44";
 pub const LINE: &str = "#b9ad93";
 pub const ACCENT: &str = "#1a4e7a";
 

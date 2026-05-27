@@ -8,12 +8,12 @@
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use mathdoku::Puzzle;
-use mathdoku_designer_shared::{DocState, ViewState};
+use mathdoku_designer_shared::{DocState, State};
 use serde::Serialize;
 use serde_wasm_bindgen::{from_value, to_value};
 use wasm_bindgen::prelude::*;
 
+use crate::keys::{ESCAPE, TAB};
 use crate::theme::{ACCENT, BG, INK, INK2, LINE, SANS as SANS_FONT};
 
 // ---- Tauri glue ----
@@ -49,18 +49,9 @@ fn tauri_error(v: &JsValue) -> Option<String> {
     v.as_string()
 }
 
-async fn call_new_puzzle(n: usize) -> Result<Puzzle, String> {
+async fn call_latin_square_puzzle(n: usize) -> Result<State, String> {
     let args = to_value(&NewPuzzleArgs { n }).unwrap();
-    let result = invoke("new_puzzle", args).await;
-    if let Some(e) = tauri_error(&result) {
-        return Err(e);
-    }
-    from_value(result).map_err(|e| e.to_string())
-}
-
-async fn call_generate_puzzle(n: usize) -> Result<Puzzle, String> {
-    let args = to_value(&NewPuzzleArgs { n }).unwrap();
-    let result = invoke("generate_puzzle", args).await;
+    let result = invoke("new_latin_square", args).await;
     if let Some(e) = tauri_error(&result) {
         return Err(e);
     }
@@ -99,7 +90,7 @@ async fn eval_promise_string(js: &str) -> Option<String> {
         .and_then(|v| v.as_string())
 }
 
-async fn call_load_puzzle() -> Result<Option<Puzzle>, String> {
+async fn call_load_puzzle() -> Result<Option<State>, String> {
     let Some(path) = eval_promise_string(
         r"window.__TAURI__.dialog.open({ filters: [{ name: 'Mathdoku', extensions: ['mathdoku'] }] })",
     )
@@ -198,9 +189,12 @@ fn primary_btn_style() -> String {
 #[component]
 fn SizeModal(
     default_n: usize,
-    on_empty: Callback<usize>,
-    on_random: Callback<usize>,
+    on_create: Callback<usize>,
     on_cancel: Callback<()>,
+    /// When true, Escape, backdrop click, and the Cancel button are all disabled.
+    /// Used on first launch when no puzzle exists yet.
+    #[prop(default = false)]
+    mandatory: bool,
 ) -> impl IntoView {
     let chosen = RwSignal::new(default_n);
     let select_style = format!(
@@ -209,16 +203,16 @@ fn SizeModal(
     );
 
     let _esc = window_event_listener(leptos::ev::keydown, move |ev| {
-        if ev.key() == "Escape" {
+        if ev.key() == ESCAPE && !mandatory {
             on_cancel.run(());
         }
     });
 
     // Tab trap: intercept Tab/Shift-Tab on the dialog so focus never escapes to
-    // the grid SVG behind the overlay.  The four focusable children are the
-    // <select> and the three buttons (DOM order matches Tab order).
+    // the grid SVG behind the overlay.  The three focusable children are the
+    // <select> and the two buttons (DOM order matches Tab order).
     let trap_tab = move |ev: leptos::ev::KeyboardEvent| {
-        if ev.key() != "Tab" {
+        if ev.key() != TAB {
             return;
         }
         use wasm_bindgen::JsCast;
@@ -259,7 +253,7 @@ fn SizeModal(
         <div
             style=overlay_style()
             on:mousedown=move |ev: leptos::ev::MouseEvent| {
-                if ev.target() == ev.current_target() { on_cancel.run(()); }
+                if !mandatory && ev.target() == ev.current_target() { on_cancel.run(()); }
             }
         >
             // `tabindex="-1"` lets this div receive the keydown event for the trap.
@@ -297,22 +291,19 @@ fn SizeModal(
                     </label>
                 </div>
                 <div style="display:flex;justify-content:flex-end;gap:10px;">
-                    <button class="sz-btn" style=neutral_btn_style() on:click=move |_| on_cancel.run(())>
-                        "Cancel"
-                    </button>
-                    <button
-                        class="sz-btn"
-                        style=neutral_btn_style()
-                        on:click=move |_| on_random.run(chosen.get_untracked())
-                    >
-                        "Random"
-                    </button>
+                    {(!mandatory).then(||
+                        view! {
+                            <button class="sz-btn" style=neutral_btn_style() on:click=move |_| on_cancel.run(())>
+                                "Cancel"
+                            </button>
+                        }
+                    )}
                     <button
                         class="sz-btn"
                         style=primary_btn_style()
-                        on:click=move |_| on_empty.run(chosen.get_untracked())
+                        on:click=move |_| on_create.run(chosen.get_untracked())
                     >
-                        "Empty"
+                        "Create"
                     </button>
                 </div>
             </div>
@@ -393,21 +384,22 @@ pub fn App() -> impl IntoView {
     let show_size_modal = RwSignal::new(false);
     let show_unsaved_modal = RwSignal::new(false);
     let error_msg: RwSignal<Option<String>> = RwSignal::new(None);
-    let puzzle = RwSignal::new(None::<Puzzle>);
-    let view_state = RwSignal::new(ViewState::default());
+    let designer_state = RwSignal::new(None::<State>);
     let current_path: RwSignal<Option<String>> = RwSignal::new(None);
+    let undo_stack: RwSignal<Vec<State>> = RwSignal::new(Vec::new());
+    let redo_stack: RwSignal<Vec<State>> = RwSignal::new(Vec::new());
+    let pending_commit: RwSignal<Option<crate::components::PendingCommit>> = RwSignal::new(None);
 
     // Check if a puzzle was already restored from the recent file on startup.
+    // If not, show the Size Modal so the user can create a new puzzle.
     spawn_local(async move {
         let result = invoke("get_puzzle", JsValue::NULL).await;
-        if let Ok(p) = from_value::<Puzzle>(result) {
-            let vs = invoke("get_view_state", JsValue::NULL).await;
-            if let Ok(v) = from_value::<ViewState>(vs) {
-                view_state.set(v);
-            }
+        if let Ok(st) = from_value::<State>(result) {
             let ds = get_doc_state().await;
             current_path.set(ds.path);
-            puzzle.set(Some(p));
+            designer_state.set(Some(st));
+        } else {
+            show_size_modal.set(true);
         }
     });
 
@@ -442,11 +434,13 @@ pub fn App() -> impl IntoView {
         let load_cb = Closure::wrap(Box::new(move |_: JsValue| {
             spawn_local(async move {
                 match call_load_puzzle().await {
-                    Ok(Some(p)) => {
+                    Ok(Some(st)) => {
                         let ds = get_doc_state().await;
                         current_path.set(ds.path);
-                        view_state.set(ViewState::default());
-                        puzzle.set(Some(p));
+                        undo_stack.update(|s| s.clear());
+                        redo_stack.update(|s| s.clear());
+                        pending_commit.set(None);
+                        designer_state.set(Some(st));
                     }
                     Ok(None) => {} // user cancelled dialog
                     Err(e) => error_msg.set(Some(e)),
@@ -463,27 +457,16 @@ pub fn App() -> impl IntoView {
         close_cb.forget();
     });
 
-    let on_empty = Callback::new(move |n: usize| {
+    let on_create = Callback::new(move |n: usize| {
         show_size_modal.set(false);
         spawn_local(async move {
-            match call_new_puzzle(n).await {
-                Ok(p) => {
+            match call_latin_square_puzzle(n).await {
+                Ok(st) => {
                     current_path.set(None);
-                    view_state.set(ViewState::default());
-                    puzzle.set(Some(p));
-                }
-                Err(e) => error_msg.set(Some(e)),
-            }
-        });
-    });
-    let on_random = Callback::new(move |n: usize| {
-        show_size_modal.set(false);
-        spawn_local(async move {
-            match call_generate_puzzle(n).await {
-                Ok(p) => {
-                    current_path.set(None);
-                    view_state.set(ViewState::default());
-                    puzzle.set(Some(p));
+                    undo_stack.update(|s| s.clear());
+                    redo_stack.update(|s| s.clear());
+                    pending_commit.set(None);
+                    designer_state.set(Some(st));
                 }
                 Err(e) => error_msg.set(Some(e)),
             }
@@ -523,20 +506,25 @@ pub fn App() -> impl IntoView {
 
     view! {
         <main class="app-main">
-            {move || puzzle.get().map(|p| {
-            let on_puzzle_change = Callback::new(move |(new_puzzle, new_view): (Puzzle, mathdoku_designer_shared::ViewState)| {
-                view_state.set(new_view);
-                puzzle.set(Some(new_puzzle));
+            {move || designer_state.get().map(|st| {
+            let on_puzzle_change = Callback::new(move |new_st: State| {
+                designer_state.set(Some(new_st));
             });
+            // Lightweight navigation changes (active cell, provisional cages) are
+            // managed entirely within Puzzle's own designer_state signal.
+            // on_state_change is a no-op here — it exists only so that after a
+            // puzzle re-mount the new instance's initial state is correct (which
+            // on_puzzle_change already handles via the state prop).
+            let on_state_change = Callback::new(move |_new_st: State| {});
             let on_error = Callback::new(move |msg: String| error_msg.set(Some(msg)));
-            view! { <crate::components::Puzzle puzzle=p initial_view=view_state.get() on_puzzle_change=on_puzzle_change on_error=on_error /> }
+            view! { <crate::components::Puzzle state=st undo_stack=undo_stack redo_stack=redo_stack pending_commit=pending_commit on_puzzle_change=on_puzzle_change on_state_change=on_state_change on_error=on_error /> }
         })}
             {move || show_size_modal.get().then(|| view! {
                 <SizeModal
-                    default_n=puzzle.get().map_or(4, |p| p.n())
-                    on_empty=on_empty
-                    on_random=on_random
+                    default_n=designer_state.get().map_or(9, |st| st.puzzle.n())
+                    on_create=on_create
                     on_cancel=on_create_cancel
+                    mandatory=designer_state.get().is_none()
                 />
             })}
             {move || show_unsaved_modal.get().then(|| view! {

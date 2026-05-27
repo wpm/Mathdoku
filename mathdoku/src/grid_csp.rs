@@ -1,47 +1,50 @@
-//! Wires [`Puzzle`] into the generic CSP framework from [`crate::csp`].
+//! Wires [`Grid`] and [`Puzzle`] into the generic CSP framework from [`crate::csp`].
 //!
 //! The Mathdoku solving problem maps onto the CSP abstractions as follows:
 //!
 //! | CSP concept | Mathdoku instance |
 //! |-------------|-------------------|
-//! | Variable    | [`PuzzleCell`] — a single cell in a [`Puzzle`] whose domain is a [`Values`] set |
+//! | Variable    | [`PuzzleCell`] — a single cell in a [`Grid`] whose domain is a [`Values`] set |
 //! | Constraint  | [`AllDifferent`] — every row and column must contain distinct values |
 //! | Constraint  | [`Cage`] — arithmetic target over a polyomino of cells |
-//! | State       | [`Puzzle`] — holds one [`Values`] domain per cell |
+//! | State       | [`Grid`] — holds one [`Values`] domain per cell |
 //!
 //! [`generalized_arc_consistency`] drives solving: it maintains a worklist
 //! of constraints and propagates each in turn, re-queuing constraints adjacent to any
 //! cell whose domain shrinks, until no constraint can narrow any domain further.
 
+use std::sync::Arc;
+
 use crate::cage::Cage;
 use crate::csp::{Constraint, Variable, generalized_arc_consistency};
+use crate::grid::Grid;
 use crate::puzzle::Puzzle;
 use crate::regin::regin_gac;
 use crate::{Cell, Error, N, Values};
 
-/// A [`Cell`] in a [`Puzzle`], used as the CSP variable type.
+/// A [`Cell`] in a [`Grid`], used as the CSP variable type.
 ///
 /// Stores the cell coordinate together with the structural puzzle data — grid
 /// size and cage list — needed to enumerate the constraints that mention this
-/// cell. The current cell domains are not stored here; they live in the [`Puzzle`]
+/// cell. The current cell domains are not stored here; they live in the [`Grid`]
 /// state passed to each propagation call.
 struct PuzzleCell {
     cell: Cell,
     n: usize,
-    cages: Vec<Cage>,
+    cages: Arc<Vec<Cage>>,
 }
 
 impl PuzzleCell {
-    /// Creates a `PuzzleCell` for `cell` within `puzzle`.
+    /// Creates a `PuzzleCell` for `cell` within `grid` and `puzzle`.
     ///
     /// # Errors
     /// Returns [`Error::InvalidCell`] if `cell` is outside the grid.
-    fn new(cell: Cell, puzzle: &Puzzle) -> Result<Self, Error> {
-        let _ = puzzle.cell_values(cell)?;
+    fn new(cell: Cell, grid: &Grid, cages: Arc<Vec<Cage>>) -> Result<Self, Error> {
+        let _ = grid.cell_values(cell)?;
         Ok(Self {
             cell,
-            n: puzzle.n(),
-            cages: puzzle.cages().cloned().collect(),
+            n: grid.n(),
+            cages,
         })
     }
 }
@@ -51,17 +54,26 @@ impl PuzzleCell {
 /// Stores the ordered list of cells in the row or column. Propagation runs
 /// Régin's GAC algorithm (see [`crate::regin`]) over those cells' current domains.
 #[derive(Clone)]
-struct AllDifferent(Vec<Cell>);
+struct AllDifferent {
+    cells: Vec<Cell>,
+    cages: Arc<Vec<Cage>>,
+}
 
 impl AllDifferent {
     /// Returns an `AllDifferent` constraint for row `row` of an `n×n` grid.
-    fn row(n: usize, row: usize) -> Self {
-        Self((0..n).map(|column| Cell::new(row, column)).collect())
+    fn row(n: usize, row: usize, cages: Arc<Vec<Cage>>) -> Self {
+        Self {
+            cells: (0..n).map(|column| Cell::new(row, column)).collect(),
+            cages,
+        }
     }
 
     /// Returns an `AllDifferent` constraint for column `column` of an `n×n` grid.
-    fn column(n: usize, column: usize) -> Self {
-        Self((0..n).map(|row| Cell::new(row, column)).collect())
+    fn column(n: usize, column: usize, cages: Arc<Vec<Cage>>) -> Self {
+        Self {
+            cells: (0..n).map(|row| Cell::new(row, column)).collect(),
+            cages,
+        }
     }
 }
 
@@ -70,15 +82,23 @@ impl AllDifferent {
 impl Variable<PuzzleConstraint> for PuzzleCell {
     fn constraints(&self) -> Vec<PuzzleConstraint> {
         let n = self.n;
-        let all_different = [AllDifferent::row, AllDifferent::column]
-            .iter()
-            .flat_map(|f| (0..n).map(move |i| f(n, i)))
-            .map(PuzzleConstraint::AllDifferent);
+        let cages = Arc::clone(&self.cages);
+        let all_different = [
+            |n, i, c: Arc<Vec<Cage>>| AllDifferent::row(n, i, c),
+            |n, i, c: Arc<Vec<Cage>>| AllDifferent::column(n, i, c),
+        ]
+        .iter()
+        .flat_map(|f| {
+            let cages = Arc::clone(&cages);
+            (0..n).map(move |i| f(n, i, Arc::clone(&cages)))
+        })
+        .map(PuzzleConstraint::AllDifferent);
+        let cage_cages = Arc::clone(&self.cages);
         let cage = self
             .cages
             .iter()
             .filter(|c| c.cells().contains(&self.cell))
-            .map(|c| PuzzleConstraint::Cage(c.clone()));
+            .map(move |c| PuzzleConstraint::Cage(c.clone(), Arc::clone(&cage_cages)));
         all_different.chain(cage).collect()
     }
 }
@@ -87,15 +107,15 @@ impl Variable<PuzzleConstraint> for PuzzleCell {
 #[derive(Clone)]
 enum PuzzleConstraint {
     AllDifferent(AllDifferent),
-    Cage(Cage),
+    Cage(Cage, Arc<Vec<Cage>>),
 }
 
 /// Dispatches propagation to the inner [`AllDifferent`] or [`Cage`] constraint.
-impl Constraint<Puzzle, PuzzleCell, Error> for PuzzleConstraint {
-    fn propagate(&self, state: &Puzzle) -> Result<(Puzzle, Vec<PuzzleCell>), Error> {
+impl Constraint<Grid, PuzzleCell, Error> for PuzzleConstraint {
+    fn propagate(&self, state: &Grid) -> Result<(Grid, Vec<PuzzleCell>), Error> {
         match self {
             Self::AllDifferent(c) => c.propagate(state),
-            Self::Cage(c) => c.propagate(state),
+            Self::Cage(c, cages) => propagate_cage(c, cages, state),
         }
     }
 }
@@ -103,33 +123,66 @@ impl Constraint<Puzzle, PuzzleCell, Error> for PuzzleConstraint {
 /// Applies `new_domains` to `state`, returning the updated state and any cells whose domains
 /// changed.
 fn apply_domains(
-    state: &Puzzle,
+    state: &Grid,
+    cages: &Arc<Vec<Cage>>,
     cells: &[Cell],
     old_domains: &[Values],
     new_domains: &[Values],
-) -> Result<(Puzzle, Vec<PuzzleCell>), Error> {
+) -> Result<(Grid, Vec<PuzzleCell>), Error> {
     let mut new_state = state.clone();
     let mut changed = vec![];
     for ((&cell, old), new) in cells.iter().zip(old_domains).zip(new_domains) {
         if new != old {
             new_state = new_state.set_domain(cell, *new)?;
-            changed.push(PuzzleCell::new(cell, &new_state)?);
+            changed.push(PuzzleCell::new(cell, &new_state, Arc::clone(cages))?);
         }
     }
     Ok((new_state, changed))
 }
 
 /// Runs Régin's GAC algorithm over the cells in this row or column.
-impl Constraint<Puzzle, PuzzleCell, Error> for AllDifferent {
-    fn propagate(&self, state: &Puzzle) -> Result<(Puzzle, Vec<PuzzleCell>), Error> {
-        let cells = &self.0;
+impl Constraint<Grid, PuzzleCell, Error> for AllDifferent {
+    fn propagate(&self, state: &Grid) -> Result<(Grid, Vec<PuzzleCell>), Error> {
+        let cells = &self.cells;
         let old_domains: Vec<Values> = cells
             .iter()
             .map(|&c| state.cell_values(c))
             .collect::<Result<_, _>>()?;
         let new_domains = regin_gac(&old_domains);
-        apply_domains(state, cells, &old_domains, &new_domains)
+        apply_domains(state, &self.cages, cells, &old_domains, &new_domains)
     }
+}
+
+/// Prunes cell domains to values that appear in at least one valid tuple for this cage's arithmetic
+/// operation.
+fn propagate_cage(
+    cage: &Cage,
+    cages: &Arc<Vec<Cage>>,
+    state: &Grid,
+) -> Result<(Grid, Vec<PuzzleCell>), Error> {
+    let cells = cage.cells();
+    let old_domains: Vec<Values> = cells
+        .iter()
+        .map(|&c| state.cell_values(c))
+        .collect::<Result<_, _>>()?;
+
+    // A value survives at position i iff some valid tuple uses it there
+    // and every other position's value is in that cell's current domain.
+    let mut new_domains = vec![Values::default(); cells.len()];
+    #[allow(clippy::cast_possible_truncation)]
+    for tuple in cage.tuples(state.n() as N) {
+        if tuple
+            .iter()
+            .zip(&old_domains)
+            .all(|(&v, domain)| domain.contains(v))
+        {
+            for (i, &v) in tuple.iter().enumerate() {
+                new_domains[i] = new_domains[i] | Values::singleton(v);
+            }
+        }
+    }
+
+    apply_domains(state, cages, &cells, &old_domains, &new_domains)
 }
 
 /// Enforces GAC on all row, column, and cage constraints, returning the fixpoint state.
@@ -139,72 +192,50 @@ impl Constraint<Puzzle, PuzzleCell, Error> for AllDifferent {
 ///
 /// # Errors
 /// Returns an error if any cell is out of bounds during propagation.
-pub fn puzzle_fixpoint(puzzle: &Puzzle) -> Result<Puzzle, Error> {
-    let n = puzzle.n();
-    let rows = (0..n).map(|r| PuzzleConstraint::AllDifferent(AllDifferent::row(n, r)));
-    let cols = (0..n).map(|c| PuzzleConstraint::AllDifferent(AllDifferent::column(n, c)));
-    let cages = puzzle.cages().cloned().map(PuzzleConstraint::Cage);
-    let constraints: Vec<PuzzleConstraint> = rows.chain(cols).chain(cages).collect();
-    generalized_arc_consistency(puzzle.clone(), &constraints)
+pub fn grid_fixpoint(grid: &Grid, puzzle: &Puzzle) -> Result<Grid, Error> {
+    let n = grid.n();
+    let cages: Arc<Vec<Cage>> = Arc::new(puzzle.cages().cloned().collect());
+    let rows =
+        (0..n).map(|r| PuzzleConstraint::AllDifferent(AllDifferent::row(n, r, Arc::clone(&cages))));
+    let cols = (0..n)
+        .map(|c| PuzzleConstraint::AllDifferent(AllDifferent::column(n, c, Arc::clone(&cages))));
+    let cage_constraints = puzzle
+        .cages()
+        .cloned()
+        .map(|cage| PuzzleConstraint::Cage(cage, Arc::clone(&cages)));
+    let constraints: Vec<PuzzleConstraint> = rows.chain(cols).chain(cage_constraints).collect();
+    generalized_arc_consistency(grid.clone(), &constraints)
 }
 
-/// Prunes cell domains to values that appear in at least one valid tuple for this cage's arithmetic
-/// operation.
-impl Constraint<Puzzle, PuzzleCell, Error> for Cage {
-    fn propagate(&self, state: &Puzzle) -> Result<(Puzzle, Vec<PuzzleCell>), Error> {
-        let cells = self.cells();
-        let old_domains: Vec<Values> = cells
-            .iter()
-            .map(|&c| state.cell_values(c))
-            .collect::<Result<_, _>>()?;
-
-        // A value survives at position i iff some valid tuple uses it there
-        // and every other position's value is in that cell's current domain.
-        let mut new_domains = vec![Values::default(); cells.len()];
-        #[allow(clippy::cast_possible_truncation)]
-        for tuple in self.tuples(state.n() as N) {
-            if tuple
-                .iter()
-                .zip(&old_domains)
-                .all(|(&v, domain)| domain.contains(v))
-            {
-                for (i, &v) in tuple.iter().enumerate() {
-                    new_domains[i] = new_domains[i] | Values::singleton(v);
-                }
-            }
-        }
-
-        apply_domains(state, &cells, &old_domains, &new_domains)
-    }
-}
-
-/// An iterator over all solutions to a [`Puzzle`].
+/// An iterator over all solutions for a [`Grid`] under a [`Puzzle`]'s constraints.
 ///
-/// Each item is a solved [`Puzzle`] in which every cell domain is a singleton.
+/// Each item is a solved [`Grid`] in which every cell domain is a singleton.
 /// Solutions are produced by interleaved propagation and backtracking search (MAC):
-/// after each branch, [`puzzle_fixpoint`] is called to prune as far as possible before
+/// after each branch, [`grid_fixpoint`] is called to prune as far as possible before
 /// the next branch.
 ///
-/// Obtained via [`Puzzle::solutions`].
-pub struct Solutions {
-    stack: Vec<Puzzle>,
+/// Obtained via [`Grid::solutions`].
+pub struct Solutions<'a> {
+    stack: Vec<Grid>,
+    puzzle: &'a Puzzle,
 }
 
-impl Solutions {
-    pub fn new(puzzle: &Puzzle) -> Self {
+impl<'a> Solutions<'a> {
+    pub fn new(grid: &Grid, puzzle: &'a Puzzle) -> Self {
         Self {
-            stack: vec![puzzle.clone()],
+            stack: vec![grid.clone()],
+            puzzle,
         }
     }
 
     /// Finds the cell with the smallest domain of size ≥ 2 (the most constrained variable).
-    fn branch_cell(puzzle: &Puzzle) -> Option<(Cell, Values)> {
-        let n = puzzle.n();
+    fn branch_cell(grid: &Grid) -> Option<(Cell, Values)> {
+        let n = grid.n();
         let mut best: Option<(Cell, Values)> = None;
         for r in 0..n {
             for c in 0..n {
                 let cell = Cell::new(r, c);
-                if let Ok(domain) = puzzle.cell_values(cell)
+                if let Ok(domain) = grid.cell_values(cell)
                     && domain.len() >= 2
                     && best.is_none_or(|(_, d)| domain.len() < d.len())
                 {
@@ -216,23 +247,23 @@ impl Solutions {
     }
 }
 
-impl Iterator for Solutions {
-    type Item = Result<Puzzle, Error>;
+impl Iterator for Solutions<'_> {
+    type Item = Result<Grid, Error>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        while let Some(puzzle) = self.stack.pop() {
+        while let Some(grid) = self.stack.pop() {
             // Propagate to fixpoint.
-            let puzzle = match puzzle_fixpoint(&puzzle) {
-                Ok(p) => p,
+            let grid = match grid_fixpoint(&grid, self.puzzle) {
+                Ok(g) => g,
                 Err(e) => return Some(Err(e)),
             };
 
-            let n = puzzle.n();
+            let n = grid.n();
 
             // Check for failure: any empty domain means this branch is dead.
             let failed = (0..n)
                 .flat_map(|r| (0..n).map(move |c| Cell::new(r, c)))
-                .any(|cell| puzzle.cell_values(cell).is_ok_and(Values::is_empty));
+                .any(|cell| grid.cell_values(cell).is_ok_and(Values::is_empty));
             if failed {
                 continue;
             }
@@ -240,15 +271,15 @@ impl Iterator for Solutions {
             // Check for success: all domains are singletons.
             let solved = (0..n)
                 .flat_map(|r| (0..n).map(move |c| Cell::new(r, c)))
-                .all(|cell| puzzle.cell_values(cell).is_ok_and(Values::is_singleton));
+                .all(|cell| grid.cell_values(cell).is_ok_and(Values::is_singleton));
             if solved {
-                return Some(Ok(puzzle));
+                return Some(Ok(grid));
             }
 
             // Branch on the most constrained unassigned cell.
-            if let Some((cell, domain)) = Self::branch_cell(&puzzle) {
+            if let Some((cell, domain)) = Self::branch_cell(&grid) {
                 for v in domain.values() {
-                    if let Ok(child) = puzzle.set_cell_value(cell, v) {
+                    if let Ok(child) = grid.set_cell_value(cell, v) {
                         self.stack.push(child);
                     }
                 }
@@ -264,44 +295,56 @@ mod tests {
     use super::*;
     use crate::csp::Constraint;
 
-    fn puzzle_with_domains(domains: &[(&(usize, usize), &[u8])]) -> Puzzle {
+    fn grid_with_domains(domains: &[(&(usize, usize), &[u8])]) -> Grid {
         let n = domains
             .iter()
             .map(|((r, c), _)| r.max(c) + 1)
             .max()
             .unwrap();
-        let mut p = Puzzle::new(n).unwrap();
+        let mut g = Grid::new(n).unwrap();
         for ((r, c), vals) in domains {
-            p = p
+            g = g
                 .set_domain(Cell::new(*r, *c), Values::new(vals).unwrap())
                 .unwrap();
         }
-        p
+        g
     }
 
     fn changed_cells(changed: &[PuzzleCell]) -> Vec<Cell> {
         changed.iter().map(|pc| pc.cell).collect()
     }
 
-    // Puzzle with row 0 partially constrained: (0,0)={1,2}, (0,1)={2}, (0,2)={1,3}.
+    // Grid with row 0 partially constrained: (0,0)={1,2}, (0,1)={2}, (0,2)={1,3}.
     // Régin should force (0,0)→{1} and (0,2)→{3}.
-    fn row0_forced_puzzle() -> Puzzle {
-        puzzle_with_domains(&[(&(0, 0), &[1, 2]), (&(0, 1), &[2]), (&(0, 2), &[1, 3])])
+    fn row0_forced_grid() -> Grid {
+        grid_with_domains(&[(&(0, 0), &[1, 2]), (&(0, 1), &[2]), (&(0, 2), &[1, 3])])
+    }
+
+    fn empty_cages() -> Arc<Vec<Cage>> {
+        Arc::new(vec![])
+    }
+
+    fn all_different_row(n: usize, row: usize) -> AllDifferent {
+        AllDifferent::row(n, row, empty_cages())
+    }
+
+    fn all_different_column(n: usize, col: usize) -> AllDifferent {
+        AllDifferent::column(n, col, empty_cages())
     }
 
     // --- PuzzleCell::new ---
 
     #[test]
     fn new_valid_cell_succeeds() {
-        let p = Puzzle::new(3).unwrap();
-        assert!(PuzzleCell::new(Cell::new(2, 2), &p).is_ok());
+        let g = Grid::new(3).unwrap();
+        assert!(PuzzleCell::new(Cell::new(2, 2), &g, empty_cages()).is_ok());
     }
 
     #[test]
     fn new_out_of_bounds_returns_invalid_cell() {
-        let p = Puzzle::new(3).unwrap();
+        let g = Grid::new(3).unwrap();
         assert!(matches!(
-            PuzzleCell::new(Cell::new(3, 0), &p),
+            PuzzleCell::new(Cell::new(3, 0), &g, empty_cages()),
             Err(Error::InvalidCell(_))
         ));
     }
@@ -310,27 +353,27 @@ mod tests {
 
     #[test]
     fn propagate_full_domains_unchanged() {
-        let p = Puzzle::new(3).unwrap();
-        let (new_p, changed) = AllDifferent::row(3, 0).propagate(&p).unwrap();
-        assert_eq!(new_p, p);
+        let g = Grid::new(3).unwrap();
+        let (new_g, changed) = all_different_row(3, 0).propagate(&g).unwrap();
+        assert_eq!(new_g, g);
         assert!(changed.is_empty());
     }
 
     #[test]
     fn propagate_prunes_forced_value() {
-        let (new_p, changed) = AllDifferent::row(3, 0)
-            .propagate(&row0_forced_puzzle())
+        let (new_g, changed) = all_different_row(3, 0)
+            .propagate(&row0_forced_grid())
             .unwrap();
         assert_eq!(
-            new_p.cell_values(Cell::new(0, 0)).unwrap(),
+            new_g.cell_values(Cell::new(0, 0)).unwrap(),
             Values::new(&[1]).unwrap()
         );
         assert_eq!(
-            new_p.cell_values(Cell::new(0, 1)).unwrap(),
+            new_g.cell_values(Cell::new(0, 1)).unwrap(),
             Values::new(&[2]).unwrap()
         );
         assert_eq!(
-            new_p.cell_values(Cell::new(0, 2)).unwrap(),
+            new_g.cell_values(Cell::new(0, 2)).unwrap(),
             Values::new(&[3]).unwrap()
         );
         let cells = changed_cells(&changed);
@@ -341,17 +384,17 @@ mod tests {
 
     #[test]
     fn propagate_infeasible_empties_domains() {
-        let p = puzzle_with_domains(&[(&(0, 0), &[1]), (&(1, 0), &[1])]);
-        let (new_p, changed) = AllDifferent::column(2, 0).propagate(&p).unwrap();
-        assert!(new_p.cell_values(Cell::new(0, 0)).unwrap().is_empty());
-        assert!(new_p.cell_values(Cell::new(1, 0)).unwrap().is_empty());
+        let g = grid_with_domains(&[(&(0, 0), &[1]), (&(1, 0), &[1])]);
+        let (new_g, changed) = all_different_column(2, 0).propagate(&g).unwrap();
+        assert!(new_g.cell_values(Cell::new(0, 0)).unwrap().is_empty());
+        assert!(new_g.cell_values(Cell::new(1, 0)).unwrap().is_empty());
         assert_eq!(changed.len(), 2);
     }
 
     #[test]
     fn propagate_unchanged_cells_not_in_changed() {
-        let (_, changed) = AllDifferent::row(3, 0)
-            .propagate(&row0_forced_puzzle())
+        let (_, changed) = all_different_row(3, 0)
+            .propagate(&row0_forced_grid())
             .unwrap();
         assert!(!changed_cells(&changed).contains(&Cell::new(0, 1)));
     }
@@ -359,19 +402,19 @@ mod tests {
     #[test]
     fn propagate_column_constraint() {
         // (0,1) pins 1, forcing (1,1)→{2} and (2,1)→{3}.
-        let p = puzzle_with_domains(&[(&(0, 1), &[1]), (&(1, 1), &[1, 2]), (&(2, 1), &[2, 3])]);
-        let (new_p, _) = AllDifferent::column(3, 1).propagate(&p).unwrap();
+        let g = grid_with_domains(&[(&(0, 1), &[1]), (&(1, 1), &[1, 2]), (&(2, 1), &[2, 3])]);
+        let (new_g, _) = all_different_column(3, 1).propagate(&g).unwrap();
         assert_eq!(
-            new_p.cell_values(Cell::new(1, 1)).unwrap(),
+            new_g.cell_values(Cell::new(1, 1)).unwrap(),
             Values::new(&[2]).unwrap()
         );
         assert_eq!(
-            new_p.cell_values(Cell::new(2, 1)).unwrap(),
+            new_g.cell_values(Cell::new(2, 1)).unwrap(),
             Values::new(&[3]).unwrap()
         );
     }
 
-    // --- Cage::propagate ---
+    // --- Cage::propagate (via propagate_cage) ---
 
     fn cage(positions: &[(usize, usize)], operator: crate::Operator, target: crate::M) -> Cage {
         use crate::operation::Operation;
@@ -385,13 +428,13 @@ mod tests {
 
     #[test]
     fn cage_propagate_given_pins_cell() {
-        // A Given cage at (0,0) with target 3 in a 4×4 puzzle:
+        // A Given cage at (0,0) with target 3 in a 4×4 grid:
         // (0,0) should be pruned to {3} regardless of its initial domain.
-        let p = Puzzle::new(4).unwrap();
+        let g = Grid::new(4).unwrap();
         let c = cage(&[(0, 0)], crate::Operator::Given, 3);
-        let (new_p, changed) = c.propagate(&p).unwrap();
+        let (new_g, changed) = propagate_cage(&c, &empty_cages(), &g).unwrap();
         assert_eq!(
-            new_p.cell_values(Cell::new(0, 0)).unwrap(),
+            new_g.cell_values(Cell::new(0, 0)).unwrap(),
             Values::new(&[3]).unwrap()
         );
         assert_eq!(changed_cells(&changed), vec![Cell::new(0, 0)]);
@@ -399,17 +442,17 @@ mod tests {
 
     #[test]
     fn cage_propagate_add_pair_prunes_impossible_values() {
-        // Add a cage over (0,0) and (0,1), target=3, in a 4×4 puzzle.
+        // Add a cage over (0,0) and (0,1), target=3, in a 4×4 grid.
         // Valid tuples: (1,2) and (2,1). So (0,0) and (0,1) are both pruned to {1,2}.
-        let p = Puzzle::new(4).unwrap();
+        let g = Grid::new(4).unwrap();
         let c = cage(&[(0, 0), (0, 1)], crate::Operator::Add, 3);
-        let (new_p, _) = c.propagate(&p).unwrap();
+        let (new_g, _) = propagate_cage(&c, &empty_cages(), &g).unwrap();
         assert_eq!(
-            new_p.cell_values(Cell::new(0, 0)).unwrap(),
+            new_g.cell_values(Cell::new(0, 0)).unwrap(),
             Values::new(&[1, 2]).unwrap()
         );
         assert_eq!(
-            new_p.cell_values(Cell::new(0, 1)).unwrap(),
+            new_g.cell_values(Cell::new(0, 1)).unwrap(),
             Values::new(&[1, 2]).unwrap()
         );
     }
@@ -418,32 +461,32 @@ mod tests {
     fn cage_propagate_no_valid_tuple_empties_domains() {
         // Add a cage over (0,0) and (0,1), target=3, but both cells are pinned to {4}.
         // No valid tuple exists, so both domains should become empty.
-        let p = puzzle_with_domains(&[(&(0, 0), &[4]), (&(0, 1), &[4])]);
+        let g = grid_with_domains(&[(&(0, 0), &[4]), (&(0, 1), &[4])]);
         let c = cage(&[(0, 0), (0, 1)], crate::Operator::Add, 3);
-        let (new_p, changed) = c.propagate(&p).unwrap();
-        assert!(new_p.cell_values(Cell::new(0, 0)).unwrap().is_empty());
-        assert!(new_p.cell_values(Cell::new(0, 1)).unwrap().is_empty());
+        let (new_g, changed) = propagate_cage(&c, &empty_cages(), &g).unwrap();
+        assert!(new_g.cell_values(Cell::new(0, 0)).unwrap().is_empty());
+        assert!(new_g.cell_values(Cell::new(0, 1)).unwrap().is_empty());
         assert_eq!(changed.len(), 2);
     }
 
     #[test]
     fn cage_propagate_domain_constrains_tuples() {
-        // Add a cage over (0,0) and (0,1), target=5, in a 4×4 puzzle.
+        // Add a cage over (0,0) and (0,1), target=5, in a 4×4 grid.
         // Valid tuples without domain constraints: (1,4),(4,1),(2,3),(3,2).
         // Pin (0,1) to {1,2}: surviving tuples are (4,1) and (3,2).
         // So (0,0) is pruned to {3,4} and (0,1) stays {1,2}.
-        let p = Puzzle::new(4)
+        let g = Grid::new(4)
             .unwrap()
             .set_domain(Cell::new(0, 1), Values::new(&[1, 2]).unwrap())
             .unwrap();
         let c = cage(&[(0, 0), (0, 1)], crate::Operator::Add, 5);
-        let (new_p, _) = c.propagate(&p).unwrap();
+        let (new_g, _) = propagate_cage(&c, &empty_cages(), &g).unwrap();
         assert_eq!(
-            new_p.cell_values(Cell::new(0, 0)).unwrap(),
+            new_g.cell_values(Cell::new(0, 0)).unwrap(),
             Values::new(&[3, 4]).unwrap()
         );
         assert_eq!(
-            new_p.cell_values(Cell::new(0, 1)).unwrap(),
+            new_g.cell_values(Cell::new(0, 1)).unwrap(),
             Values::new(&[1, 2]).unwrap()
         );
     }

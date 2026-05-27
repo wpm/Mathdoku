@@ -35,10 +35,24 @@ export async function installTauriStubs(
     ({ puzzle, saveDialogPath, openDialogPath, savedPath }) => {
       let currentPath: string | null = savedPath;
 
+      // Wrap a bare { n, cages? } puzzle into the State wire format that the
+      // Rust backend now returns: { puzzle, solution, current, active, provisional_cages }.
+      type BareP = { n: number; cages?: unknown[] } | null;
+      const wrapState = (p: BareP) =>
+        p
+          ? {
+              puzzle: p,
+              solution: { n: p.n },
+              current: { n: p.n },
+              active: { row: 0, column: 0 },
+              provisional_cages: [],
+            }
+          : null;
+
       (window as unknown as Record<string, unknown>)['__TAURI__'] = {
         core: {
           invoke: (cmd: string, args?: unknown) => {
-            if (cmd === 'get_puzzle') return Promise.resolve(puzzle);
+            if (cmd === 'get_puzzle') return Promise.resolve(wrapState(puzzle as BareP));
             if (cmd === 'get_doc_state')
               return Promise.resolve({ dirty: false, path: currentPath });
             if (cmd === 'save_puzzle') {
@@ -53,21 +67,34 @@ export async function installTauriStubs(
               document.title = title;
               return Promise.resolve(null);
             }
-            if (cmd === 'add_region') {
-              // Add the cells as a new cage in the puzzle (new serde format).
-              const cells = (args as { cells?: { row: number; column: number }[] } | undefined)?.cells ?? [];
-              const currentPuzzle = puzzle as { n: number; cages?: unknown[] } | null;
+            if (cmd === 'remove_region') {
+              const typedArgs = args as { cells?: { row: number; column: number }[] } | undefined;
+              const removeCells = typedArgs?.cells ?? [];
+              const currentPuzzle = puzzle as BareP;
               if (!currentPuzzle) return Promise.resolve(null);
-              const isMultiCell = cells.length > 1;
+              const removeSet = new Set(removeCells.map(({ row, column }) => `${row},${column}`));
+              const cages = (currentPuzzle.cages ?? []).filter((cage: unknown) => {
+                const c = cage as { polyomino?: { row: number; column: number }[] };
+                const cageSet = new Set((c.polyomino ?? []).map(({ row, column }) => `${row},${column}`));
+                return !(removeCells.length === cageSet.size && removeCells.every(({ row, column }) => cageSet.has(`${row},${column}`)));
+              });
+              puzzle = { n: currentPuzzle.n, cages };
+              return Promise.resolve(wrapState(puzzle as BareP));
+            }
+            if (cmd === 'add_region') {
+              // Add the cells as a new cage and return a State.
+              const typedArgs = args as { cells?: { row: number; column: number }[]; operator?: string } | undefined;
+              const cells = typedArgs?.cells ?? [];
+              const operator = typedArgs?.operator ?? 'Given';
+              const currentPuzzle = puzzle as BareP;
+              if (!currentPuzzle) return Promise.resolve(null);
               const newCage = {
                 polyomino: cells.map(({ row, column }) => ({ row, column })),
-                operation: isMultiCell
-                  ? { operator: 'Add', target: 0 }
-                  : { operator: 'Given', target: 1 },
+                operation: { operator, target: operator === 'Given' ? 1 : 0 },
               };
               const cages = [...(currentPuzzle.cages ?? []), newCage];
               puzzle = { n: currentPuzzle.n, cages };
-              return Promise.resolve(puzzle);
+              return Promise.resolve(wrapState(puzzle as BareP));
             }
             return Promise.resolve(null);
           },

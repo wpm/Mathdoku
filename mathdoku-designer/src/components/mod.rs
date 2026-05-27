@@ -1,15 +1,16 @@
 //! SVG components that render a Mathdoku puzzle.
 //!
-//! [`Puzzle`] is the top-level component. It owns all interaction state and
-//! provides a [`GridContext`] to its children so they can read mode and
-//! selection without prop-drilling.
+//! [`Puzzle`] is the only item exported from this module. All submodules are
+//! internal; components wire up via Leptos context rather than direct imports.
 
-pub mod cage;
-pub mod cage_stats;
-pub mod cell;
-pub mod puzzle;
-pub mod region;
-pub mod selection;
-pub mod solution_count;
+pub(super) mod cage;
+pub(super) mod cage_stats;
+pub(super) mod cell;
+pub(super) mod operation_selector;
+pub(super) mod puzzle;
+pub(super) mod region;
+pub(super) mod selection;
+pub(super) mod solution_count;
 
 pub use puzzle::Puzzle;
+pub use operation_selector::PendingCommit;

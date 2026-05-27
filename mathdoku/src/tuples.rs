@@ -1,3 +1,7 @@
+//! Enumerates valid [`Tuple`] assignments for a cage given its polyomino and operation.
+//!
+//! The public entry point is [`tuples`].
+
 use crate::arithmetic::{
     addition_multisets, division_multisets, multiplication_multisets, subtraction_multisets,
 };

@@ -1,3 +1,8 @@
+#![allow(
+    clippy::many_single_char_names,   // r/c/v/i/j/k are conventional for Latin-square indices
+    clippy::cast_possible_truncation, // v+1 <= n <= 9 always fits in N (u8)
+)]
+
 use rand::{Rng, RngExt};
 
 use crate::cell::N;
@@ -5,7 +10,6 @@ use crate::cell::N;
 /// Returns a uniformly random index `x` in `0..n` such that `line(x) == 1`.
 /// In a proper state each line has exactly one such entry; in an improper state
 /// there are two, and we pick uniformly between them.
-#[allow(clippy::many_single_char_names)]
 fn pick_one_from_line(rng: &mut impl Rng, n: usize, line: impl Fn(usize) -> i8) -> usize {
     let mut ones = [0usize; 2];
     let mut count = 0;
@@ -37,7 +41,6 @@ fn pick_one_from_line(rng: &mut impl Rng, n: usize, line: impl Fn(usize) -> i8) 
 /// Reference: Mark T. Jacobson and Peter Matthews, "Generating uniformly
 /// distributed random Latin squares", *Journal of Combinatorial Designs* 4(6),
 /// 1996, pp. 405–437.
-#[allow(clippy::many_single_char_names)]
 pub fn generate_latin_square(n: usize, rng: &mut impl Rng) -> Vec<Vec<N>> {
     // Seed with the cyclic Latin square: L[r][c] = ((r + c) mod n) + 1.
     let mut m: Vec<Vec<Vec<i8>>> = vec![vec![vec![0i8; n]; n]; n];
@@ -87,8 +90,6 @@ pub fn generate_latin_square(n: usize, rng: &mut impl Rng) -> Vec<Vec<N>> {
         moves += 1;
     }
 
-    // Safety: v < n and n fits in u8 for any reasonable Latin square size.
-    #[allow(clippy::cast_possible_truncation)]
     (0..n)
         .map(|r| {
             (0..n)
@@ -113,7 +114,6 @@ mod tests {
 
     /// Returns true if `ls` is a valid n×n Latin square: each row and each
     /// column contains each value in `1..=n` exactly once.
-    #[allow(clippy::cast_possible_truncation)]
     fn validate_latin_square(ls: &[Vec<N>]) -> bool {
         let n = ls.len();
         let expected: HashSet<N> = (1..=(n as N)).collect();
