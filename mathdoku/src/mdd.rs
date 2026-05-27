@@ -322,7 +322,7 @@ mod tests {
     /// every assignment of `1..=n` to the cage's cells that satisfies the operator's
     /// arithmetic and the all-different rule within each shared row or column. This
     /// shares no machinery with [`Mdd::build`], so agreement is a real cross-check.
-    fn ref_tuples(n: N, polyomino: &Polyomino, op: Operation) -> Vec<Tuple> {
+    fn ref_tuples(n: N, polyomino: &Polyomino, op: &Operation) -> Vec<Tuple> {
         let cells = polyomino.cells();
         let k = cells.len();
 
@@ -375,7 +375,7 @@ mod tests {
     /// matches tuple non-emptiness.
     fn assert_equiv(n: N, polyomino: &Polyomino, op: &Operation) {
         let mdd = Mdd::build(n, polyomino, op.clone());
-        let expected = ref_tuples(n, polyomino, op.clone());
+        let expected = ref_tuples(n, polyomino, op);
         let actual = mdd_tuples(n, polyomino, op.clone());
         assert_eq!(
             actual,
@@ -552,7 +552,7 @@ mod tests {
         let op = Operation::new(Operator::Add, 10);
         let mdd = Mdd::build(4, &square(), op.clone());
         assert_reduced(&mdd);
-        let tuples = ref_tuples(4, &square(), op);
+        let tuples = ref_tuples(4, &square(), &op);
         assert!(tuples.len() > 1);
         assert!(
             mdd.nodes.len() < trie_node_count(&tuples),
