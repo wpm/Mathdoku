@@ -71,12 +71,20 @@ impl Mdd {
             terminal: 0,
         };
         builder.terminal = builder.intern(k, Vec::new());
-        let init_acc = match builder.operator {
-            Operator::Multiply => 1,
-            _ => 0,
+        // Subtract and Divide are binary operators: they relate exactly two cells. A
+        // cage of any other size admits no tuples, matching the reference enumerator
+        // (whose two-element multisets have no length-k permutations for k != 2).
+        let two_cell_only = matches!(builder.operator, Operator::Subtract | Operator::Divide);
+        let root = if two_cell_only && k != 2 {
+            None
+        } else {
+            let init_acc = match builder.operator {
+                Operator::Multiply => 1,
+                _ => 0,
+            };
+            let mut assignment = Vec::with_capacity(k);
+            builder.dfs(0, &mut assignment, init_acc)
         };
-        let mut assignment = Vec::with_capacity(k);
-        let root = builder.dfs(0, &mut assignment, init_acc);
         Self {
             nodes: builder.nodes,
             root,
@@ -369,6 +377,26 @@ mod tests {
     #[test]
     fn multiply_l_shape_matches_reference() {
         assert_equiv(6, &l_shape(), &Operation::new(Operator::Multiply, 24));
+    }
+
+    // --- Subtract / Divide are binary: non-pair cages yield no tuples ---
+
+    #[test]
+    fn subtract_non_pair_is_infeasible() {
+        // The reference enumerator has no length-3 permutations of a 2-element multiset,
+        // so a 3-cell Subtract cage admits no tuples; the MDD must agree (not a chain).
+        let mdd = Mdd::build(4, &l_shape(), Operation::new(Operator::Subtract, 1));
+        assert!(!mdd.is_feasible());
+        assert_eq!(mdd.tuples().count(), 0);
+        assert_equiv(4, &l_shape(), &Operation::new(Operator::Subtract, 1));
+    }
+
+    #[test]
+    fn divide_non_pair_is_infeasible() {
+        let mdd = Mdd::build(6, &l_shape(), Operation::new(Operator::Divide, 2));
+        assert!(!mdd.is_feasible());
+        assert_eq!(mdd.tuples().count(), 0);
+        assert_equiv(6, &l_shape(), &Operation::new(Operator::Divide, 2));
     }
 
     // --- 2×2 square: the smallest case with real row/column merging ---
