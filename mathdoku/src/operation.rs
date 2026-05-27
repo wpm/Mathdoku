@@ -1,3 +1,21 @@
+//! Arithmetic operators, operations, and operator enumeration for cages.
+//!
+//! A Mathdoku cage constrains its cells with an [`Operation`]: one of the five
+//! [`Operator`]s paired with a numeric target drawn from the grid's solved values.
+//! The five operators and their arities are:
+//!
+//! | Operator | Arity | Constraint |
+//! |----------|-------|------------|
+//! | [`Add`](Operator::Add) | ≥ 1 | cells sum to target |
+//! | [`Subtract`](Operator::Subtract) | exactly 2 | cells differ by target |
+//! | [`Multiply`](Operator::Multiply) | ≥ 1 | cells multiply to target |
+//! | [`Divide`](Operator::Divide) | exactly 2 | cells have ratio equal to target |
+//! | [`Given`](Operator::Given) | exactly 1 | cell equals target |
+//!
+//! The [`operators`] function returns the valid operators for a cage based on its
+//! polyomino's size: singletons allow only `Given`; pairs allow all four binary
+//! operators; larger cages allow only `Add` and `Multiply`.
+
 use crate::{M, Polyomino};
 use serde::{Deserialize, Serialize};
 use std::fmt;
