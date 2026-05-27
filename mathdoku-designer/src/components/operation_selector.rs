@@ -16,7 +16,8 @@
     clippy::cast_precision_loss,
     clippy::cast_sign_loss,
     clippy::cast_possible_truncation,
-    clippy::suboptimal_flops // layout arithmetic reads clearer as plain * and +
+    clippy::suboptimal_flops, // layout arithmetic reads clearer as plain * and +
+    unused_results            // Effect::new is fire-and-forget in reactive WASM code
 )]
 
 use leptos::prelude::*;
@@ -179,7 +180,7 @@ fn without_solution_view(
         FeasibilityState::Ready(pairs) if pairs.is_empty() => empty_message_view(x, y),
         FeasibilityState::Ready(pairs) => picked.get().map_or_else(
             || operator_strip_view(&pairs, picked, cell_size, tab_w, tab_h, pad, gap, x, y),
-            |op| target_list_view(&pairs, &op, on_commit, tab_w, tab_h, pad, gap, x, y),
+            |op| target_select_view(&pairs, &op, on_commit, tab_w, tab_h, pad, x, y),
         ),
     }
 }
@@ -271,58 +272,73 @@ fn operator_strip_view(
     .into_any()
 }
 
-/// Step two: the vertical list of feasible targets for the chosen operator.
-/// Clicking a target commits the cage with `(operator, target)`.
+/// Step two: a native `<select>` dropdown of the feasible targets for the chosen
+/// operator, embedded via `<foreignObject>`. The browser renders the option list
+/// in its top layer, so it never clips against the puzzle edge, and provides
+/// focus, arrow-key, mouse, and type-to-select navigation for free. Options carry
+/// the bare target number (so typing the number jumps to it); the operator symbol
+/// is the placeholder. Choosing an option commits the cage with `(operator, target)`.
 #[allow(clippy::too_many_arguments)]
-fn target_list_view(
+fn target_select_view(
     pairs: &[(Operator, M)],
     op: &Operator,
     on_commit: Callback<(Operator, Option<M>)>,
     tab_w: f64,
     tab_h: f64,
     pad: f64,
-    gap: f64,
     x: f64,
     y: f64,
 ) -> AnyView {
-    let targets: Vec<M> = pairs
+    let options: Vec<_> = pairs
         .iter()
         .filter(|(o, _)| o == op)
-        .map(|(_, t)| *t)
+        .map(|(_, t)| {
+            let value = t.to_string();
+            let label = value.clone();
+            view! { <option value=value>{label}</option> }
+        })
         .collect();
-    let row_w = tab_w.max(56.0);
-    let n_rows = targets.len();
-    let total_w = row_w + pad * 2.0;
-    let total_h = tab_h.mul_add(n_rows as f64, gap * (n_rows.saturating_sub(1)) as f64) + pad * 2.0;
+    let fo_w = tab_w.max(56.0) + pad * 2.0;
+    let fo_h = tab_h + pad * 2.0;
+    // `Given` renders with no symbol, so use a literal placeholder like the strip.
+    let placeholder = if *op == Operator::Given {
+        "#".to_owned()
+    } else {
+        op.to_string()
+    };
+    let op_for_change = op.clone();
+
+    // Move focus to the dropdown as soon as it mounts.
+    let select_ref = NodeRef::<leptos::html::Select>::new();
+    Effect::new(move |_| {
+        if let Some(el) = select_ref.get() {
+            let _ = el.focus();
+        }
+    });
+
+    let select_style = format!(
+        "width:100%;height:100%;box-sizing:border-box;\
+         font-family:{SERIF};font-size:14px;font-weight:700;\
+         color:{INK};background:{BG};border:1px solid {ACCENT};\
+         border-radius:3px;padding:0 4px;cursor:pointer;"
+    );
 
     view! {
-        <g>
-            <rect
-                x={x} y={y} width={total_w} height={total_h}
-                rx="4" fill=BG stroke=LINE stroke-width="0.75"
-            />
-            {targets.into_iter().enumerate().map(|(i, target)| {
-                let row_x = x + pad;
-                let row_y = (tab_h + gap).mul_add(i as f64, y + pad);
-                let tx = row_x + row_w / 2.0;
-                let ty = row_y + tab_h / 2.0;
-                let label = Operation::new(op.clone(), target).to_string();
-                let op = op.clone();
-                view! {
-                    <g style="cursor:pointer;" on:click=move |_| on_commit.run((op.clone(), Some(target)))>
-                        <rect
-                            x={row_x} y={row_y} width={row_w} height={tab_h}
-                            rx="3" fill=BG stroke=ACCENT stroke-width="1.0"
-                        />
-                        <text
-                            x={tx} y={ty}
-                            text-anchor="middle" dominant-baseline="middle"
-                            font-family=SERIF font-size="14" font-weight="700" fill=INK
-                        >{label}</text>
-                    </g>
+        <foreignObject x={x} y={y} width={fo_w} height={fo_h}>
+            <select
+                node_ref=select_ref
+                class="target-select"
+                style=select_style
+                on:change=move |ev| {
+                    if let Ok(target) = event_target_value(&ev).parse::<M>() {
+                        on_commit.run((op_for_change.clone(), Some(target)));
+                    }
                 }
-            }).collect::<Vec<_>>()}
-        </g>
+            >
+                <option value="" disabled=true selected=true>{placeholder}</option>
+                {options}
+            </select>
+        </foreignObject>
     }
     .into_any()
 }

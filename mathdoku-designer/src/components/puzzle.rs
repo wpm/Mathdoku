@@ -231,8 +231,18 @@ pub fn Puzzle(
         let st = designer_state.get_untracked();
         let (r, c) = (st.active.row, st.active.column);
 
-        // Operation selector intercepts all keys when active.
+        // Operation selector intercepts all keys when active. The exception is the
+        // Without-Solution target dropdown (a native <select>): let it own
+        // arrow/typing/Enter navigation, intercepting only Escape to back out.
         if let Some(p) = pending_commit.get_untracked() {
+            use wasm_bindgen::JsCast;
+            let from_select = ev
+                .target()
+                .and_then(|t| t.dyn_into::<web_sys::Element>().ok())
+                .is_some_and(|el| el.tag_name().eq_ignore_ascii_case("select"));
+            if from_select && key.as_str() != ESCAPE {
+                return;
+            }
             ev.prevent_default();
             handle_key(
                 key.as_str(),
@@ -494,9 +504,18 @@ pub fn Puzzle(
         }
     }
 
-    // Focus the SVG on mount and whenever the operation selector opens/closes.
+    // Focus the grid SVG on mount and whenever the operation selector opens/closes
+    // or backs out to the operator strip. While the Without-Solution target
+    // dropdown is open the <select> owns focus (see target_select_view), so don't
+    // steal it back here.
     Effect::new(move |_| {
-        let _ = pending_commit.get(); // re-run when selector changes
+        let pending = pending_commit.get(); // re-run when the selector changes
+        let target_dropdown_open = pending
+            .as_ref()
+            .is_some_and(|p| p.feasible.is_some() && p.picked_operator.get().is_some());
+        if target_dropdown_open {
+            return;
+        }
         use wasm_bindgen::JsCast;
         if let Some(el) = web_sys::window()
             .and_then(|w| w.document())
