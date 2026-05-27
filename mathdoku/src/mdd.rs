@@ -27,14 +27,14 @@ type NodeId = usize;
 
 /// A node in the MDD. The accept terminal is the unique node whose `level` equals
 /// the cage size and whose `edges` are empty; every other node has at least one edge.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Node {
     level: usize,
     edges: Vec<(N, NodeId)>,
 }
 
 /// A reduced ordered MDD over the valid tuples of a cage.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Mdd {
     nodes: Vec<Node>,
     root: Option<NodeId>,
@@ -305,7 +305,6 @@ mod tests {
     use super::*;
     use crate::operation::operators;
     use crate::test_utils::{cells, col_pair, l_shape, pair, singleton};
-    use crate::tuples::tuples;
 
     fn square() -> Polyomino {
         Polyomino::from_cells(&cells(&[(0, 0), (0, 1), (1, 0), (1, 1)])).unwrap()
@@ -319,12 +318,57 @@ mod tests {
         ts
     }
 
-    /// Sorted, deduplicated tuples produced by the reference enumerator.
+    /// Sorted, deduplicated tuples produced by an independent brute-force oracle:
+    /// every assignment of `1..=n` to the cage's cells that satisfies the operator's
+    /// arithmetic and the all-different rule within each shared row or column. This
+    /// shares no machinery with [`Mdd::build`], so agreement is a real cross-check.
     fn ref_tuples(n: N, polyomino: &Polyomino, op: Operation) -> Vec<Tuple> {
-        let mut ts: Vec<Tuple> = tuples(n, polyomino, op).collect();
-        ts.sort();
-        ts.dedup();
-        ts
+        let cells = polyomino.cells();
+        let k = cells.len();
+
+        let collinear_ok = |t: &[N]| {
+            (0..k).all(|i| {
+                (0..i).all(|j| {
+                    (cells[i].row != cells[j].row && cells[i].column != cells[j].column)
+                        || t[i] != t[j]
+                })
+            })
+        };
+
+        let satisfies = |t: &[N]| match op.operator {
+            Operator::Add => t.iter().map(|&v| M::from(v)).sum::<M>() == op.target,
+            Operator::Multiply => t.iter().map(|&v| M::from(v)).product::<M>() == op.target,
+            Operator::Given => k == 1 && M::from(t[0]) == op.target,
+            Operator::Subtract => k == 2 && M::from(t[0]).abs_diff(M::from(t[1])) == op.target,
+            Operator::Divide => {
+                k == 2 && {
+                    let (a, b) = (M::from(t[0]), M::from(t[1]));
+                    a == b * op.target || b == a * op.target
+                }
+            }
+        };
+
+        // Enumerate every k-tuple over `1..=n` like an odometer.
+        let mut out = Vec::new();
+        let mut t = vec![1u8; k];
+        loop {
+            if collinear_ok(&t) && satisfies(&t) {
+                out.push(t.clone());
+            }
+            let mut i = 0;
+            while i < k && t[i] == n {
+                t[i] = 1;
+                i += 1;
+            }
+            if i == k {
+                break;
+            }
+            t[i] += 1;
+        }
+
+        out.sort();
+        out.dedup();
+        out
     }
 
     /// Asserts the MDD and the reference enumerator agree, and that feasibility
