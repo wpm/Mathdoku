@@ -173,13 +173,14 @@ fn without_solution_view(
     let gap = 2.0;
     let on_commit = pending.on_commit;
     let picked = pending.picked_operator;
+    let selected_idx = pending.selected_idx;
 
     match feasible.get() {
         FeasibilityState::Computing => spinner_view(x, y, tab_w, tab_h, pad),
         FeasibilityState::Ready(pairs) if pairs.is_empty() => empty_message_view(x, y),
         FeasibilityState::Ready(pairs) => picked.get().map_or_else(
-            || operator_strip_view(&pairs, picked, cell_size, tab_w, tab_h, pad, gap, x, y),
-            |op| target_list_view(&pairs, &op, on_commit, tab_w, tab_h, pad, gap, x, y),
+            || operator_strip_view(&pairs, picked, selected_idx, tab_w, tab_h, pad, gap, x, y),
+            |op| target_list_view(&pairs, &op, on_commit, selected_idx, tab_w, tab_h, pad, gap, x, y),
         ),
     }
 }
@@ -223,7 +224,7 @@ fn empty_message_view(x: f64, y: f64) -> AnyView {
 fn operator_strip_view(
     pairs: &[(Operator, M)],
     picked: RwSignal<Option<Operator>>,
-    _cell_size: f64,
+    selected_idx: RwSignal<usize>,
     tab_w: f64,
     tab_h: f64,
     pad: f64,
@@ -253,15 +254,21 @@ fn operator_strip_view(
                 // `Given` renders with no symbol, so use a literal label for the strip.
                 let label = if op == Operator::Given { "#".to_owned() } else { op.to_string() };
                 view! {
-                    <g style="cursor:pointer;" on:click=move |_| picked.set(Some(op.clone()))>
+                    <g
+                        style="cursor:pointer;"
+                        on:click=move |_| { selected_idx.set(0); picked.set(Some(op.clone())); }
+                    >
                         <rect
                             x={tab_x} y={tab_y} width={tab_w} height={tab_h}
-                            rx="3" fill=BG stroke=ACCENT stroke-width="1.0"
+                            rx="3"
+                            fill=move || if selected_idx.get() == i { ACCENT } else { BG }
+                            stroke=ACCENT stroke-width="1.0"
                         />
                         <text
                             x={tx} y={ty}
                             text-anchor="middle" dominant-baseline="middle"
-                            font-family=SERIF font-size="14" font-weight="700" fill=INK
+                            font-family=SERIF font-size="14" font-weight="700"
+                            fill=move || if selected_idx.get() == i { BG } else { INK }
                         >{label}</text>
                     </g>
                 }
@@ -278,6 +285,7 @@ fn target_list_view(
     pairs: &[(Operator, M)],
     op: &Operator,
     on_commit: Callback<(Operator, Option<M>)>,
+    selected_idx: RwSignal<usize>,
     tab_w: f64,
     tab_h: f64,
     pad: f64,
@@ -312,12 +320,15 @@ fn target_list_view(
                     <g style="cursor:pointer;" on:click=move |_| on_commit.run((op.clone(), Some(target)))>
                         <rect
                             x={row_x} y={row_y} width={row_w} height={tab_h}
-                            rx="3" fill=BG stroke=ACCENT stroke-width="1.0"
+                            rx="3"
+                            fill=move || if selected_idx.get() == i { ACCENT } else { BG }
+                            stroke=ACCENT stroke-width="1.0"
                         />
                         <text
                             x={tx} y={ty}
                             text-anchor="middle" dominant-baseline="middle"
-                            font-family=SERIF font-size="14" font-weight="700" fill=INK
+                            font-family=SERIF font-size="14" font-weight="700"
+                            fill=move || if selected_idx.get() == i { BG } else { INK }
                         >{label}</text>
                     </g>
                 }
@@ -411,6 +422,101 @@ fn cancel_pending(
     designer_state.set(new_st);
 }
 
+/// Keyboard handling for the Without-Solution two-step picker (operator strip,
+/// then target list). Both steps support focus highlighting, Tab / arrow
+/// navigation, Enter, and operator shortcut keys. All keys are consumed by the
+/// caller so they don't leak to grid navigation behind the picker.
+#[allow(clippy::too_many_arguments)]
+fn handle_key_without_solution(
+    key: &str,
+    shift: bool,
+    pending: &PendingCommit,
+    feasible: RwSignal<FeasibilityState>,
+    pending_commit: RwSignal<Option<PendingCommit>>,
+    designer_state: RwSignal<mathdoku_designer_shared::State>,
+    on_state_change: Callback<mathdoku_designer_shared::State>,
+) {
+    use crate::keys::{ARROW_DOWN, ARROW_LEFT, ARROW_RIGHT, ARROW_UP, ENTER, ESCAPE, TAB};
+
+    let FeasibilityState::Ready(pairs) = feasible.get_untracked() else {
+        // Still computing: nothing to navigate yet; only Escape cancels.
+        if key == ESCAPE {
+            cancel_pending(pending, pending_commit, designer_state, on_state_change);
+        }
+        return;
+    };
+    if pairs.is_empty() {
+        if key == ESCAPE {
+            cancel_pending(pending, pending_commit, designer_state, on_state_change);
+        }
+        return;
+    }
+
+    // Cyclic move of `selected_idx` over `n` items (forwards, or backwards when `back`).
+    let step = |back: bool, n: usize| {
+        let cur = pending.selected_idx.get_untracked();
+        let next = if back {
+            cur.saturating_add(n - 1) % n
+        } else {
+            (cur + 1) % n
+        };
+        pending.selected_idx.set(next);
+    };
+
+    match pending.picked_operator.get_untracked() {
+        // Step one: operator strip (horizontal). Enter or a shortcut key opens
+        // the chosen operator's target list.
+        None => {
+            let ops: Vec<Operator> = group_by_operator(&pairs)
+                .into_iter()
+                .map(|(op, _)| op)
+                .collect();
+            match key {
+                ESCAPE => {
+                    cancel_pending(pending, pending_commit, designer_state, on_state_change);
+                }
+                TAB | ARROW_RIGHT | ARROW_LEFT => step(shift || key == ARROW_LEFT, ops.len()),
+                ENTER => {
+                    if let Some(op) = ops.get(pending.selected_idx.get_untracked()) {
+                        pending.picked_operator.set(Some(op.clone()));
+                        pending.selected_idx.set(0);
+                    }
+                }
+                key_str => {
+                    if let Some(op) = key_to_operator(key_str, &ops) {
+                        pending.picked_operator.set(Some(op));
+                        pending.selected_idx.set(0);
+                    }
+                }
+            }
+        }
+        // Step two: target list (vertical). Enter commits the highlighted
+        // target; Escape backs out to the operator strip.
+        Some(op) => {
+            let targets: Vec<M> = pairs
+                .iter()
+                .filter(|(o, _)| *o == op)
+                .map(|(_, t)| *t)
+                .collect();
+            match key {
+                ESCAPE => {
+                    pending.picked_operator.set(None);
+                    pending.selected_idx.set(0);
+                }
+                TAB | ARROW_DOWN | ARROW_UP if !targets.is_empty() => {
+                    step(shift || key == ARROW_UP, targets.len());
+                }
+                ENTER => {
+                    if let Some(&target) = targets.get(pending.selected_idx.get_untracked()) {
+                        pending.on_commit.run((op, Some(target)));
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
 /// Handles keyboard events while the operation selector is active.
 /// Returns `true` if the key was consumed.
 pub fn handle_key(
@@ -423,17 +529,17 @@ pub fn handle_key(
 ) -> bool {
     use crate::keys::{ARROW_LEFT, ARROW_RIGHT, ENTER, ESCAPE, TAB};
 
-    // Without-Solution mode is click-driven; only Escape navigates (back out of
-    // the target sub-picker, then cancel). All other keys are consumed so they
-    // don't leak to grid navigation behind the picker.
-    if pending.feasible.is_some() {
-        if key == ESCAPE {
-            if pending.picked_operator.get_untracked().is_some() {
-                pending.picked_operator.set(None);
-            } else {
-                cancel_pending(pending, pending_commit, designer_state, on_state_change);
-            }
-        }
+    // Without-Solution mode is a two-step picker handled separately.
+    if let Some(feasible) = pending.feasible {
+        handle_key_without_solution(
+            key,
+            shift,
+            pending,
+            feasible,
+            pending_commit,
+            designer_state,
+            on_state_change,
+        );
         return true;
     }
 
@@ -617,7 +723,7 @@ mod tests {
     mod handle_key {
         use super::super::{PendingCommit, handle_key};
         use super::poly;
-        use crate::keys::{ARROW_LEFT, ARROW_RIGHT, ENTER, ESCAPE, TAB};
+        use crate::keys::{ARROW_DOWN, ARROW_LEFT, ARROW_RIGHT, ENTER, ESCAPE, TAB};
         use leptos::prelude::*;
         use leptos::reactive::owner::Owner;
         use mathdoku::{M, Operator};
@@ -824,27 +930,126 @@ mod tests {
             });
         }
 
+        use super::super::FeasibilityState;
+
+        fn ready_pending(committed: Committed, pairs: Vec<(Operator, M)>) -> PendingCommit {
+            let mut p = pending(committed);
+            p.feasible = Some(RwSignal::new(FeasibilityState::Ready(pairs)));
+            p
+        }
+
         #[test]
-        fn without_solution_consumes_keys_and_escape_backs_out() {
+        fn without_solution_strip_tab_navigates_and_enter_picks() {
             Owner::new().with(|| {
                 let committed = RwSignal::new(None);
-                let mut p = pending(committed);
-                p.feasible = Some(RwSignal::new(super::super::FeasibilityState::Computing));
-                p.picked_operator.set(Some(Operator::Add));
+                let pairs: Vec<(Operator, M)> =
+                    vec![(Operator::Add, 3), (Operator::Subtract, 1)];
+                let p = ready_pending(committed, pairs);
                 let designer_state = RwSignal::new(State::new(4).unwrap());
                 let pending_commit = RwSignal::new(Some(p.clone()));
                 let on_state_change = Callback::new(|_: State| {});
 
-                // A non-Escape key is consumed but does nothing.
+                // Tab advances the highlighted operator.
                 assert!(handle_key(
-                    "+",
+                    TAB,
                     false,
                     &p,
                     pending_commit,
                     designer_state,
                     on_state_change,
                 ));
+                assert_eq!(p.selected_idx.get_untracked(), 1);
+
+                // Enter opens the highlighted operator's target list and resets the
+                // index for the target sub-picker.
+                assert!(handle_key(
+                    ENTER,
+                    false,
+                    &p,
+                    pending_commit,
+                    designer_state,
+                    on_state_change,
+                ));
+                assert_eq!(p.picked_operator.get_untracked(), Some(Operator::Subtract));
+                assert_eq!(p.selected_idx.get_untracked(), 0);
                 assert!(committed.get_untracked().is_none());
+            });
+        }
+
+        #[test]
+        fn without_solution_shortcut_key_picks_operator() {
+            Owner::new().with(|| {
+                let committed = RwSignal::new(None);
+                let pairs: Vec<(Operator, M)> =
+                    vec![(Operator::Add, 3), (Operator::Subtract, 1)];
+                let p = ready_pending(committed, pairs);
+                let designer_state = RwSignal::new(State::new(4).unwrap());
+                let pending_commit = RwSignal::new(Some(p.clone()));
+                let on_state_change = Callback::new(|_: State| {});
+
+                // "-" jumps straight to the Subtract target list without committing.
+                assert!(handle_key(
+                    "-",
+                    false,
+                    &p,
+                    pending_commit,
+                    designer_state,
+                    on_state_change,
+                ));
+                assert_eq!(p.picked_operator.get_untracked(), Some(Operator::Subtract));
+                assert!(committed.get_untracked().is_none());
+            });
+        }
+
+        #[test]
+        fn without_solution_target_list_navigates_and_enter_commits() {
+            Owner::new().with(|| {
+                let committed = RwSignal::new(None);
+                let pairs: Vec<(Operator, M)> =
+                    vec![(Operator::Add, 3), (Operator::Add, 5)];
+                let p = ready_pending(committed, pairs);
+                p.picked_operator.set(Some(Operator::Add));
+                let designer_state = RwSignal::new(State::new(4).unwrap());
+                let pending_commit = RwSignal::new(Some(p.clone()));
+                let on_state_change = Callback::new(|_: State| {});
+
+                // ArrowDown moves to the second target.
+                assert!(handle_key(
+                    ARROW_DOWN,
+                    false,
+                    &p,
+                    pending_commit,
+                    designer_state,
+                    on_state_change,
+                ));
+                assert_eq!(p.selected_idx.get_untracked(), 1);
+
+                // Enter commits the highlighted (operator, target).
+                assert!(handle_key(
+                    ENTER,
+                    false,
+                    &p,
+                    pending_commit,
+                    designer_state,
+                    on_state_change,
+                ));
+                assert_eq!(committed.get_untracked(), Some((Operator::Add, Some(5))));
+            });
+        }
+
+        #[test]
+        fn without_solution_escape_backs_out_then_cancels() {
+            Owner::new().with(|| {
+                let committed = RwSignal::new(None);
+                let pairs: Vec<(Operator, M)> = vec![(Operator::Add, 3)];
+                let p = ready_pending(committed, pairs);
+                p.picked_operator.set(Some(Operator::Add));
+
+                let mut st = State::new(4).unwrap();
+                let _ = st.provisional_cages.insert(p.polyomino.clone());
+                let designer_state = RwSignal::new(st);
+                let pending_commit = RwSignal::new(Some(p.clone()));
+                let on_state_change = Callback::new(|_: State| {});
 
                 // Escape from the target sub-picker backs out to the operator strip.
                 assert!(handle_key(
@@ -868,6 +1073,30 @@ mod tests {
                     on_state_change,
                 ));
                 assert!(pending_commit.get_untracked().is_none());
+            });
+        }
+
+        #[test]
+        fn without_solution_computing_consumes_keys_until_ready() {
+            Owner::new().with(|| {
+                let committed = RwSignal::new(None);
+                let mut p = pending(committed);
+                p.feasible = Some(RwSignal::new(FeasibilityState::Computing));
+                let designer_state = RwSignal::new(State::new(4).unwrap());
+                let pending_commit = RwSignal::new(Some(p.clone()));
+                let on_state_change = Callback::new(|_: State| {});
+
+                // While computing, navigation keys are consumed but do nothing.
+                assert!(handle_key(
+                    "+",
+                    false,
+                    &p,
+                    pending_commit,
+                    designer_state,
+                    on_state_change,
+                ));
+                assert!(committed.get_untracked().is_none());
+                assert!(p.picked_operator.get_untracked().is_none());
             });
         }
     }
