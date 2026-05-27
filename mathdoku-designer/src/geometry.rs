@@ -4,7 +4,7 @@
     clippy::cast_precision_loss,
     clippy::cast_sign_loss,
     clippy::cast_possible_truncation,
-    unused_results,
+    unused_results
 )]
 
 use std::collections::HashSet;
@@ -44,16 +44,14 @@ pub fn anchor(cells: &[Cell]) -> Cell {
 }
 
 fn neighbors(cell: Cell, n: usize) -> impl Iterator<Item = Cell> {
-    cell.neighbors_4().filter(move |c| c.row < n && c.column < n)
+    cell.neighbors_4()
+        .filter(move |c| c.row < n && c.column < n)
 }
 
 /// Assigns palette colors to cages so adjacent cages get different colors.
 /// Returns `(colors, cage_index)` where `cage_index[r][c]` is the cage index
 /// for the cell at `(r, c)`, or `None` if uncovered.
-pub fn assign_colors(
-    n: usize,
-    cages: &[Vec<Cell>],
-) -> (Vec<usize>, Vec<Vec<Option<usize>>>) {
+pub fn assign_colors(n: usize, cages: &[Vec<Cell>]) -> (Vec<usize>, Vec<Vec<Option<usize>>>) {
     let mut cage_index = vec![vec![None::<usize>; n]; n];
     for (i, cells) in cages.iter().enumerate() {
         for &cell in cells {
@@ -84,8 +82,8 @@ pub fn assign_colors(
 pub const fn is_thick(a: Option<usize>, b: Option<usize>) -> bool {
     match (a, b) {
         (Some(x), Some(y)) => x != y, // boundary between two different cages
-        (None, None) => false,         // boundary between two uncaged cells
-        _ => true,                     // boundary between a caged and uncaged cell
+        (None, None) => false,        // boundary between two uncaged cells
+        _ => true,                    // boundary between a caged and uncaged cell
     }
 }
 
@@ -199,7 +197,11 @@ mod tests {
 
     #[test]
     fn assign_colors_non_adjacent_cages_differ_from_their_neighbors() {
-        let cages = vec![vec![Cell::new(0, 0)], vec![Cell::new(0, 1)], vec![Cell::new(0, 2)]];
+        let cages = vec![
+            vec![Cell::new(0, 0)],
+            vec![Cell::new(0, 1)],
+            vec![Cell::new(0, 2)],
+        ];
         let (colors, _) = assign_colors(4, &cages);
         assert_ne!(colors[0], colors[1]);
         assert_ne!(colors[1], colors[2]);

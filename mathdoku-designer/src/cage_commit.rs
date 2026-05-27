@@ -40,7 +40,10 @@ pub fn commit_cage(
     }
     let cells = polyomino.cells();
     spawn_local(async move {
-        let args = to_value(&AddRegionArgs { cells: cells.clone(), operator });
+        let args = to_value(&AddRegionArgs {
+            cells: cells.clone(),
+            operator,
+        });
         let Ok(args) = args else { return };
         let result = invoke("add_region", args).await;
         if let Some(e) = result.as_string() {
@@ -81,18 +84,27 @@ pub fn demote_cage(
         cells: Vec<Cell>,
     }
     spawn_local(async move {
-        let Ok(args) = to_value(&RemoveRegionArgs { cells: cells.clone() }) else { return };
+        let Ok(args) = to_value(&RemoveRegionArgs {
+            cells: cells.clone(),
+        }) else {
+            return;
+        };
         let result = invoke("remove_region", args).await;
         if let Some(e) = result.as_string() {
             on_error.run(e);
             return;
         }
-        let Ok(mut new_st) = from_value::<State>(result) else { return };
+        let Ok(mut new_st) = from_value::<State>(result) else {
+            return;
+        };
         let pre_demote = designer_state.get_untracked();
         // Add the demoted cage as a provisional cage in the new state.
         let poly = match Polyomino::from_cells(&cells) {
             Ok(p) => p,
-            Err(_) => { on_error.run("invalid polyomino".into()); return; }
+            Err(_) => {
+                on_error.run("invalid polyomino".into());
+                return;
+            }
         };
         new_st.provisional_cages = pre_demote.provisional_cages.clone();
         new_st.provisional_cages.insert(poly.clone());

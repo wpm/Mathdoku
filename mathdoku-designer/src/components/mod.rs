@@ -12,5 +12,5 @@ pub(super) mod region;
 pub(super) mod selection;
 pub(super) mod solution_count;
 
-pub use puzzle::Puzzle;
 pub use operation_selector::PendingCommit;
+pub use puzzle::Puzzle;

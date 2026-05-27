@@ -1,4 +1,0 @@
-[toolchain]
-# Pin the nightly used for rustfmt so formatting is consistent across machines and CI.
-channel = "nightly-2026-03-25"
-components = ["rustfmt", "clippy"]
