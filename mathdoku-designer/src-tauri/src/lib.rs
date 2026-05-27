@@ -203,7 +203,6 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             new_puzzle,
-            generate_puzzle,
             new_latin_square,
             save_puzzle,
             load_puzzle,

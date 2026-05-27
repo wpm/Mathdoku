@@ -8,15 +8,8 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use mathdoku::{Cell, Operator, Polyomino};
 use mathdoku_designer_shared::State;
-use serde::Serialize;
-use serde_wasm_bindgen::{from_value, to_value};
-use wasm_bindgen::prelude::*;
 
-#[wasm_bindgen]
-extern "C" {
-    #[wasm_bindgen(js_namespace = ["window", "__TAURI__", "core"])]
-    async fn invoke(cmd: &str, args: JsValue) -> JsValue;
-}
+use crate::ipc;
 
 /// Commits `polyomino` as a new cage via the `add_region` Tauri command.
 ///
@@ -34,25 +27,14 @@ pub fn commit_cage(
     on_puzzle_change: Callback<State>,
     on_error: Callback<String>,
 ) {
-    #[derive(Serialize)]
-    struct AddRegionArgs {
-        cells: Vec<mathdoku::Cell>,
-        operator: Operator,
-    }
     let cells = polyomino.cells();
     spawn_local(async move {
-        let args = to_value(&AddRegionArgs {
-            cells: cells.clone(),
-            operator,
-        });
-        let Ok(args) = args else { return };
-        let result = invoke("add_region", args).await;
-        if let Some(e) = result.as_string() {
-            on_error.run(e);
-            return;
-        }
-        let Ok(mut new_st) = from_value::<State>(result) else {
-            return;
+        let mut new_st = match ipc::add_region(cells, operator).await {
+            Ok(st) => st,
+            Err(e) => {
+                on_error.run(e.to_string());
+                return;
+            }
         };
         let pre_commit = designer_state.get_untracked();
         // Restore parked provisional cages and active cell into the new state.
@@ -80,23 +62,13 @@ pub fn demote_cage(
     on_open_selector: Callback<Polyomino>,
     on_error: Callback<String>,
 ) {
-    #[derive(Serialize)]
-    struct RemoveRegionArgs {
-        cells: Vec<Cell>,
-    }
     spawn_local(async move {
-        let Ok(args) = to_value(&RemoveRegionArgs {
-            cells: cells.clone(),
-        }) else {
-            return;
-        };
-        let result = invoke("remove_region", args).await;
-        if let Some(e) = result.as_string() {
-            on_error.run(e);
-            return;
-        }
-        let Ok(mut new_st) = from_value::<State>(result) else {
-            return;
+        let mut new_st = match ipc::remove_region(cells.clone()).await {
+            Ok(st) => st,
+            Err(e) => {
+                on_error.run(e.to_string());
+                return;
+            }
         };
         let pre_demote = designer_state.get_untracked();
         // Add the demoted cage as a provisional cage in the new state.

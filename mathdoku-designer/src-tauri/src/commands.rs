@@ -11,10 +11,8 @@ use std::sync::{Mutex, PoisonError};
 use serde::{Deserialize, Serialize};
 use serde_json::{from_str, to_string, to_string_pretty};
 
-use mathdoku::{
-    Cage, Cell, Grid, Operation, Operator, Polyomino, Puzzle, generate, generate_latin_square,
-};
-use mathdoku_designer_shared::{DocState, State};
+use mathdoku::{Cage, Cell, Grid, Operation, Operator, Polyomino, Puzzle, generate_latin_square};
+use mathdoku_designer_shared::{DocState, SaveResult, State};
 use tauri::{AppHandle, Manager, Runtime, State as TauriState};
 /// Serialization version written into every `.mathdoku` save file.
 /// Increment when the `SaveEnvelope` format changes in a breaking way.
@@ -73,12 +71,6 @@ pub struct SaveEnvelope {
     pub version: u32,
     pub puzzle: Puzzle,
     pub solution: Grid,
-}
-
-/// Return value of [`save_puzzle`], carrying the path that was written.
-#[derive(Serialize)]
-pub struct SaveResult {
-    pub path: String,
 }
 
 // ---- recent-file helpers ----
@@ -143,30 +135,6 @@ pub fn read_recent<R: Runtime>(app: &AppHandle<R>) -> Option<RecentRecord> {
 #[tauri::command]
 pub fn new_puzzle(n: usize, state: TauriState<Mutex<AppState>>) -> Result<State, String> {
     let puzzle = Puzzle::new(n).map_err(|e| e.to_string())?;
-    let current = Grid::new(n)
-        .and_then(|g| g.constrain(&puzzle))
-        .map_err(|e| e.to_string())?;
-    let solution = Grid::new(n).map_err(|e| e.to_string())?;
-    let mut s = state.lock().map_err(|e| e.to_string())?;
-    s.puzzle = Some(puzzle);
-    s.solution = Some(solution);
-    s.current = Some(current);
-    s.path = None;
-    s.dirty = true;
-    let designer_state = s.to_designer_state().ok_or("state not initialized")?;
-    drop(s);
-    Ok(designer_state)
-}
-
-/// Generates a fully-solved *n*×*n* puzzle using the built-in generator.
-///
-/// Used only for testing; the normal creation path is [`new_latin_square`].
-///
-/// # Errors
-/// Returns an error string if `n` is invalid or the state lock is poisoned.
-#[tauri::command]
-pub fn generate_puzzle(n: usize, state: TauriState<Mutex<AppState>>) -> Result<State, String> {
-    let puzzle = generate(n, &mut rand::rng()).map_err(|e| e.to_string())?;
     let current = Grid::new(n)
         .and_then(|g| g.constrain(&puzzle))
         .map_err(|e| e.to_string())?;

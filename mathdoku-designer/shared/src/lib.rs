@@ -14,6 +14,12 @@ pub struct DocState {
     pub path: Option<String>,
 }
 
+/// Result of `save_puzzle`, carrying the path that was written.
+#[derive(Clone, Serialize, Deserialize)]
+pub struct SaveResult {
+    pub path: String,
+}
+
 /// Full designer state: the unit of serialization for save files and undo/redo.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct State {
