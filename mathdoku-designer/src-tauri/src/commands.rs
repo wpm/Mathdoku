@@ -46,14 +46,15 @@ pub struct AppState {
 impl AppState {
     /// Assembles a [`State`] from the current fields, or `None` if no puzzle is loaded.
     ///
+    /// A loaded puzzle requires both `puzzle` and `current`; `solution` is `None`
+    /// in Without-Solution mode and passes through unchanged.
     /// `provisional_cages` is always empty — provisional state lives only in the frontend.
     fn to_designer_state(&self) -> Option<State> {
         let puzzle = self.puzzle.clone()?;
-        let solution = self.solution.clone()?;
         let current = self.current.clone()?;
         Some(State {
             puzzle,
-            solution,
+            solution: self.solution.clone(),
             current,
             active: self.active.unwrap_or_else(|| Cell::new(0, 0)),
             provisional_cages: BTreeSet::new(),
@@ -63,14 +64,32 @@ impl AppState {
 
 /// On-disk format for `.mathdoku` save files.
 ///
-/// Both `puzzle` (cage structure) and `solution` (the fixed Latin square) are
-/// persisted so the designer can reconstruct the full [`State`] on load without
-/// regenerating the solution.
+/// `puzzle` (the cage structure) is always persisted. `solution` (the fixed
+/// Latin square) is present only for With-Solution puzzles; Without-Solution
+/// puzzles omit the field, which deserializes back to `None`. Existing
+/// With-Solution save files carry a non-null `solution` and load unchanged.
 #[derive(Serialize, Deserialize)]
 pub struct SaveEnvelope {
     pub version: u32,
     pub puzzle: Puzzle,
-    pub solution: Grid,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub solution: Option<Grid>,
+}
+
+/// Computes the working `current` grid for `puzzle`.
+///
+/// In With-Solution mode the cages are re-applied to the fixed Latin square so
+/// its singleton domains are preserved. In Without-Solution mode there is no
+/// solution to start from, so the cages are propagated from a fresh
+/// unconstrained grid.
+pub(crate) fn constrain_current(
+    solution: Option<&Grid>,
+    puzzle: &Puzzle,
+) -> Result<Grid, mathdoku::Error> {
+    match solution {
+        Some(grid) => grid.constrain(puzzle),
+        None => Grid::new(puzzle.n()).and_then(|g| g.constrain(puzzle)),
+    }
 }
 
 // ---- recent-file helpers ----
@@ -126,22 +145,23 @@ pub fn read_recent<R: Runtime>(app: &AppHandle<R>) -> Option<RecentRecord> {
 
 // ---- commands ----
 
-/// Creates a new empty *n*×*n* puzzle with no cages and no Latin-square solution.
+/// Creates a new empty *n*×*n* Without-Solution puzzle with no cages and no
+/// Latin-square solution.
 ///
-/// Used only for testing; the normal creation path is [`new_latin_square`].
+/// `solution` is `None`; the author chooses operator and target for each cage,
+/// filtered by global feasibility. `current` starts as an unconstrained grid.
 ///
 /// # Errors
 /// Returns an error string if `n` is invalid or the state lock is poisoned.
 #[tauri::command]
-pub fn new_puzzle(n: usize, state: TauriState<Mutex<AppState>>) -> Result<State, String> {
+pub fn new_empty(n: usize, state: TauriState<Mutex<AppState>>) -> Result<State, String> {
     let puzzle = Puzzle::new(n).map_err(|e| e.to_string())?;
     let current = Grid::new(n)
         .and_then(|g| g.constrain(&puzzle))
         .map_err(|e| e.to_string())?;
-    let solution = Grid::new(n).map_err(|e| e.to_string())?;
     let mut s = state.lock().map_err(|e| e.to_string())?;
     s.puzzle = Some(puzzle);
-    s.solution = Some(solution);
+    s.solution = None;
     s.current = Some(current);
     s.path = None;
     s.dirty = true;
@@ -185,7 +205,7 @@ pub fn save_puzzle<R: Runtime>(
 ) -> Result<SaveResult, String> {
     let mut s = state.lock().map_err(|e| e.to_string())?;
     let puzzle = s.puzzle.as_ref().ok_or("no puzzle loaded")?.clone();
-    let solution = s.solution.as_ref().ok_or("no solution loaded")?.clone();
+    let solution = s.solution.clone();
     let envelope = SaveEnvelope {
         version: SAVE_VERSION,
         puzzle,
@@ -217,10 +237,10 @@ pub fn load_puzzle<R: Runtime>(
     }
     let puzzle = envelope.puzzle;
     let solution = envelope.solution;
-    let current = solution.constrain(&puzzle).map_err(|e| e.to_string())?;
+    let current = constrain_current(solution.as_ref(), &puzzle).map_err(|e| e.to_string())?;
     let mut s = state.lock().map_err(|e| e.to_string())?;
     s.puzzle = Some(puzzle);
-    s.solution = Some(solution);
+    s.solution = solution;
     s.current = Some(current);
     s.path = Some(path.clone());
     s.dirty = false;
@@ -286,7 +306,9 @@ pub fn set_window_title<R: Runtime>(title: String, app: AppHandle<R>) -> Result<
 
 /// Adds a cage to the current puzzle for the given cells and operator.
 ///
-/// The target value is computed from the `solution` singleton domains:
+/// In Without-Solution mode the caller supplies `target` directly. In
+/// With-Solution mode `target` is `None` and the value is computed from the
+/// `solution` singleton domains:
 /// - `Given` and single-cell: the cell's solution value.
 /// - `Add`: sum of all solution values.
 /// - `Multiply`: product of all solution values.
@@ -301,48 +323,83 @@ pub fn set_window_title<R: Runtime>(title: String, app: AppHandle<R>) -> Result<
 pub fn add_region(
     cells: Vec<Cell>,
     operator: Operator,
+    target: Option<u64>,
     state: TauriState<Mutex<AppState>>,
 ) -> Result<State, String> {
     let mut s = state.lock().map_err(|e| e.to_string())?;
     let puzzle = s.puzzle.as_ref().ok_or("no puzzle loaded")?;
     let poly = Polyomino::from_cells(&cells).map_err(|e| e.to_string())?;
 
-    // Read true values from the solution grid (always singleton in Latin-square mode).
-    let true_values: Option<Vec<u64>> = s.solution.as_ref().and_then(|grid| {
-        cells
-            .iter()
-            .map(|&cell| {
-                let v = grid.cell_values(cell).ok()?;
-                v.is_singleton()
-                    .then(|| v.values().first().copied().map(u64::from))?
-            })
-            .collect()
-    });
-
-    let target = match (&operator, true_values.as_deref()) {
-        (Operator::Given, Some(vals)) => vals[0],
-        (Operator::Add, Some(vals)) => vals.iter().sum(),
-        (Operator::Multiply, Some(vals)) => vals.iter().product(),
-        (Operator::Subtract, Some(vals)) => vals[0].abs_diff(vals[1]),
-        (Operator::Divide, Some(vals)) => vals[0].max(vals[1]) / vals[0].min(vals[1]),
-        _ => 0,
+    let target = match target {
+        // Without-Solution mode: the author chose the target.
+        Some(t) => t,
+        // With-Solution mode: derive the target from the fixed solution.
+        None => {
+            let true_values: Option<Vec<u64>> = s.solution.as_ref().and_then(|grid| {
+                cells
+                    .iter()
+                    .map(|&cell| {
+                        let v = grid.cell_values(cell).ok()?;
+                        v.is_singleton()
+                            .then(|| v.values().first().copied().map(u64::from))?
+                    })
+                    .collect()
+            });
+            match (&operator, true_values.as_deref()) {
+                (Operator::Given, Some(vals)) => vals[0],
+                (Operator::Add, Some(vals)) => vals.iter().sum(),
+                (Operator::Multiply, Some(vals)) => vals.iter().product(),
+                (Operator::Subtract, Some(vals)) => vals[0].abs_diff(vals[1]),
+                (Operator::Divide, Some(vals)) => vals[0].max(vals[1]) / vals[0].min(vals[1]),
+                _ => 0,
+            }
+        }
     };
     let operation = Operation::new(operator, target);
 
     let cage = Cage::new(poly, operation);
     let new_puzzle = puzzle.insert_cage(cage).map_err(|e| e.to_string())?;
-    // Re-constrain current from solution so Latin-square singleton domains are preserved.
-    let new_current = s
-        .solution
-        .as_ref()
-        .and_then(|g| g.constrain(&new_puzzle).ok())
-        .ok_or("could not compute grid")?;
+    let new_current =
+        constrain_current(s.solution.as_ref(), &new_puzzle).map_err(|e| e.to_string())?;
     s.puzzle = Some(new_puzzle);
     s.current = Some(new_current);
     s.dirty = true;
     let designer_state = s.to_designer_state().ok_or("state not initialized")?;
     drop(s);
     Ok(designer_state)
+}
+
+/// Switches the current puzzle from Without-Solution to With-Solution by
+/// snapshotting its unique completion into `solution`.
+///
+/// # Errors
+/// Returns an error string if no puzzle is loaded or the puzzle does not have
+/// exactly one global completion.
+#[tauri::command]
+pub fn fix(state: TauriState<Mutex<AppState>>) -> Result<State, String> {
+    let mut s = state.lock().map_err(|e| e.to_string())?;
+    let mut designer = s.to_designer_state().ok_or("no puzzle loaded")?;
+    designer.fix().map_err(|e| e.to_string())?;
+    s.solution.clone_from(&designer.solution);
+    s.dirty = true;
+    drop(s);
+    Ok(designer)
+}
+
+/// Switches the current puzzle from With-Solution to Without-Solution by
+/// discarding its `solution`.
+///
+/// # Errors
+/// Returns an error string if no puzzle is loaded.
+#[tauri::command]
+pub fn unfix(state: TauriState<Mutex<AppState>>) -> Result<State, String> {
+    let mut s = state.lock().map_err(|e| e.to_string())?;
+    let mut designer = s.to_designer_state().ok_or("no puzzle loaded")?;
+    designer.unfix();
+    s.solution = None;
+    s.dirty = true;
+    drop(s);
+    Ok(designer)
 }
 
 /// Removes the cage whose cell set matches `cells` from the current puzzle.
@@ -378,12 +435,8 @@ pub fn remove_region(
             p.insert_cage(cage)
         })
         .map_err(|e| e.to_string())?;
-    // Re-constrain current from solution so Latin-square singleton domains are preserved.
-    let new_current = s
-        .solution
-        .as_ref()
-        .and_then(|g| g.constrain(&new_puzzle).ok())
-        .ok_or("could not compute grid")?;
+    let new_current =
+        constrain_current(s.solution.as_ref(), &new_puzzle).map_err(|e| e.to_string())?;
     s.puzzle = Some(new_puzzle);
     s.current = Some(new_current);
     s.dirty = true;

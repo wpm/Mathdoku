@@ -14,7 +14,7 @@
     unused_results,                  // quit_app discards its fire-and-forget JsValue
 )]
 
-use mathdoku::{Cell, Operator};
+use mathdoku::{Cell, M, Operator};
 use mathdoku_designer_shared::{DocState, SaveResult, State};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -71,6 +71,9 @@ struct ActiveArgs {
 struct AddRegionArgs {
     cells: Vec<Cell>,
     operator: Operator,
+    /// `Some` in Without-Solution mode (author-chosen target); `None` in
+    /// With-Solution mode (the backend derives the target from the solution).
+    target: Option<M>,
 }
 
 #[derive(Serialize)]
@@ -117,6 +120,15 @@ async fn call_unit<A: Serialize>(cmd: &str, args: A) -> Result<(), IpcError> {
     command_error(&result).map_or(Ok(()), Err)
 }
 
+/// Invokes a no-argument command returning `Result<R, String>`.
+async fn call_no_args<R: DeserializeOwned>(cmd: &str) -> Result<R, IpcError> {
+    let result = raw_invoke(cmd, JsValue::NULL).await;
+    if let Some(err) = command_error(&result) {
+        return Err(err);
+    }
+    from_value(result).map_err(|e| IpcError::Serde(e.to_string()))
+}
+
 // ---- command wrappers ----
 
 /// Returns the document state, falling back to the default on any IPC error.
@@ -135,6 +147,10 @@ pub async fn new_latin_square(n: usize) -> Result<State, IpcError> {
     call("new_latin_square", NewPuzzleArgs { n }).await
 }
 
+pub async fn new_empty(n: usize) -> Result<State, IpcError> {
+    call("new_empty", NewPuzzleArgs { n }).await
+}
+
 pub async fn save_puzzle(path: String) -> Result<SaveResult, IpcError> {
     call("save_puzzle", PathArgs { path }).await
 }
@@ -147,12 +163,35 @@ pub async fn set_active_cell(active: Cell) -> Result<(), IpcError> {
     call_unit("set_active_cell", ActiveArgs { active }).await
 }
 
-pub async fn add_region(cells: Vec<Cell>, operator: Operator) -> Result<State, IpcError> {
-    call("add_region", AddRegionArgs { cells, operator }).await
+pub async fn add_region(
+    cells: Vec<Cell>,
+    operator: Operator,
+    target: Option<M>,
+) -> Result<State, IpcError> {
+    call(
+        "add_region",
+        AddRegionArgs {
+            cells,
+            operator,
+            target,
+        },
+    )
+    .await
 }
 
 pub async fn remove_region(cells: Vec<Cell>) -> Result<State, IpcError> {
     call("remove_region", RemoveRegionArgs { cells }).await
+}
+
+/// Snapshots the unique completion into the solution (Without-Solution →
+/// With-Solution). Errors if the puzzle does not have exactly one completion.
+pub async fn fix() -> Result<State, IpcError> {
+    call_no_args("fix").await
+}
+
+/// Discards the solution (With-Solution → Without-Solution).
+pub async fn unfix() -> Result<State, IpcError> {
+    call_no_args("unfix").await
 }
 
 pub async fn set_window_title(title: String) -> Result<(), IpcError> {

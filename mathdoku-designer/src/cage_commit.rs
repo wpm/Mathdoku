@@ -6,12 +6,15 @@ use std::collections::BTreeSet;
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use mathdoku::{Cell, Operator, Polyomino};
+use mathdoku::{Cell, M, Operator, Polyomino};
 use mathdoku_designer_shared::State;
 
 use crate::ipc;
 
 /// Commits `polyomino` as a new cage via the `add_region` Tauri command.
+///
+/// `target` is `None` in With-Solution mode (the backend derives the target
+/// from the solution) and `Some` in Without-Solution mode (the author chose it).
 ///
 /// On success, pushes the pre-commit state onto `undo_stack`, clears `redo_stack`,
 /// restores `parked` provisional cages into the new state, and calls `on_puzzle_change`.
@@ -20,6 +23,7 @@ use crate::ipc;
 pub fn commit_cage(
     polyomino: &Polyomino,
     operator: Operator,
+    target: Option<M>,
     parked: BTreeSet<Polyomino>,
     undo_stack: RwSignal<Vec<State>>,
     redo_stack: RwSignal<Vec<State>>,
@@ -29,7 +33,7 @@ pub fn commit_cage(
 ) {
     let cells = polyomino.cells();
     spawn_local(async move {
-        let mut new_st = match ipc::add_region(cells, operator).await {
+        let mut new_st = match ipc::add_region(cells, operator, target).await {
             Ok(st) => st,
             Err(e) => {
                 on_error.run(e.to_string());

@@ -11,13 +11,13 @@
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use mathdoku::{Cage, Cell, Grid, Operator, Polyomino, operators};
+use mathdoku::{Cage, Cell, Grid, M, Operator, Polyomino, operators};
 use mathdoku_designer_shared::State;
 
 use super::cage::Cage as CageComponent;
 use super::cage_stats::CageStats;
 use super::cell::Cell as CellComponent;
-use super::operation_selector::{OperationSelector, PendingCommit, handle_key};
+use super::operation_selector::{FeasibilityState, OperationSelector, PendingCommit, handle_key};
 use super::selection::{ProvisionalFills, SelectionOverlay};
 use super::solution_count::SolutionCount;
 use crate::cage_commit::{commit_cage, delete_cage, demote_cage};
@@ -71,7 +71,10 @@ pub fn Puzzle(
             if let Ok(vals) = propagated.cell_values(cell_ref) {
                 *cell_domain = vals.values();
             }
-            if let Ok(sv) = state.solution.cell_values(cell_ref) {
+            // Without-Solution mode has no solution values to overlay.
+            if let Some(solution) = &state.solution
+                && let Ok(sv) = solution.cell_values(cell_ref)
+            {
                 solution_values[r][c] = sv.values().first().copied();
             }
         }
@@ -118,11 +121,15 @@ pub fn Puzzle(
     // Used by Enter (provisional → selector) and Escape (committed cage → demote → selector).
     // Singletons (Given only) are skipped — they stay as provisional cages without a selector.
     let open_selector = Callback::new(move |poly: Polyomino| {
-        let allowed = operators(&poly);
-        if allowed == [Operator::Given] {
-            return; // singleton: stays as a provisional cage, no selector needed
-        }
         let st = designer_state.get_untracked();
+        let without_solution = st.solution.is_none();
+        let allowed = operators(&poly);
+        // With-Solution singletons commit immediately (Given target read from the
+        // solution); they never open the selector. Without-Solution singletons
+        // need a target chosen, so they do open it.
+        if !without_solution && allowed == [Operator::Given] {
+            return;
+        }
         let poly_for_cb = poly.clone();
         let parked: std::collections::BTreeSet<Polyomino> = st
             .provisional_cages
@@ -130,11 +137,12 @@ pub fn Puzzle(
             .filter(|p| p.cells() != poly.cells())
             .cloned()
             .collect();
-        let on_commit = Callback::new(move |op: Operator| {
+        let on_commit = Callback::new(move |(op, target): (Operator, Option<M>)| {
             pending_commit.set(None);
             commit_cage(
                 &poly_for_cb,
                 op,
+                target,
                 parked.clone(),
                 undo_stack,
                 redo_stack,
@@ -144,11 +152,27 @@ pub fn Puzzle(
             );
         });
         let selected_idx = RwSignal::new(0usize);
+        let picked_operator = RwSignal::new(None);
+        // Without-Solution mode computes the globally-feasible (op, target) pairs
+        // for the dropdown, showing a spinner via the Computing state meanwhile.
+        let feasible = without_solution.then(|| {
+            let sig = RwSignal::new(FeasibilityState::Computing);
+            let puzzle = st.puzzle.clone();
+            let poly_for_query = poly.clone();
+            spawn_local(async move {
+                let pairs =
+                    crate::feasibility::cached_feasible_op_targets(&puzzle, &poly_for_query);
+                sig.set(FeasibilityState::Ready(pairs));
+            });
+            sig
+        });
         pending_commit.set(Some(PendingCommit {
             polyomino: poly,
             allowed,
             selected_idx,
             on_commit,
+            feasible,
+            picked_operator,
         }));
     });
 
@@ -164,6 +188,42 @@ pub fn Puzzle(
             designer_state.set(restored);
         }
     };
+
+    // Mode switching: `fix` snapshots the unique completion, `unfix` drops it.
+    // Both go through the backend (which owns the persisted solution) and are
+    // pushed onto the undo stack like any other puzzle change.
+    let on_fix = Callback::new(move |(): ()| {
+        spawn_local(async move {
+            match ipc::fix().await {
+                Ok(mut new_st) => {
+                    let pre = designer_state.get_untracked();
+                    new_st.provisional_cages.clone_from(&pre.provisional_cages);
+                    new_st.active = pre.active;
+                    undo_stack.update(|s| s.push(pre));
+                    redo_stack.update(std::vec::Vec::clear);
+                    designer_state.set(new_st.clone());
+                    on_puzzle_change.run(new_st);
+                }
+                Err(e) => on_error.run(e.to_string()),
+            }
+        });
+    });
+    let on_unfix = Callback::new(move |(): ()| {
+        spawn_local(async move {
+            match ipc::unfix().await {
+                Ok(mut new_st) => {
+                    let pre = designer_state.get_untracked();
+                    new_st.provisional_cages.clone_from(&pre.provisional_cages);
+                    new_st.active = pre.active;
+                    undo_stack.update(|s| s.push(pre));
+                    redo_stack.update(std::vec::Vec::clear);
+                    designer_state.set(new_st.clone());
+                    on_puzzle_change.run(new_st);
+                }
+                Err(e) => on_error.run(e.to_string()),
+            }
+        });
+    });
 
     let on_keydown = move |ev: leptos::ev::KeyboardEvent| {
         let key = ev.key();
@@ -354,8 +414,10 @@ pub fn Puzzle(
                     };
                     p
                 };
-                // Singleton: Given is the only operator — commit immediately.
-                if operators(&poly) == [Operator::Given] {
+                // With-Solution singleton: Given with a solution-derived target —
+                // commit immediately. Without-Solution singletons need a target
+                // chosen, so they fall through to the operation selector.
+                if st.solution.is_some() && operators(&poly) == [Operator::Given] {
                     let parked: std::collections::BTreeSet<Polyomino> = st
                         .provisional_cages
                         .iter()
@@ -365,6 +427,7 @@ pub fn Puzzle(
                     commit_cage(
                         &poly,
                         Operator::Given,
+                        None,
                         parked,
                         undo_stack,
                         redo_stack,
@@ -374,7 +437,7 @@ pub fn Puzzle(
                     );
                     return;
                 }
-                // Multi-cell: show the operation selector.
+                // Multi-cell, or a Without-Solution singleton: show the operation selector.
                 open_selector.run(poly);
             }
             _ => {}
@@ -471,6 +534,24 @@ pub fn Puzzle(
             </svg>
             <div class="puzzle-footer">
                 <CageStats />
+                {move || {
+                    // `Fix` is offered in Without-Solution mode; the backend rejects
+                    // it unless the puzzle has exactly one completion. `Unfix` is
+                    // offered in With-Solution mode.
+                    let btn_style = format!(
+                        "padding:4px 10px;border:0.5px solid {LINE};border-radius:5px;\
+                         background:{BG};color:{INK};font-size:12px;cursor:pointer;"
+                    );
+                    if designer_state.get().solution.is_some() {
+                        view! {
+                            <button style=btn_style on:click=move |_| on_unfix.run(())>"Unfix"</button>
+                        }.into_any()
+                    } else {
+                        view! {
+                            <button style=btn_style on:click=move |_| on_fix.run(())>"Fix"</button>
+                        }.into_any()
+                    }
+                }}
                 <SolutionCount />
             </div>
         </div>

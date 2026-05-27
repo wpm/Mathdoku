@@ -1,19 +1,43 @@
 //! Operation selector: tab well shown in the anchor cell when the user is
-//! choosing an operator for a pending cage commit.
+//! choosing an operator (and, in Without-Solution mode, a target) for a pending
+//! cage commit.
+//!
+//! Two rendering modes:
+//!
+//! - **With Solution** (`PendingCommit::feasible` is `None`): operator tabs whose
+//!   labels carry the target computed from the fixed solution. Clicking a tab
+//!   commits the cage; the backend derives the target.
+//! - **Without Solution** (`feasible` is `Some`): a two-step picker. The operator
+//!   strip lists the operators that admit a globally-feasible target; clicking
+//!   one reveals its feasible targets. When no `(operator, target)` is feasible,
+//!   an inline "no operation possible" message replaces the strip.
 
 #![allow(
     clippy::cast_precision_loss,
     clippy::cast_sign_loss,
-    clippy::cast_possible_truncation
+    clippy::cast_possible_truncation,
+    clippy::suboptimal_flops // layout arithmetic reads clearer as plain * and +
 )]
 
 use leptos::prelude::*;
-use mathdoku::{Operation, Operator, Polyomino};
+use mathdoku::{M, Operation, Operator, Polyomino};
 
 use super::puzzle::InteractionState;
+use crate::feasibility::group_by_operator;
 use crate::geometry::{anchor, origin};
 use crate::partial_solution::PartialSolution;
-use crate::theme::{ACCENT, BG, INK, LINE, SERIF};
+use crate::theme::{ACCENT, BG, INK, INK2, LINE, SERIF};
+
+/// Without-Solution dropdown computation state. The set of feasible
+/// `(operator, target)` pairs is computed asynchronously so the picker can show
+/// a spinner during a cache miss instead of blocking the UI.
+#[derive(Clone)]
+pub enum FeasibilityState {
+    /// Feasibility is being computed; the picker shows a spinner.
+    Computing,
+    /// Computation finished with the given feasible pairs (possibly empty).
+    Ready(Vec<(Operator, M)>),
+}
 
 /// Floating tab well rendered over the anchor cell of the pending cage.
 #[component]
@@ -27,101 +51,280 @@ pub fn OperationSelector() -> impl IntoView {
             return ().into_any();
         };
 
-        // Singleton: only Given is allowed — commit immediately without showing UI.
-        // (The Enter handler already handles this case, but guard here too.)
-        if pending.allowed == [Operator::Given] {
-            pending.on_commit.run(Operator::Given);
-            return ().into_any();
-        }
-
         let cell_size = ctx.cell_size;
         let a = anchor(&pending.polyomino.cells());
         let (x, y) = origin(cell_size, a.row, a.column);
 
-        let tab_w = cell_size.clamp(44.0, 56.0);
-        let tab_h = 28.0;
-        let pad = 4.0;
-        let gap = 2.0;
-        let on_commit = pending.on_commit;
-        let partial_solution = ctx.partial_solution.clone();
-        let polyomino = pending.polyomino.clone();
-        let selected_idx = pending.selected_idx;
-
-        // Build (operator, label) pairs. When all cell domains are singletons,
-        // omit any operator for which compute_target returns None (e.g. Divide
-        // on non-divisible values). When domains are undetermined, show all
-        // allowed operators with a label of just the operator symbol.
-        let all_determined = polyomino
-            .cells()
-            .iter()
-            .all(|&c| partial_solution.cell_value_singleton(c).is_some());
-        let ops: Vec<(Operator, String)> = pending
-            .allowed
-            .iter()
-            .filter_map(|op| {
-                let target = compute_target(&polyomino, op, &partial_solution);
-                if all_determined && target.is_none() {
-                    return None; // structurally invalid for these cell values
-                }
-                let label = target.map_or_else(
-                    || op.to_string(),
-                    |t| Operation::new(op.clone(), t).to_string(),
-                );
-                Some((op.clone(), label))
-            })
-            .collect();
-
-        let n_tabs = ops.len();
-        let total_w = tab_w * n_tabs as f64 + gap * (n_tabs - 1) as f64 + pad * 2.0;
-        let total_h = tab_h + pad * 2.0;
-
-        view! {
-            <g>
-                // Background panel
-                <rect
-                    x={x} y={y}
-                    width={total_w} height={total_h}
-                    rx="4"
-                    fill=BG
-                    stroke=LINE
-                    stroke-width="0.75"
-                />
-                // Operator tabs
-                {ops.into_iter().enumerate().map(|(i, (op, label))| {
-                    let tab_x = (tab_w + gap).mul_add(i as f64, x + pad);
-                    let tab_y = y + pad;
-                    let tx = tab_x + tab_w / 2.0;
-                    let ty = tab_y + tab_h / 2.0;
-
-                    view! {
-                        <g
-                            style="cursor:pointer;"
-                            on:click=move |_| on_commit.run(op.clone())
-                        >
-                            <rect
-                                x={tab_x} y={tab_y}
-                                width={tab_w} height={tab_h}
-                                rx="3"
-                                fill=move || if selected_idx.get() == i { ACCENT } else { BG }
-                                stroke=ACCENT
-                                stroke-width="1.0"
-                            />
-                            <text
-                                x={tx} y={ty}
-                                text-anchor="middle"
-                                dominant-baseline="middle"
-                                font-family=SERIF
-                                font-size="14"
-                                font-weight="700"
-                                fill=move || if selected_idx.get() == i { BG } else { INK }
-                            >{label}</text>
-                        </g>
-                    }
-                }).collect::<Vec<_>>()}
-            </g>
+        match pending.feasible {
+            Some(feasible) => without_solution_view(&pending, feasible, cell_size, x, y),
+            None => with_solution_view(&pending, &ctx.partial_solution, cell_size, x, y),
         }
-        .into_any()
     }
+}
+
+/// With-Solution rendering: operator tabs labelled with the solution-derived target.
+fn with_solution_view(
+    pending: &PendingCommit,
+    partial_solution: &PartialSolution,
+    cell_size: f64,
+    x: f64,
+    y: f64,
+) -> AnyView {
+    // Singleton: only Given is allowed — commit immediately without showing UI.
+    // (The Enter handler already handles this case, but guard here too.)
+    if pending.allowed == [Operator::Given] {
+        pending.on_commit.run((Operator::Given, None));
+        return ().into_any();
+    }
+
+    let tab_w = cell_size.clamp(44.0, 56.0);
+    let tab_h = 28.0;
+    let pad = 4.0;
+    let gap = 2.0;
+    let on_commit = pending.on_commit;
+    let polyomino = pending.polyomino.clone();
+    let selected_idx = pending.selected_idx;
+
+    // Build (operator, label) pairs. When all cell domains are singletons,
+    // omit any operator for which compute_target returns None (e.g. Divide
+    // on non-divisible values). When domains are undetermined, show all
+    // allowed operators with a label of just the operator symbol.
+    let all_determined = polyomino
+        .cells()
+        .iter()
+        .all(|&c| partial_solution.cell_value_singleton(c).is_some());
+    let ops: Vec<(Operator, String)> = pending
+        .allowed
+        .iter()
+        .filter_map(|op| {
+            let target = compute_target(&polyomino, op, partial_solution);
+            if all_determined && target.is_none() {
+                return None; // structurally invalid for these cell values
+            }
+            let label = target.map_or_else(
+                || op.to_string(),
+                |t| Operation::new(op.clone(), t).to_string(),
+            );
+            Some((op.clone(), label))
+        })
+        .collect();
+
+    let n_tabs = ops.len();
+    let total_w = tab_w * n_tabs as f64 + gap * (n_tabs - 1) as f64 + pad * 2.0;
+    let total_h = tab_h + pad * 2.0;
+
+    view! {
+        <g>
+            <rect
+                x={x} y={y}
+                width={total_w} height={total_h}
+                rx="4"
+                fill=BG
+                stroke=LINE
+                stroke-width="0.75"
+            />
+            {ops.into_iter().enumerate().map(|(i, (op, label))| {
+                let tab_x = (tab_w + gap).mul_add(i as f64, x + pad);
+                let tab_y = y + pad;
+                let tx = tab_x + tab_w / 2.0;
+                let ty = tab_y + tab_h / 2.0;
+                view! {
+                    <g
+                        style="cursor:pointer;"
+                        on:click=move |_| on_commit.run((op.clone(), None))
+                    >
+                        <rect
+                            x={tab_x} y={tab_y}
+                            width={tab_w} height={tab_h}
+                            rx="3"
+                            fill=move || if selected_idx.get() == i { ACCENT } else { BG }
+                            stroke=ACCENT
+                            stroke-width="1.0"
+                        />
+                        <text
+                            x={tx} y={ty}
+                            text-anchor="middle"
+                            dominant-baseline="middle"
+                            font-family=SERIF
+                            font-size="14"
+                            font-weight="700"
+                            fill=move || if selected_idx.get() == i { BG } else { INK }
+                        >{label}</text>
+                    </g>
+                }
+            }).collect::<Vec<_>>()}
+        </g>
+    }
+    .into_any()
+}
+
+/// Without-Solution rendering: spinner, empty-state message, operator strip, or
+/// target sub-picker depending on the computation state and current selection.
+fn without_solution_view(
+    pending: &PendingCommit,
+    feasible: RwSignal<FeasibilityState>,
+    cell_size: f64,
+    x: f64,
+    y: f64,
+) -> AnyView {
+    let tab_w = cell_size.clamp(44.0, 56.0);
+    let tab_h = 28.0;
+    let pad = 4.0;
+    let gap = 2.0;
+    let on_commit = pending.on_commit;
+    let picked = pending.picked_operator;
+
+    match feasible.get() {
+        FeasibilityState::Computing => spinner_view(x, y, tab_w, tab_h, pad),
+        FeasibilityState::Ready(pairs) if pairs.is_empty() => empty_message_view(x, y),
+        FeasibilityState::Ready(pairs) => picked.get().map_or_else(
+            || operator_strip_view(&pairs, picked, cell_size, tab_w, tab_h, pad, gap, x, y),
+            |op| target_list_view(&pairs, &op, on_commit, tab_w, tab_h, pad, gap, x, y),
+        ),
+    }
+}
+
+/// A small spinner shown in the anchor while feasibility is computing.
+fn spinner_view(x: f64, y: f64, tab_w: f64, tab_h: f64, pad: f64) -> AnyView {
+    let w = tab_w + pad * 2.0;
+    let h = tab_h + pad * 2.0;
+    view! {
+        <g>
+            <rect x={x} y={y} width={w} height={h} rx="4" fill=BG stroke=LINE stroke-width="0.75" />
+            <text
+                x={x + w / 2.0} y={y + h / 2.0}
+                text-anchor="middle" dominant-baseline="middle"
+                font-family=SERIF font-size="16" fill=INK2
+            >"…"</text>
+        </g>
+    }
+    .into_any()
+}
+
+/// The inline "no operation possible — redraw region" message.
+fn empty_message_view(x: f64, y: f64) -> AnyView {
+    let w = 220.0;
+    let h = 30.0;
+    view! {
+        <g>
+            <rect x={x} y={y} width={w} height={h} rx="4" fill=BG stroke=LINE stroke-width="0.75" />
+            <text
+                x={x + 8.0} y={y + h / 2.0}
+                text-anchor="start" dominant-baseline="middle"
+                font-family=SERIF font-size="12" fill=INK2
+            >"no operation possible \u{2014} redraw region"</text>
+        </g>
+    }
+    .into_any()
+}
+
+/// Step one: the operator strip. Clicking an operator opens its target picker.
+#[allow(clippy::too_many_arguments)]
+fn operator_strip_view(
+    pairs: &[(Operator, M)],
+    picked: RwSignal<Option<Operator>>,
+    _cell_size: f64,
+    tab_w: f64,
+    tab_h: f64,
+    pad: f64,
+    gap: f64,
+    x: f64,
+    y: f64,
+) -> AnyView {
+    let ops: Vec<Operator> = group_by_operator(pairs)
+        .into_iter()
+        .map(|(op, _)| op)
+        .collect();
+    let n_tabs = ops.len();
+    let total_w = tab_w * n_tabs as f64 + gap * (n_tabs - 1) as f64 + pad * 2.0;
+    let total_h = tab_h + pad * 2.0;
+
+    view! {
+        <g>
+            <rect
+                x={x} y={y} width={total_w} height={total_h}
+                rx="4" fill=BG stroke=LINE stroke-width="0.75"
+            />
+            {ops.into_iter().enumerate().map(|(i, op)| {
+                let tab_x = (tab_w + gap).mul_add(i as f64, x + pad);
+                let tab_y = y + pad;
+                let tx = tab_x + tab_w / 2.0;
+                let ty = tab_y + tab_h / 2.0;
+                // `Given` renders with no symbol, so use a literal label for the strip.
+                let label = if op == Operator::Given { "#".to_owned() } else { op.to_string() };
+                view! {
+                    <g style="cursor:pointer;" on:click=move |_| picked.set(Some(op.clone()))>
+                        <rect
+                            x={tab_x} y={tab_y} width={tab_w} height={tab_h}
+                            rx="3" fill=BG stroke=ACCENT stroke-width="1.0"
+                        />
+                        <text
+                            x={tx} y={ty}
+                            text-anchor="middle" dominant-baseline="middle"
+                            font-family=SERIF font-size="14" font-weight="700" fill=INK
+                        >{label}</text>
+                    </g>
+                }
+            }).collect::<Vec<_>>()}
+        </g>
+    }
+    .into_any()
+}
+
+/// Step two: the vertical list of feasible targets for the chosen operator.
+/// Clicking a target commits the cage with `(operator, target)`.
+#[allow(clippy::too_many_arguments)]
+fn target_list_view(
+    pairs: &[(Operator, M)],
+    op: &Operator,
+    on_commit: Callback<(Operator, Option<M>)>,
+    tab_w: f64,
+    tab_h: f64,
+    pad: f64,
+    gap: f64,
+    x: f64,
+    y: f64,
+) -> AnyView {
+    let targets: Vec<M> = pairs
+        .iter()
+        .filter(|(o, _)| o == op)
+        .map(|(_, t)| *t)
+        .collect();
+    let row_w = tab_w.max(56.0);
+    let n_rows = targets.len();
+    let total_w = row_w + pad * 2.0;
+    let total_h = tab_h.mul_add(n_rows as f64, gap * (n_rows.saturating_sub(1)) as f64) + pad * 2.0;
+
+    view! {
+        <g>
+            <rect
+                x={x} y={y} width={total_w} height={total_h}
+                rx="4" fill=BG stroke=LINE stroke-width="0.75"
+            />
+            {targets.into_iter().enumerate().map(|(i, target)| {
+                let row_x = x + pad;
+                let row_y = (tab_h + gap).mul_add(i as f64, y + pad);
+                let tx = row_x + row_w / 2.0;
+                let ty = row_y + tab_h / 2.0;
+                let label = Operation::new(op.clone(), target).to_string();
+                let op = op.clone();
+                view! {
+                    <g style="cursor:pointer;" on:click=move |_| on_commit.run((op.clone(), Some(target)))>
+                        <rect
+                            x={row_x} y={row_y} width={row_w} height={tab_h}
+                            rx="3" fill=BG stroke=ACCENT stroke-width="1.0"
+                        />
+                        <text
+                            x={tx} y={ty}
+                            text-anchor="middle" dominant-baseline="middle"
+                            font-family=SERIF font-size="14" font-weight="700" fill=INK
+                        >{label}</text>
+                    </g>
+                }
+            }).collect::<Vec<_>>()}
+        </g>
+    }
+    .into_any()
 }
 
 /// The polyomino pending a cage commit and a callback invoked with the chosen operator.
@@ -129,12 +332,19 @@ pub fn OperationSelector() -> impl IntoView {
 pub struct PendingCommit {
     /// The cells that will form the new cage.
     pub polyomino: Polyomino,
-    /// The operators that are valid for this cage's polyomino size.
+    /// The operators that are valid for this cage's polyomino size (With-Solution
+    /// operator tabs). Unused in Without-Solution mode, where the strip is derived
+    /// from `feasible`.
     pub allowed: Vec<Operator>,
     /// Index of the currently keyboard-focused tab (for Tab / arrow navigation + highlight).
     pub selected_idx: RwSignal<usize>,
-    /// Called with the chosen operator to commit the cage.
-    pub on_commit: Callback<Operator>,
+    /// Called with the chosen `(operator, target)` to commit the cage. `target`
+    /// is `None` in With-Solution mode and `Some` in Without-Solution mode.
+    pub on_commit: Callback<(Operator, Option<M>)>,
+    /// Without-Solution feasibility state. `None` selects With-Solution rendering.
+    pub feasible: Option<RwSignal<FeasibilityState>>,
+    /// Without-Solution: the operator whose target sub-picker is open.
+    pub picked_operator: RwSignal<Option<Operator>>,
 }
 
 /// Computes the target value for `op` applied to `polyomino`'s cells using the solution
@@ -186,6 +396,21 @@ pub fn key_to_operator(key: &str, allowed: &[Operator]) -> Option<Operator> {
     allowed.contains(&op).then_some(op)
 }
 
+/// Clears the pending commit and removes the provisional cage from `designer_state`.
+fn cancel_pending(
+    pending: &PendingCommit,
+    pending_commit: RwSignal<Option<PendingCommit>>,
+    designer_state: RwSignal<mathdoku_designer_shared::State>,
+    on_state_change: Callback<mathdoku_designer_shared::State>,
+) {
+    pending_commit.set(None);
+    let poly = pending.polyomino.clone();
+    let mut new_st = designer_state.get_untracked();
+    let _ = new_st.provisional_cages.remove(&poly);
+    on_state_change.run(new_st.clone());
+    designer_state.set(new_st);
+}
+
 /// Handles keyboard events while the operation selector is active.
 /// Returns `true` if the key was consumed.
 pub fn handle_key(
@@ -197,16 +422,25 @@ pub fn handle_key(
     on_state_change: Callback<mathdoku_designer_shared::State>,
 ) -> bool {
     use crate::keys::{ARROW_LEFT, ARROW_RIGHT, ENTER, ESCAPE, TAB};
+
+    // Without-Solution mode is click-driven; only Escape navigates (back out of
+    // the target sub-picker, then cancel). All other keys are consumed so they
+    // don't leak to grid navigation behind the picker.
+    if pending.feasible.is_some() {
+        if key == ESCAPE {
+            if pending.picked_operator.get_untracked().is_some() {
+                pending.picked_operator.set(None);
+            } else {
+                cancel_pending(pending, pending_commit, designer_state, on_state_change);
+            }
+        }
+        return true;
+    }
+
     let n_ops = pending.allowed.len();
     match key {
         ESCAPE => {
-            pending_commit.set(None);
-            // Remove the provisional cage from state using the live designer_state signal.
-            let poly = pending.polyomino.clone();
-            let mut new_st = designer_state.get_untracked();
-            let _ = new_st.provisional_cages.remove(&poly);
-            on_state_change.run(new_st.clone());
-            designer_state.set(new_st);
+            cancel_pending(pending, pending_commit, designer_state, on_state_change);
             true
         }
         TAB | ARROW_RIGHT => {
@@ -234,11 +468,11 @@ pub fn handle_key(
         }
         ENTER => {
             let op = pending.allowed[pending.selected_idx.get_untracked()].clone();
-            pending.on_commit.run(op);
+            pending.on_commit.run((op, None));
             true
         }
         key_str => key_to_operator(key_str, &pending.allowed).is_some_and(|op| {
-            pending.on_commit.run(op);
+            pending.on_commit.run((op, None));
             true
         }),
     }
@@ -386,7 +620,7 @@ mod tests {
         use crate::keys::{ARROW_LEFT, ARROW_RIGHT, ENTER, ESCAPE, TAB};
         use leptos::prelude::*;
         use leptos::reactive::owner::Owner;
-        use mathdoku::Operator;
+        use mathdoku::{M, Operator};
         use mathdoku_designer_shared::State;
 
         const ALL_OPS: [Operator; 4] = [
@@ -396,13 +630,18 @@ mod tests {
             Operator::Divide,
         ];
 
-        fn pending(committed: RwSignal<Option<Operator>>) -> PendingCommit {
-            let on_commit = Callback::new(move |op: Operator| committed.set(Some(op)));
+        type Committed = RwSignal<Option<(Operator, Option<M>)>>;
+
+        fn pending(committed: Committed) -> PendingCommit {
+            let on_commit =
+                Callback::new(move |pair: (Operator, Option<M>)| committed.set(Some(pair)));
             PendingCommit {
                 polyomino: poly(&[(0, 0), (0, 1)]),
                 allowed: ALL_OPS.to_vec(),
                 selected_idx: RwSignal::new(0usize),
                 on_commit,
+                feasible: None,
+                picked_operator: RwSignal::new(None),
             }
         }
 
@@ -535,7 +774,7 @@ mod tests {
                 );
 
                 assert!(consumed);
-                assert_eq!(committed.get_untracked(), Some(Operator::Multiply));
+                assert_eq!(committed.get_untracked(), Some((Operator::Multiply, None)));
             });
         }
 
@@ -558,7 +797,7 @@ mod tests {
                 );
 
                 assert!(consumed);
-                assert_eq!(committed.get_untracked(), Some(Operator::Add));
+                assert_eq!(committed.get_untracked(), Some((Operator::Add, None)));
             });
         }
 
@@ -582,6 +821,53 @@ mod tests {
 
                 assert!(!consumed);
                 assert!(committed.get_untracked().is_none());
+            });
+        }
+
+        #[test]
+        fn without_solution_consumes_keys_and_escape_backs_out() {
+            Owner::new().with(|| {
+                let committed = RwSignal::new(None);
+                let mut p = pending(committed);
+                p.feasible = Some(RwSignal::new(super::super::FeasibilityState::Computing));
+                p.picked_operator.set(Some(Operator::Add));
+                let designer_state = RwSignal::new(State::new(4).unwrap());
+                let pending_commit = RwSignal::new(Some(p.clone()));
+                let on_state_change = Callback::new(|_: State| {});
+
+                // A non-Escape key is consumed but does nothing.
+                assert!(handle_key(
+                    "+",
+                    false,
+                    &p,
+                    pending_commit,
+                    designer_state,
+                    on_state_change,
+                ));
+                assert!(committed.get_untracked().is_none());
+
+                // Escape from the target sub-picker backs out to the operator strip.
+                assert!(handle_key(
+                    ESCAPE,
+                    false,
+                    &p,
+                    pending_commit,
+                    designer_state,
+                    on_state_change,
+                ));
+                assert!(p.picked_operator.get_untracked().is_none());
+                assert!(pending_commit.get_untracked().is_some());
+
+                // Escape again (no operator picked) cancels the pending commit.
+                assert!(handle_key(
+                    ESCAPE,
+                    false,
+                    &p,
+                    pending_commit,
+                    designer_state,
+                    on_state_change,
+                ));
+                assert!(pending_commit.get_untracked().is_none());
             });
         }
     }
