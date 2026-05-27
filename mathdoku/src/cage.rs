@@ -107,6 +107,32 @@ mod tests {
         Cage::new(polyomino, Operation { operator, target })
     }
 
+    // --- equality and hashing ignore the MDD cache ---
+
+    // `Cage`'s interior-mutable MDD cache never affects `Eq`/`Hash`, so it is
+    // sound as a `HashSet` key — see the same allow in `puzzle.rs`.
+    #[allow(clippy::mutable_key_type)]
+    #[test]
+    fn equality_and_hash_ignore_mdd_cache() {
+        use std::collections::HashSet;
+
+        let a = cage(pair(), Operator::Add, 5);
+        let b = cage(pair(), Operator::Add, 5);
+        // Materialize one cage's MDD but not the other's: the cache must not
+        // affect equality or hashing.
+        let _ = a.mdd(4);
+        assert_eq!(a, b);
+
+        let mut set = HashSet::new();
+        assert!(set.insert(a.clone()));
+        assert!(!set.insert(b), "b is equal to a, so it is a duplicate");
+
+        // A differing operation makes a distinct cage.
+        let c = cage(pair(), Operator::Add, 6);
+        assert_ne!(a, c);
+        assert!(set.insert(c));
+    }
+
     // --- Given ---
 
     #[test]

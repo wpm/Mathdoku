@@ -646,6 +646,37 @@ mod tests {
         assert_eq!(actual, expected);
     }
 
+    // --- Grid::set_cage_tuple ---
+
+    #[test]
+    fn set_cage_tuple_pins_cells_in_lexicographic_order() {
+        // Add cage over (0,0),(0,1) with target 3: the lexicographically first
+        // valid tuple is [1, 2], so index 0 pins (0,0)=1 and (0,1)=2.
+        let puzzle = puzzle_with_cage(4, &[(0, 0), (0, 1)], Add, 3);
+        let cage = puzzle.cages().next().unwrap().clone();
+        let grid = Grid::new(4).unwrap();
+        let set = grid.set_cage_tuple(&puzzle, &cage, 0).unwrap();
+        assert_eq!(
+            set.cell_values(Cell::new(0, 0)).unwrap(),
+            Values::new(&[1]).unwrap()
+        );
+        assert_eq!(
+            set.cell_values(Cell::new(0, 1)).unwrap(),
+            Values::new(&[2]).unwrap()
+        );
+    }
+
+    #[test]
+    fn set_cage_tuple_out_of_range_index_errors() {
+        let puzzle = puzzle_with_cage(4, &[(0, 0), (0, 1)], Add, 3);
+        let cage = puzzle.cages().next().unwrap().clone();
+        let grid = Grid::new(4).unwrap();
+        assert!(matches!(
+            grid.set_cage_tuple(&puzzle, &cage, 999),
+            Err(Error::InvalidTupleIndex(999, _))
+        ));
+    }
+
     // --- serde round-trip ---
 
     #[test]
