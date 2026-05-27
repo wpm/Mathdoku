@@ -2,6 +2,7 @@ mod app;
 mod cage_commit;
 mod components;
 pub mod geometry;
+pub mod ipc;
 pub mod keys;
 pub mod partial_solution;
 mod theme;

@@ -1,109 +1,58 @@
 #![allow(
     clippy::future_not_send,        // WASM async is inherently single-threaded
-    clippy::unwrap_used,            // serde_wasm_bindgen / JsCast are infallible here
     clippy::items_after_statements, // use wasm_bindgen::JsCast inside async blocks
     clippy::too_many_lines,         // App component is inherently long
-    unused_results,                 // invoke/listen/Effect::new return values are fire-and-forget in WASM
+    unused_results,                 // listen/Effect::new return values are fire-and-forget in WASM
 )]
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use mathdoku_designer_shared::{DocState, State};
-use serde::Serialize;
-use serde_wasm_bindgen::{from_value, to_value};
+use mathdoku_designer_shared::State;
 use wasm_bindgen::prelude::*;
 
+use crate::ipc;
 use crate::keys::{ESCAPE, TAB};
 use crate::theme::{ACCENT, BG, INK, INK2, LINE, SANS as SANS_FONT};
 
-// ---- Tauri glue ----
+// ---- Tauri event glue ----
+//
+// Command IPC lives in `crate::ipc`; only the `listen` event-bus binding,
+// which takes a JS callback, stays here.
 #[wasm_bindgen]
 extern "C" {
-    #[wasm_bindgen(js_namespace = ["window", "__TAURI__", "core"])]
-    async fn invoke(cmd: &str, args: JsValue) -> JsValue;
-
     #[wasm_bindgen(js_namespace = ["window", "__TAURI__", "event"])]
     async fn listen(event: &str, handler: &js_sys::Function) -> JsValue;
 }
 
-#[derive(Serialize)]
-struct NewPuzzleArgs {
-    n: usize,
-}
-
-#[derive(Serialize)]
-struct PathArgs {
-    path: String,
-}
-
-async fn get_doc_state() -> DocState {
-    let v = invoke("get_doc_state", JsValue::NULL).await;
-    from_value(v).unwrap_or_default()
-}
-
-/// Extracts the error string from a Tauri command result that returned `Err`.
-///
-/// Tauri serializes `Err(String)` as a plain JS string. If the value is not a
-/// string the result was `Ok(T)`, so this returns `None`.
-fn tauri_error(v: &JsValue) -> Option<String> {
-    v.as_string()
-}
-
-async fn call_latin_square_puzzle(n: usize) -> Result<State, String> {
-    let args = to_value(&NewPuzzleArgs { n }).unwrap();
-    let result = invoke("new_latin_square", args).await;
-    if let Some(e) = tauri_error(&result) {
-        return Err(e);
-    }
-    from_value(result).map_err(|e| e.to_string())
-}
-
 async fn call_save_puzzle() -> Option<String> {
-    let state = get_doc_state().await;
+    let state = ipc::get_doc_state().await;
     let path = match state.path {
         Some(p) => Some(p),
-        None => pick_save_path().await,
+        None => ipc::save_puzzle_dialog().await,
     };
     if let Some(path) = path {
-        let args = to_value(&PathArgs { path: path.clone() }).unwrap();
-        invoke("save_puzzle", args).await;
+        let _ = ipc::save_puzzle(path.clone()).await;
         return Some(path);
     }
     None
 }
 
 async fn call_save_as_puzzle() -> Option<String> {
-    if let Some(path) = pick_save_path().await {
-        let args = to_value(&PathArgs { path: path.clone() }).unwrap();
-        invoke("save_puzzle", args).await;
+    if let Some(path) = ipc::save_puzzle_dialog().await {
+        let _ = ipc::save_puzzle(path.clone()).await;
         return Some(path);
     }
     None
 }
 
-async fn eval_promise_string(js: &str) -> Option<String> {
-    use wasm_bindgen::JsCast;
-    let v = js_sys::eval(js).ok()?;
-    wasm_bindgen_futures::JsFuture::from(v.dyn_into::<js_sys::Promise>().unwrap())
-        .await
-        .ok()
-        .and_then(|v| v.as_string())
-}
-
 async fn call_load_puzzle() -> Result<Option<State>, String> {
-    let Some(path) = eval_promise_string(
-        r"window.__TAURI__.dialog.open({ filters: [{ name: 'Mathdoku', extensions: ['mathdoku'] }] })",
-    )
-    .await
-    else {
+    let Some(path) = ipc::open_puzzle_dialog().await else {
         return Ok(None); // user cancelled the dialog
     };
-    let args = to_value(&PathArgs { path }).unwrap();
-    let result = invoke("load_puzzle", args).await;
-    if let Some(e) = tauri_error(&result) {
-        return Err(e);
-    }
-    from_value(result).map(Some).map_err(|e| e.to_string())
+    ipc::load_puzzle(path)
+        .await
+        .map(Some)
+        .map_err(|e| e.to_string())
 }
 
 fn basename(path: &str) -> &str {
@@ -171,17 +120,6 @@ mod tests {
         assert_eq!(primary_btn_style(), neutral_btn_style());
         assert!(neutral_btn_style().contains("cursor:pointer"));
     }
-}
-
-async fn pick_save_path() -> Option<String> {
-    eval_promise_string(
-        r"window.__TAURI__.dialog.save({ filters: [{ name: 'Mathdoku', extensions: ['mathdoku'] }] })",
-    )
-    .await
-}
-
-async fn call_quit() {
-    invoke("quit_app", JsValue::NULL).await;
 }
 
 // ---- modal styles ----
@@ -428,9 +366,8 @@ pub fn App() -> impl IntoView {
     // Check if a puzzle was already restored from the recent file on startup.
     // If not, show the Size Modal so the user can create a new puzzle.
     spawn_local(async move {
-        let result = invoke("get_puzzle", JsValue::NULL).await;
-        if let Ok(st) = from_value::<State>(result) {
-            let ds = get_doc_state().await;
+        if let Some(st) = ipc::get_puzzle().await {
+            let ds = ipc::get_doc_state().await;
             current_path.set(ds.path);
             designer_state.set(Some(st));
         } else {
@@ -470,7 +407,7 @@ pub fn App() -> impl IntoView {
             spawn_local(async move {
                 match call_load_puzzle().await {
                     Ok(Some(st)) => {
-                        let ds = get_doc_state().await;
+                        let ds = ipc::get_doc_state().await;
                         current_path.set(ds.path);
                         undo_stack.update(std::vec::Vec::clear);
                         redo_stack.update(std::vec::Vec::clear);
@@ -495,7 +432,7 @@ pub fn App() -> impl IntoView {
     let on_create = Callback::new(move |n: usize| {
         show_size_modal.set(false);
         spawn_local(async move {
-            match call_latin_square_puzzle(n).await {
+            match ipc::new_latin_square(n).await {
                 Ok(st) => {
                     current_path.set(None);
                     undo_stack.update(std::vec::Vec::clear);
@@ -503,7 +440,7 @@ pub fn App() -> impl IntoView {
                     pending_commit.set(None);
                     designer_state.set(Some(st));
                 }
-                Err(e) => error_msg.set(Some(e)),
+                Err(e) => error_msg.set(Some(e.to_string())),
             }
         });
     });
@@ -513,12 +450,12 @@ pub fn App() -> impl IntoView {
         show_unsaved_modal.set(false);
         spawn_local(async move {
             call_save_puzzle().await;
-            call_quit().await;
+            ipc::quit_app().await;
         });
     });
     let on_unsaved_discard = Callback::new(move |(): ()| {
         show_unsaved_modal.set(false);
-        spawn_local(async move { call_quit().await });
+        spawn_local(async move { ipc::quit_app().await });
     });
     let on_unsaved_cancel = Callback::new(move |(): ()| show_unsaved_modal.set(false));
 
@@ -528,12 +465,7 @@ pub fn App() -> impl IntoView {
             .map(|p| basename(&p).to_owned())
             .unwrap_or_default();
         spawn_local(async move {
-            #[derive(Serialize)]
-            struct TitleArgs {
-                title: String,
-            }
-            let args = to_value(&TitleArgs { title }).unwrap();
-            invoke("set_window_title", args).await;
+            let _ = ipc::set_window_title(title).await;
         });
     });
 

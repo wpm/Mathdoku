@@ -4,18 +4,15 @@
     clippy::cast_precision_loss,
     clippy::cast_sign_loss,
     clippy::cast_possible_truncation,
-    clippy::items_after_statements, // local serialization structs defined inside event handlers
+    clippy::items_after_statements, // `use wasm_bindgen::JsCast` inside the focus Effect
     clippy::needless_range_loop,    // 2D index loops are clearer with explicit row/col indices
-    unused_results,                 // invoke/Effect::new/HashSet::insert/Vec::pop are fire-and-forget in reactive WASM code
+    unused_results,                 // Effect::new/HashSet::insert/Vec::pop are fire-and-forget in reactive WASM code
 )]
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use mathdoku::{Cage, Cell, Grid, Operator, Polyomino, operators};
 use mathdoku_designer_shared::State;
-use serde::Serialize;
-use serde_wasm_bindgen::to_value;
-use wasm_bindgen::prelude::*;
 
 use super::cage::Cage as CageComponent;
 use super::cage_stats::CageStats;
@@ -27,6 +24,7 @@ use crate::cage_commit::{commit_cage, demote_cage};
 use crate::geometry::{
     MARGIN, THICK, THIN, anchor, assign_colors, cell_size, is_thick, op_font, origin,
 };
+use crate::ipc;
 use crate::partial_solution::PartialSolution;
 
 use crate::keys::{ARROW_DOWN, ARROW_LEFT, ARROW_RIGHT, ARROW_UP, ENTER, ESCAPE, TAB};
@@ -98,15 +96,9 @@ pub fn Puzzle(
 
     // Persist the active cell whenever it changes.
     Effect::new(move |_| {
-        #[derive(Serialize)]
-        struct Args {
-            active: Cell,
-        }
         let active = designer_state.get().active;
         spawn_local(async move {
-            if let Ok(args) = to_value(&Args { active }) {
-                invoke("set_active_cell", args).await;
-            }
+            let _ = ipc::set_active_cell(active).await;
         });
     });
 
@@ -469,14 +461,6 @@ pub struct InteractionState {
     pub cell_size: f64,
     /// Cells awaiting operator selection before being committed as a cage.
     pub pending_commit: RwSignal<Option<PendingCommit>>,
-}
-
-// ---- Tauri IPC ----
-
-#[wasm_bindgen]
-extern "C" {
-    #[wasm_bindgen(js_namespace = ["window", "__TAURI__", "core"])]
-    async fn invoke(cmd: &str, args: JsValue) -> JsValue;
 }
 
 /// Each entry is the cells of a cage (in library order) and the `Cage` itself.
