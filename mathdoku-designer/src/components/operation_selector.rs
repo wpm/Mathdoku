@@ -180,7 +180,20 @@ fn without_solution_view(
         FeasibilityState::Ready(pairs) if pairs.is_empty() => empty_message_view(x, y),
         FeasibilityState::Ready(pairs) => picked.get().map_or_else(
             || operator_strip_view(&pairs, picked, selected_idx, tab_w, tab_h, pad, gap, x, y),
-            |op| target_list_view(&pairs, &op, on_commit, selected_idx, tab_w, tab_h, pad, gap, x, y),
+            |op| {
+                target_list_view(
+                    &pairs,
+                    &op,
+                    on_commit,
+                    selected_idx,
+                    tab_w,
+                    tab_h,
+                    pad,
+                    gap,
+                    x,
+                    y,
+                )
+            },
         ),
     }
 }
@@ -942,8 +955,7 @@ mod tests {
         fn without_solution_strip_tab_navigates_and_enter_picks() {
             Owner::new().with(|| {
                 let committed = RwSignal::new(None);
-                let pairs: Vec<(Operator, M)> =
-                    vec![(Operator::Add, 3), (Operator::Subtract, 1)];
+                let pairs: Vec<(Operator, M)> = vec![(Operator::Add, 3), (Operator::Subtract, 1)];
                 let p = ready_pending(committed, pairs);
                 let designer_state = RwSignal::new(State::new(4).unwrap());
                 let pending_commit = RwSignal::new(Some(p.clone()));
@@ -980,8 +992,7 @@ mod tests {
         fn without_solution_shortcut_key_picks_operator() {
             Owner::new().with(|| {
                 let committed = RwSignal::new(None);
-                let pairs: Vec<(Operator, M)> =
-                    vec![(Operator::Add, 3), (Operator::Subtract, 1)];
+                let pairs: Vec<(Operator, M)> = vec![(Operator::Add, 3), (Operator::Subtract, 1)];
                 let p = ready_pending(committed, pairs);
                 let designer_state = RwSignal::new(State::new(4).unwrap());
                 let pending_commit = RwSignal::new(Some(p.clone()));
@@ -1005,8 +1016,7 @@ mod tests {
         fn without_solution_target_list_navigates_and_enter_commits() {
             Owner::new().with(|| {
                 let committed = RwSignal::new(None);
-                let pairs: Vec<(Operator, M)> =
-                    vec![(Operator::Add, 3), (Operator::Add, 5)];
+                let pairs: Vec<(Operator, M)> = vec![(Operator::Add, 3), (Operator::Add, 5)];
                 let p = ready_pending(committed, pairs);
                 p.picked_operator.set(Some(Operator::Add));
                 let designer_state = RwSignal::new(State::new(4).unwrap());
