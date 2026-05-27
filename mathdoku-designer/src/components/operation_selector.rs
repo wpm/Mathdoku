@@ -236,7 +236,7 @@ fn operator_strip_view(
         .map(|(op, _)| op)
         .collect();
     let n_tabs = ops.len();
-    let total_w = tab_w * n_tabs as f64 + gap * (n_tabs - 1).max(0) as f64 + pad * 2.0;
+    let total_w = tab_w * n_tabs as f64 + gap * (n_tabs - 1) as f64 + pad * 2.0;
     let total_h = tab_h + pad * 2.0;
 
     view! {
