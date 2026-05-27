@@ -20,7 +20,7 @@
 use std::collections::HashMap;
 
 use crate::operation::{Operation, Operator};
-use crate::{M, N, Polyomino, Tuple};
+use crate::{M, N, Polyomino, Tuple, Values};
 
 /// Index of a node within [`Mdd::nodes`].
 type NodeId = usize;
@@ -121,6 +121,78 @@ impl Mdd {
             self.collect_paths(child, path, out);
             let _ = path.pop();
         }
+    }
+
+    /// Computes the per-cell support of the cage under the current cell `domains`.
+    ///
+    /// `domains` holds one [`Values`] domain per cell, in [`Polyomino::cells`] order;
+    /// the returned vector has the same length. Position `i` is the set of values that
+    /// appear at cell `i` in at least one root-to-terminal path every label of which
+    /// lies in its cell's domain. When no such path exists — including when any domain
+    /// is empty — every returned set is empty, so infeasibility propagates.
+    ///
+    /// Runs in `O(|edges|)` via a top-down reachability sweep followed by a bottom-up
+    /// co-reachability sweep (a variant of Perez & Régin's MDD-4R), rather than the
+    /// `O(|paths|)` cost of filtering [`Mdd::tuples`].
+    pub fn support(&self, domains: &[Values]) -> Vec<Values> {
+        debug_assert_eq!(domains.len(), self.k, "support expects one domain per cell");
+        let Some(root) = self.root else {
+            return vec![Values::default(); self.k];
+        };
+
+        // Node ids grouped by level; every edge runs from level `i` to level `i + 1`,
+        // so a single increasing (decreasing) pass settles each sweep.
+        let mut levels: Vec<Vec<NodeId>> = vec![Vec::new(); self.k + 1];
+        for (id, node) in self.nodes.iter().enumerate() {
+            levels[node.level].push(id);
+        }
+
+        // Top-down: the root is reachable, and a node is reachable when some in-domain
+        // edge from a reachable node lands on it.
+        let mut reachable = vec![false; self.nodes.len()];
+        reachable[root] = true;
+        for i in 0..self.k {
+            for &u in &levels[i] {
+                if reachable[u] {
+                    for &(label, child) in &self.nodes[u].edges {
+                        if domains[i].contains(label) {
+                            reachable[child] = true;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Bottom-up: the terminal is co-reachable, and a node is co-reachable when some
+        // in-domain edge from it lands on a co-reachable node.
+        let mut coreachable = vec![false; self.nodes.len()];
+        for &t in &levels[self.k] {
+            coreachable[t] = true;
+        }
+        for i in (0..self.k).rev() {
+            for &u in &levels[i] {
+                coreachable[u] = self.nodes[u]
+                    .edges
+                    .iter()
+                    .any(|&(label, child)| domains[i].contains(label) && coreachable[child]);
+            }
+        }
+
+        // Support: union the label of every edge bridging a reachable node to a
+        // co-reachable node within its cell's domain.
+        let mut support = vec![Values::default(); self.k];
+        for i in 0..self.k {
+            for &u in &levels[i] {
+                if reachable[u] {
+                    for &(label, child) in &self.nodes[u].edges {
+                        if domains[i].contains(label) && coreachable[child] {
+                            support[i] = support[i] | Values::singleton(label);
+                        }
+                    }
+                }
+            }
+        }
+        support
     }
 }
 
@@ -226,6 +298,9 @@ impl Builder {
 #[allow(clippy::unwrap_used, clippy::cast_possible_truncation)]
 mod tests {
     use std::collections::HashSet;
+
+    use rand::{RngExt, SeedableRng};
+    use rand_chacha::ChaCha8Rng;
 
     use super::*;
     use crate::operation::operators;
@@ -441,5 +516,97 @@ mod tests {
             mdd.nodes.len(),
             trie_node_count(&tuples)
         );
+    }
+
+    // --- support ---
+
+    /// Reference per-cell support: the per-position union of values over every valid
+    /// tuple consistent with `domains`. Runs in `O(|paths|)`, the cost the MDD avoids.
+    fn brute_force_support(mdd: &Mdd, domains: &[Values]) -> Vec<Values> {
+        let mut support = vec![Values::default(); domains.len()];
+        for tuple in mdd.tuples() {
+            if tuple.iter().zip(domains).all(|(&v, d)| d.contains(v)) {
+                for (i, &v) in tuple.iter().enumerate() {
+                    support[i] = support[i] | Values::singleton(v);
+                }
+            }
+        }
+        support
+    }
+
+    /// `k` random domains over `1..=n`, each value independently included with
+    /// probability one half — so some domains may come out empty.
+    fn random_support_domains(rng: &mut ChaCha8Rng, n: N, k: usize) -> Vec<Values> {
+        (0..k)
+            .map(|_| {
+                (1..=n).fold(Values::default(), |acc, v| {
+                    if rng.random_range(0u8..2) == 1 {
+                        acc | Values::singleton(v)
+                    } else {
+                        acc
+                    }
+                })
+            })
+            .collect()
+    }
+
+    #[test]
+    fn support_matches_brute_force_oracle() {
+        let mut rng = ChaCha8Rng::seed_from_u64(0x5044_2026);
+        let shapes = [singleton(), pair(), col_pair(), l_shape(), square()];
+        for shape in &shapes {
+            let k = shape.len();
+            for n in 3..=6 {
+                for operator in operators(shape) {
+                    let ts = targets(&operator, n, k);
+                    for _ in 0..6 {
+                        let target = ts[rng.random_range(0..ts.len())];
+                        let mdd = Mdd::build(n, shape, Operation::new(operator.clone(), target));
+                        for _ in 0..8 {
+                            let domains = random_support_domains(&mut rng, n, k);
+                            assert_eq!(
+                                mdd.support(&domains),
+                                brute_force_support(&mdd, &domains),
+                                "support mismatch for n={n}, op={operator}, target={target}, \
+                                 domains={domains:?}, cells={:?}",
+                                shape.cells()
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn support_with_empty_domain_is_all_empty() {
+        // A feasible 2×2 Add cage, but one cell's domain is knocked out entirely.
+        let mdd = Mdd::build(4, &square(), Operation::new(Operator::Add, 10));
+        assert!(mdd.is_feasible());
+        let domains = vec![
+            Values::all(4),
+            Values::default(),
+            Values::all(4),
+            Values::all(4),
+        ];
+        let support = mdd.support(&domains);
+        assert_eq!(support.len(), 4);
+        assert!(support.iter().all(|s| s.is_empty()));
+    }
+
+    #[test]
+    fn support_full_domains_is_natural_support() {
+        // With every domain `1..=n` no edge is filtered, so support is exactly the
+        // natural per-cell support: each level's labels on a root-to-terminal path,
+        // equivalently the per-position union over all valid tuples.
+        let n = 6;
+        let shape = l_shape();
+        let k = shape.len();
+        let mdd = Mdd::build(n, &shape, Operation::new(Operator::Multiply, 24));
+        let domains = vec![Values::all(n as usize); k];
+        let natural = brute_force_support(&mdd, &domains);
+        assert_eq!(mdd.support(&domains), natural);
+        // Sanity: the cage is non-trivial — at least one cell supports several values.
+        assert!(natural.iter().any(|s| s.len() > 1));
     }
 }
