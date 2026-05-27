@@ -17,15 +17,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install nightly toolchain (fmt)
-        uses: dtolnay/rust-toolchain@nightly
+      # rust-toolchain.toml pins the nightly date so fmt output matches locally.
+      - name: Install toolchain (from rust-toolchain.toml)
+        uses: dtolnay/rust-toolchain@master
         with:
-          components: rustfmt
-
-      - name: Install stable toolchain (clippy + test)
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
+          toolchain: nightly-2026-03-25
+          components: rustfmt, clippy
 
       - name: Cache cargo registry & build
         uses: actions/cache@v4
@@ -39,10 +36,10 @@ jobs:
 
       # ── fmt ──────────────────────────────────────────────────────────────
       - name: cargo fmt (mathdoku)
-        run: cargo +nightly fmt --all -- --check
+        run: cargo fmt --all -- --check
 
       - name: cargo fmt (mathdoku-designer)
-        run: cd mathdoku-designer && cargo +nightly fmt --all -- --check
+        run: cd mathdoku-designer && cargo fmt --all -- --check
 
       # ── clippy ───────────────────────────────────────────────────────────
       - name: cargo clippy (mathdoku)
