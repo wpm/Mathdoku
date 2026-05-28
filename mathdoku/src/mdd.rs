@@ -47,7 +47,7 @@
 use std::collections::HashMap;
 
 use crate::operation::{Operation, Operator};
-use crate::{Target, Value, Polyomino, Tuple, Values};
+use crate::{Polyomino, Target, Tuple, Value, Values};
 
 /// Index of a node within [`Mdd::nodes`].
 type NodeId = usize;
@@ -289,7 +289,11 @@ impl Builder {
                     new_product
                 }
                 Operator::Subtract => match assignment.last() {
-                    Some(&first) if Target::from(first).abs_diff(Target::from(v)) != self.target => continue,
+                    Some(&first)
+                        if Target::from(first).abs_diff(Target::from(v)) != self.target =>
+                    {
+                        continue;
+                    }
                     _ => acc,
                 },
                 Operator::Divide => match assignment.last() {
@@ -368,9 +372,13 @@ mod tests {
 
         let satisfies = |t: &[Value]| match op.operator {
             Operator::Add => t.iter().map(|&v| Target::from(v)).sum::<Target>() == op.target,
-            Operator::Multiply => t.iter().map(|&v| Target::from(v)).product::<Target>() == op.target,
+            Operator::Multiply => {
+                t.iter().map(|&v| Target::from(v)).product::<Target>() == op.target
+            }
             Operator::Given => k == 1 && Target::from(t[0]) == op.target,
-            Operator::Subtract => k == 2 && Target::from(t[0]).abs_diff(Target::from(t[1])) == op.target,
+            Operator::Subtract => {
+                k == 2 && Target::from(t[0]).abs_diff(Target::from(t[1])) == op.target
+            }
             Operator::Divide => {
                 k == 2 && {
                     let (a, b) = (Target::from(t[0]), Target::from(t[1]));

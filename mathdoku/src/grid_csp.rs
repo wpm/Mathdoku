@@ -399,7 +399,11 @@ mod tests {
 
     // --- Cage::propagate (via propagate_cage) ---
 
-    fn cage(positions: &[(usize, usize)], operator: crate::Operator, target: crate::Target) -> Cage {
+    fn cage(
+        positions: &[(usize, usize)],
+        operator: crate::Operator,
+        target: crate::Target,
+    ) -> Cage {
         use crate::operation::Operation;
         use crate::polyomino::Polyomino;
         let cells: Vec<Cell> = positions.iter().map(|&(r, c)| Cell::new(r, c)).collect();

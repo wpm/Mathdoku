@@ -16,7 +16,7 @@
 //! polyomino's size: singletons allow only `Given`; pairs allow all four binary
 //! operators; larger cages allow only `Add` and `Multiply`.
 
-use crate::{Target, Polyomino};
+use crate::{Polyomino, Target};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::fmt::{Display, Formatter};

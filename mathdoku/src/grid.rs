@@ -6,7 +6,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use crate::Error::InvalidGridSize;
 use crate::cage::Cage;
 use crate::puzzle::Puzzle;
-use crate::{Cell, Error, Value, Tuple, Values};
+use crate::{Cell, Error, Tuple, Value, Values};
 
 // Serde wire format: flat struct with an n×n `values` array of cell value sets.
 // `values` is optional on deserialization; absent means full value sets for all cells.
