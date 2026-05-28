@@ -15,7 +15,7 @@
 )]
 
 use mathdoku::{Cell, Operator, Target};
-use mathdoku_designer_shared::{DocState, SaveResult, State};
+use mathdoku_designer_core::{DocState, SaveResult, State};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_wasm_bindgen::{from_value, to_value};
