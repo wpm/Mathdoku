@@ -6,7 +6,7 @@ use std::collections::BTreeSet;
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use mathdoku::{Cell, Target, Operator, Polyomino};
+use mathdoku::{Cell, Operator, Polyomino, Target};
 use mathdoku_designer_shared::State;
 
 use crate::ipc;

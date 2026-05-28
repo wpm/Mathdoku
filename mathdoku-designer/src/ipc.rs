@@ -14,7 +14,7 @@
     unused_results,                  // quit_app discards its fire-and-forget JsValue
 )]
 
-use mathdoku::{Cell, Target, Operator};
+use mathdoku::{Cell, Operator, Target};
 use mathdoku_designer_shared::{DocState, SaveResult, State};
 use serde::Serialize;
 use serde::de::DeserializeOwned;

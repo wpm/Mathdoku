@@ -21,7 +21,7 @@
 )]
 
 use leptos::prelude::*;
-use mathdoku::{Target, Operation, Operator, Polyomino};
+use mathdoku::{Operation, Operator, Polyomino, Target};
 
 use super::puzzle::InteractionState;
 use crate::feasibility::group_by_operator;
@@ -725,7 +725,7 @@ mod tests {
         use crate::keys::{ARROW_LEFT, ARROW_RIGHT, ENTER, ESCAPE, TAB};
         use leptos::prelude::*;
         use leptos::reactive::owner::Owner;
-        use mathdoku::{Target, Operator};
+        use mathdoku::{Operator, Target};
         use mathdoku_designer_shared::State;
 
         const ALL_OPS: [Operator; 4] = [
@@ -941,7 +941,8 @@ mod tests {
         fn without_solution_strip_tab_navigates_and_enter_picks() {
             Owner::new().with(|| {
                 let committed = RwSignal::new(None);
-                let pairs: Vec<(Operator, Target)> = vec![(Operator::Add, 3), (Operator::Subtract, 1)];
+                let pairs: Vec<(Operator, Target)> =
+                    vec![(Operator::Add, 3), (Operator::Subtract, 1)];
                 let p = ready_pending(committed, pairs);
                 let designer_state = RwSignal::new(State::new(4).unwrap());
                 let pending_commit = RwSignal::new(Some(p.clone()));
@@ -978,7 +979,8 @@ mod tests {
         fn without_solution_shortcut_key_picks_operator() {
             Owner::new().with(|| {
                 let committed = RwSignal::new(None);
-                let pairs: Vec<(Operator, Target)> = vec![(Operator::Add, 3), (Operator::Subtract, 1)];
+                let pairs: Vec<(Operator, Target)> =
+                    vec![(Operator::Add, 3), (Operator::Subtract, 1)];
                 let p = ready_pending(committed, pairs);
                 let designer_state = RwSignal::new(State::new(4).unwrap());
                 let pending_commit = RwSignal::new(Some(p.clone()));
@@ -1065,8 +1067,9 @@ mod tests {
         fn without_solution_singleton_escape_cancels_instead_of_backing_out() {
             Owner::new().with(|| {
                 let committed = RwSignal::new(None);
-                let on_commit =
-                    Callback::new(move |pair: (Operator, Option<Target>)| committed.set(Some(pair)));
+                let on_commit = Callback::new(move |pair: (Operator, Option<Target>)| {
+                    committed.set(Some(pair))
+                });
                 // A singleton opens straight on the value dropdown (picked = Given).
                 let p = PendingCommit {
                     polyomino: poly(&[(0, 0)]),

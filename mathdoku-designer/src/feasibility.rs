@@ -20,7 +20,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::collections::{BTreeSet, HashMap};
 use std::hash::{Hash, Hasher};
 
-use mathdoku::{Cage, Cell, Grid, Target, Operation, Operator, Polyomino, Puzzle, operators};
+use mathdoku::{Cage, Cell, Grid, Operation, Operator, Polyomino, Puzzle, Target, operators};
 
 /// Products above this ceiling are never offered as `Multiply` targets. No
 /// realistic cage in an `n ≤ 9` grid has a larger product, and the bound keeps
@@ -86,14 +86,21 @@ fn candidate_targets(op: &Operator, k: usize, n: usize) -> Vec<Target> {
             .into_iter()
             .filter(|&t| t > 0)
             .collect(),
-        Operator::Multiply => reachable(k, n, 1, Target::saturating_mul).into_iter().collect(),
+        Operator::Multiply => reachable(k, n, 1, Target::saturating_mul)
+            .into_iter()
+            .collect(),
     }
 }
 
 /// Reachable accumulator values after combining `k` cells, each contributing a
 /// value in `1..=n` via `step`, starting from `seed`. Values exceeding
 /// [`MAX_PRODUCT`] are pruned to keep the set finite.
-fn reachable(k: usize, n: Target, seed: Target, step: impl Fn(Target, Target) -> Target) -> BTreeSet<Target> {
+fn reachable(
+    k: usize,
+    n: Target,
+    seed: Target,
+    step: impl Fn(Target, Target) -> Target,
+) -> BTreeSet<Target> {
     let mut acc: BTreeSet<Target> = BTreeSet::from([seed]);
     for _ in 0..k {
         let mut next = BTreeSet::new();
@@ -138,7 +145,10 @@ fn puzzle_key(puzzle: &Puzzle) -> u64 {
 /// Memoized [`feasible_op_targets`]. Returns the cached result for the
 /// `(puzzle, polyomino)` pair if present, otherwise computes and stores it.
 #[must_use]
-pub fn cached_feasible_op_targets(puzzle: &Puzzle, polyomino: &Polyomino) -> Vec<(Operator, Target)> {
+pub fn cached_feasible_op_targets(
+    puzzle: &Puzzle,
+    polyomino: &Polyomino,
+) -> Vec<(Operator, Target)> {
     let key = (puzzle_key(puzzle), polyomino.cells());
     if let Some(hit) = CACHE.with_borrow(|c| c.get(&key).cloned()) {
         return hit;

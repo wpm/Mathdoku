@@ -11,7 +11,7 @@
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use mathdoku::{Cage, Cell, Grid, Target, Operation, Operator, Polyomino, operators};
+use mathdoku::{Cage, Cell, Grid, Operation, Operator, Polyomino, Target, operators};
 use mathdoku_designer_shared::State;
 
 use super::cage::Cage as CageComponent;
