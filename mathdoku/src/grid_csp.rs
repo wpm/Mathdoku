@@ -179,6 +179,9 @@ fn propagate_cage(
 ///
 /// # Errors
 /// Returns an error if any cell is out of bounds during propagation.
+// Explicit `pub(crate)` marks the crate-internal API surface; the lint sees it as
+// redundant because `grid_csp` is a private module.
+#[allow(clippy::redundant_pub_crate)]
 pub(crate) fn grid_fixpoint(grid: &Grid, puzzle: &Puzzle) -> Result<Grid, Error> {
     let n = grid.n();
     let cages: Arc<Vec<Cage>> = Arc::new(puzzle.cages().cloned().collect());
@@ -202,6 +205,9 @@ pub(crate) fn grid_fixpoint(grid: &Grid, puzzle: &Puzzle) -> Result<Grid, Error>
 /// the next branch.
 ///
 /// Obtained via [`Grid::solutions`].
+// Explicit `pub(crate)` marks the crate-internal API surface; the lint sees it as
+// redundant because `grid_csp` is a private module.
+#[allow(clippy::redundant_pub_crate)]
 pub(crate) struct Solutions<'a> {
     stack: Vec<Grid>,
     puzzle: &'a Puzzle,
