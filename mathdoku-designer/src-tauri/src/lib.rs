@@ -211,8 +211,8 @@ pub fn run() {
             set_active_cell,
             set_window_title,
             quit_app,
-            add_region,
-            remove_region,
+            insert_cage,
+            remove_cage,
             fix,
             unfix,
         ])
@@ -320,14 +320,14 @@ mod tests {
         assert!(new_empty(0, app.state::<Mutex<AppState>>()).is_err());
     }
 
-    // ---- add_region target (Without-Solution mode) ----
+    // ---- insert_cage target (Without-Solution mode) ----
 
     #[test]
-    fn add_region_uses_author_target_without_solution() {
+    fn insert_cage_uses_author_target_without_solution() {
         let app = app_with_state();
         let _ = new_empty(4, app.state::<Mutex<AppState>>()).unwrap();
         let cells = vec![Cell::new(0, 0), Cell::new(0, 1)];
-        let st = add_region(
+        let st = insert_cage(
             cells,
             Operator::Add,
             Some(7),

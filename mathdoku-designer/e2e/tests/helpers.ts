@@ -87,7 +87,7 @@ export async function installTauriStubs(
               document.title = title;
               return Promise.resolve(null);
             }
-            if (cmd === 'remove_region') {
+            if (cmd === 'remove_cage') {
               const typedArgs = args as { cells?: { row: number; column: number }[] } | undefined;
               const removeCells = typedArgs?.cells ?? [];
               const currentPuzzle = puzzle as BareP;
@@ -101,7 +101,7 @@ export async function installTauriStubs(
               puzzle = { n: currentPuzzle.n, cages };
               return Promise.resolve(wrapState(puzzle as BareP));
             }
-            if (cmd === 'add_region') {
+            if (cmd === 'insert_cage') {
               // Add the cells as a new cage and return a State.
               const typedArgs = args as { cells?: { row: number; column: number }[]; operator?: string; target?: number | null } | undefined;
               const cells = typedArgs?.cells ?? [];

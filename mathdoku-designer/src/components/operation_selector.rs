@@ -203,7 +203,7 @@ fn spinner_view(x: f64, y: f64, tab_w: f64, tab_h: f64, pad: f64) -> AnyView {
     .into_any()
 }
 
-/// The inline "no operation possible — redraw region" message.
+/// The inline "no operation possible — redraw cage" message.
 fn empty_message_view(x: f64, y: f64) -> AnyView {
     let w = 220.0;
     let h = 30.0;
@@ -214,7 +214,7 @@ fn empty_message_view(x: f64, y: f64) -> AnyView {
                 x={x + 8.0} y={y + h / 2.0}
                 text-anchor="start" dominant-baseline="middle"
                 font-family=SERIF font-size="12" fill=INK2
-            >"no operation possible \u{2014} redraw region"</text>
+            >"no operation possible \u{2014} redraw cage"</text>
         </g>
     }
     .into_any()

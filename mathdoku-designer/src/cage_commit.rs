@@ -11,7 +11,7 @@ use mathdoku_designer_shared::State;
 
 use crate::ipc;
 
-/// Commits `polyomino` as a new cage via the `add_region` Tauri command.
+/// Commits `polyomino` as a new cage via the `insert_cage` Tauri command.
 ///
 /// `target` is `None` in With-Solution mode (the backend derives the target
 /// from the solution) and `Some` in Without-Solution mode (the author chose it).
@@ -33,7 +33,7 @@ pub fn commit_cage(
 ) {
     let cells = polyomino.cells();
     spawn_local(async move {
-        let mut new_st = match ipc::add_region(cells, operator, target).await {
+        let mut new_st = match ipc::insert_cage(cells, operator, target).await {
             Ok(st) => st,
             Err(e) => {
                 on_error.run(e.to_string());
@@ -51,7 +51,7 @@ pub fn commit_cage(
     });
 }
 
-/// Deletes a committed cage outright via the `remove_region` Tauri command.
+/// Deletes a committed cage outright via the `remove_cage` Tauri command.
 ///
 /// Unlike [`demote_cage`], the removed cage is *not* re-added as a provisional
 /// cage and no operation selector is opened — the cells become uncovered. On
@@ -67,7 +67,7 @@ pub fn delete_cage(
     on_error: Callback<String>,
 ) {
     spawn_local(async move {
-        let mut new_st = match ipc::remove_region(cells).await {
+        let mut new_st = match ipc::remove_cage(cells).await {
             Ok(st) => st,
             Err(e) => {
                 on_error.run(e.to_string());
@@ -86,7 +86,7 @@ pub fn delete_cage(
     });
 }
 
-/// Demotes a committed cage back to a provisional cage via the `remove_region` Tauri command,
+/// Demotes a committed cage back to a provisional cage via the `remove_cage` Tauri command,
 /// then opens the operation selector for it.
 ///
 /// On success, pushes the pre-demote state onto `undo_stack`, clears `redo_stack`, adds the
@@ -102,7 +102,7 @@ pub fn demote_cage(
     on_error: Callback<String>,
 ) {
     spawn_local(async move {
-        let mut new_st = match ipc::remove_region(cells.clone()).await {
+        let mut new_st = match ipc::remove_cage(cells.clone()).await {
             Ok(st) => st,
             Err(e) => {
                 on_error.run(e.to_string());

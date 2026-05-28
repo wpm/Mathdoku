@@ -320,7 +320,7 @@ pub fn set_window_title<R: Runtime>(title: String, app: AppHandle<R>) -> Result<
 /// Returns an error string if no puzzle is loaded, the cells form an invalid polyomino, or
 /// `operator` is not valid for the polyomino size.
 #[tauri::command]
-pub fn add_region(
+pub fn insert_cage(
     cells: Vec<Cell>,
     operator: Operator,
     target: Option<u64>,
@@ -410,10 +410,7 @@ pub fn unfix(state: TauriState<Mutex<AppState>>) -> Result<State, String> {
 /// Returns an error string if no puzzle is loaded, the cells form an invalid
 /// polyomino, or no matching cage is found.
 #[tauri::command]
-pub fn remove_region(
-    cells: Vec<Cell>,
-    state: TauriState<Mutex<AppState>>,
-) -> Result<State, String> {
+pub fn remove_cage(cells: Vec<Cell>, state: TauriState<Mutex<AppState>>) -> Result<State, String> {
     let mut s = state.lock().map_err(|e| e.to_string())?;
     let puzzle = s.puzzle.as_ref().ok_or("no puzzle loaded")?;
     let target_cells: HashSet<_> = cells.iter().copied().collect();

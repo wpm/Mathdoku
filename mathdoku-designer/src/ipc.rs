@@ -68,7 +68,7 @@ struct ActiveArgs {
 }
 
 #[derive(Serialize)]
-struct AddRegionArgs {
+struct InsertCageArgs {
     cells: Vec<Cell>,
     operator: Operator,
     /// `Some` in Without-Solution mode (author-chosen target); `None` in
@@ -77,7 +77,7 @@ struct AddRegionArgs {
 }
 
 #[derive(Serialize)]
-struct RemoveRegionArgs {
+struct RemoveCageArgs {
     cells: Vec<Cell>,
 }
 
@@ -163,14 +163,14 @@ pub async fn set_active_cell(active: Cell) -> Result<(), IpcError> {
     call_unit("set_active_cell", ActiveArgs { active }).await
 }
 
-pub async fn add_region(
+pub async fn insert_cage(
     cells: Vec<Cell>,
     operator: Operator,
     target: Option<M>,
 ) -> Result<State, IpcError> {
     call(
-        "add_region",
-        AddRegionArgs {
+        "insert_cage",
+        InsertCageArgs {
             cells,
             operator,
             target,
@@ -179,8 +179,8 @@ pub async fn add_region(
     .await
 }
 
-pub async fn remove_region(cells: Vec<Cell>) -> Result<State, IpcError> {
-    call("remove_region", RemoveRegionArgs { cells }).await
+pub async fn remove_cage(cells: Vec<Cell>) -> Result<State, IpcError> {
+    call("remove_cage", RemoveCageArgs { cells }).await
 }
 
 /// Snapshots the unique completion into the solution (Without-Solution →

@@ -30,7 +30,7 @@ const accentLines = (page: Page) =>
 const accentRect = (page: Page) =>
   page.locator(`.grid-svg rect[stroke="${ACCENT}"]`);
 
-test.describe('provisional region', () => {
+test.describe('provisional cage', () => {
   test('Shift+Arrow on uncovered cell draws provisional outline', async ({ page }) => {
     await setup(page);
     await page.keyboard.press(SHIFT_ARROW_RIGHT);
@@ -38,7 +38,7 @@ test.describe('provisional region', () => {
     await expect(provisionalLines(page)).not.toHaveCount(0);
   });
 
-  test('provisional region has distinct color from selection', async ({ page }) => {
+  test('provisional cage has distinct color from selection', async ({ page }) => {
     await setup(page);
     await page.keyboard.press(SHIFT_ARROW_RIGHT);
 
@@ -64,7 +64,7 @@ test.describe('provisional region', () => {
     await expect(provisionalLines(page)).toHaveCount(0);
   });
 
-  test('multiple Shift+Arrow presses grow the provisional region', async ({ page }) => {
+  test('multiple Shift+Arrow presses grow the provisional cage', async ({ page }) => {
     await setup(page);
     await page.keyboard.press(SHIFT_ARROW_RIGHT);
     const count1 = await provisionalLines(page).count();
@@ -91,13 +91,13 @@ test.describe('provisional region', () => {
     await expect(provisionalLines(page)).not.toHaveCount(0);
 
     await page.keyboard.press(ESCAPE); // cursor at (0,1) is in the provisional cage — deletes it
-    await expect(provisionalLines(page)).toHaveCount(0); // region deleted
+    await expect(provisionalLines(page)).toHaveCount(0); // cage deleted
   });
 
-  test('regular Arrow moves cursor without clearing provisional region', async ({ page }) => {
+  test('regular Arrow moves cursor without clearing provisional cage', async ({ page }) => {
     await setup(page);
     await page.keyboard.press(SHIFT_ARROW_RIGHT); // draw cell (0,0), move to (0,1)
-    await page.keyboard.press(ARROW_DOWN); // move to (1,1), region stays
+    await page.keyboard.press(ARROW_DOWN); // move to (1,1), cage stays
 
     await expect(provisionalLines(page)).not.toHaveCount(0);
   });
@@ -106,19 +106,19 @@ test.describe('provisional region', () => {
     await setup(page);
     await page.keyboard.press(SHIFT_ARROW_RIGHT); // draw (0,0), now at (0,1)
     await page.keyboard.press(ARROW_DOWN); // move to (1,1)
-    await page.keyboard.press(ARROW_DOWN); // move to (2,1) — not adjacent to region
+    await page.keyboard.press(ARROW_DOWN); // move to (2,1) — not adjacent to cage
     const countBefore = await provisionalLines(page).count();
 
-    // (2,1) is not adjacent to the existing region {(0,0),(0,1)}; parks it and starts fresh.
+    // (2,1) is not adjacent to the existing cage {(0,0),(0,1)}; parks it and starts fresh.
     await page.keyboard.press(SHIFT_ARROW_RIGHT); // draw (2,1), move to (2,2)
     const countAfter = await provisionalLines(page).count();
 
-    // Both regions visible: parked {(0,0),(0,1)} (6 edges) + new {(2,1),(2,2)} (6 edges) = 12.
+    // Both cages visible: parked {(0,0),(0,1)} (6 edges) + new {(2,1),(2,2)} (6 edges) = 12.
     expect(countAfter).toBeGreaterThan(countBefore);
     expect(countAfter).toBe(12);
   });
 
-  test('Enter on uncovered cell with no provisional creates singleton region', async ({ page }) => {
+  test('Enter on uncovered cell with no provisional creates singleton cage', async ({ page }) => {
     await setup(page);
     await page.keyboard.press(ENTER);
 
@@ -136,7 +136,7 @@ test.describe('provisional region', () => {
     await expect(accentRect(page)).toHaveCount(1);
   });
 
-  test('Enter then operator commits provisional region and returns to active cell', async ({ page }) => {
+  test('Enter then operator commits provisional cage and returns to active cell', async ({ page }) => {
     await setup(page);
     await page.keyboard.press(SHIFT_ARROW_RIGHT); // draw {(0,0),(0,1)}, move to (0,1)
     await page.keyboard.press(ENTER); // open operation selector
@@ -234,7 +234,7 @@ test.describe('provisional region', () => {
     await setup(page);
     await page.keyboard.press(ENTER); // commit singleton at (0,0) → Given/1 cage
 
-    // The add_region stub returns a Given/1 cage for a singleton.
+    // The insert_cage stub returns a Given/1 cage for a singleton.
     // Given cages display only the target number as label.
     await expect(
       page.locator('.grid-svg text[font-weight="700"]').filter({ hasText: /^1$/ }),
