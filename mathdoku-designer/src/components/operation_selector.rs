@@ -1068,7 +1068,7 @@ mod tests {
             Owner::new().with(|| {
                 let committed = RwSignal::new(None);
                 let on_commit = Callback::new(move |pair: (Operator, Option<Target>)| {
-                    committed.set(Some(pair))
+                    committed.set(Some(pair));
                 });
                 // A singleton opens straight on the value dropdown (picked = Given).
                 let p = PendingCommit {
