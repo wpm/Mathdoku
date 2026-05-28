@@ -24,25 +24,11 @@ use crate::puzzle::Puzzle;
 /// falls in `[1, n²]`. The mean must be strictly positive so rejection sampling
 /// is guaranteed to terminate.
 #[derive(Debug, Clone, Copy)]
-pub struct SizeDistribution {
+pub(crate) struct SizeDistribution {
     mean: f64,
 }
 
 impl SizeDistribution {
-    /// Creates a Poisson size distribution with the given mean.
-    ///
-    /// Returns `None` if `mean` is not strictly positive. The mean must be
-    /// `> 0` so that rejection sampling on `Poisson(mean)` truncated to
-    /// `[1, n*n]` is guaranteed to terminate.
-    pub fn new(mean: f64) -> Option<Self> {
-        (mean > 0.0).then_some(Self { mean })
-    }
-
-    /// Returns the mean of the underlying (untruncated) Poisson distribution.
-    pub const fn mean(self) -> f64 {
-        self.mean
-    }
-
     /// Default distribution for an `n`×`n` grid: `Poisson(n / 3)`.
     ///
     /// For `n = 0`, the same distribution is returned as for `n = 1`. The
@@ -118,7 +104,7 @@ pub(crate) fn default_op_policy(values: &[N], n: usize) -> Result<Operation, Err
 }
 
 /// Generates a random `n`×`n` puzzle using the default operation policy and
-/// [`SizeDistribution::default_for`].
+/// a default Poisson size distribution.
 ///
 /// # Errors
 /// Returns `Error` if `n` is not in `1..=9`.
@@ -138,7 +124,7 @@ pub fn generate<R: Rng>(n: usize, rng: &mut R) -> Result<Puzzle, Error> {
 /// # Errors
 /// Returns `Error` if `n` is not in `1..=9`, or any error returned by `op`.
 #[allow(clippy::cast_possible_truncation)]
-pub fn generate_with<R: Rng, F>(
+pub(crate) fn generate_with<R: Rng, F>(
     n: usize,
     rng: &mut R,
     op: F,
@@ -237,6 +223,16 @@ mod tests {
     use rand_chacha::ChaCha8Rng;
 
     use super::*;
+
+    impl SizeDistribution {
+        fn new(mean: f64) -> Option<Self> {
+            (mean > 0.0).then_some(Self { mean })
+        }
+
+        const fn mean(self) -> f64 {
+            self.mean
+        }
+    }
 
     fn op(operator: Operator, target: M) -> Operation {
         Operation::new(operator, target)
