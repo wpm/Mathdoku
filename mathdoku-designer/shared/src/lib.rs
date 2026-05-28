@@ -41,7 +41,7 @@ pub struct State {
     pub current: Grid,
     /// The currently active cell.
     pub active: Cell,
-    /// Provisional cage regions: disjoint from each other and from puzzle cages.
+    /// Provisional cages: disjoint from each other and from puzzle cages.
     pub provisional_cages: BTreeSet<Polyomino>,
 }
 

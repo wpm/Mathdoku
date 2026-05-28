@@ -1,4 +1,4 @@
-//! [`SelectionOverlay`] component: active cell highlight and provisional region overlay.
+//! [`SelectionOverlay`] component: active cell highlight and provisional cage overlay.
 
 #![allow(
     clippy::cast_precision_loss,
@@ -18,8 +18,8 @@ use crate::geometry::origin;
 use crate::theme::{ACCENT, PROVISIONAL_FILL, PROVISIONAL_STROKE};
 const SELECTION: f64 = 3.5;
 
-/// Provisional region fill rectangles only — rendered below gridlines so the
-/// thin cell boundaries remain equally visible inside and outside the region.
+/// Provisional cage fill rectangles only — rendered below gridlines so the
+/// thin cell boundaries remain equally visible inside and outside the cage.
 #[component]
 pub fn ProvisionalFills() -> impl IntoView {
     #[allow(clippy::panic)]
@@ -36,8 +36,8 @@ pub fn ProvisionalFills() -> impl IntoView {
         let st = designer_state.get();
         st.provisional_cages
             .iter()
-            .flat_map(|region| {
-                region.cells().into_iter().map(move |c| {
+            .flat_map(|cage| {
+                cage.cells().into_iter().map(move |c| {
                     let (x, y) = origin(cell, c.row, c.column);
                     view! { <rect x=x y=y width=cell height=cell fill=PROVISIONAL_FILL /> }
                         .into_any()
@@ -47,7 +47,7 @@ pub fn ProvisionalFills() -> impl IntoView {
     }
 }
 
-/// Provisional region border strokes and active cell highlight — rendered above gridlines.
+/// Provisional cage border strokes and active cell highlight — rendered above gridlines.
 #[component]
 pub fn SelectionOverlay() -> impl IntoView {
     #[allow(clippy::panic)]
@@ -67,10 +67,10 @@ pub fn SelectionOverlay() -> impl IntoView {
 
         let mut elements: Vec<_> = Vec::new();
 
-        // Provisional region border strokes.
-        for region in &st.provisional_cages {
-            let cell_set: HashSet<Cell> = region.cells().into_iter().collect();
-            for c in region.cells() {
+        // Provisional cage border strokes.
+        for cage in &st.provisional_cages {
+            let cell_set: HashSet<Cell> = cage.cells().into_iter().collect();
+            for c in cage.cells() {
                 let (x, y) = origin(cell, c.row, c.column);
                 let stroke = PROVISIONAL_STROKE;
                 if c.row == 0 || !cell_set.contains(&Cell::new(c.row - 1, c.column)) {

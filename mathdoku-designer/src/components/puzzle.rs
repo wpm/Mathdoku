@@ -679,7 +679,7 @@ fn singleton_digit_commit(state: &State, key: &str) -> Option<SingletonDigitComm
     {
         return None;
     }
-    // Mid-draw inside a multi-cell provisional region → no shortcut.
+    // Mid-draw inside a multi-cell provisional cage → no shortcut.
     if let Some(p) = state
         .provisional_cages
         .iter()
@@ -729,13 +729,13 @@ fn step_provisional_cage(r: usize, c: usize, tr: usize, tc: usize, state: State)
         .find(|p| p.cells().contains(&current))
         .cloned();
 
-    let (region, mut remaining): (Polyomino, BTreeSet<Polyomino>) = match active {
+    let (cage, mut remaining): (Polyomino, BTreeSet<Polyomino>) = match active {
         None => {
-            // No region contains current — start a new singleton.
-            let Ok(new_region) = Polyomino::from_cells(&[current]) else {
+            // No cage contains current — start a new singleton.
+            let Ok(new_cage) = Polyomino::from_cells(&[current]) else {
                 return state;
             };
-            (new_region, state.provisional_cages.clone())
+            (new_cage, state.provisional_cages.clone())
         }
         Some(poly) => {
             let rest: BTreeSet<Polyomino> = state
@@ -750,18 +750,18 @@ fn step_provisional_cage(r: usize, c: usize, tr: usize, tc: usize, state: State)
                 // Current cell disconnected from this cage — park it and start fresh.
                 let mut parked = rest;
                 parked.insert(poly);
-                let Ok(new_region) = Polyomino::from_cells(&[current]) else {
+                let Ok(new_cage) = Polyomino::from_cells(&[current]) else {
                     return state;
                 };
-                (new_region, parked)
+                (new_cage, parked)
             }
         }
     };
 
     // Extend to include target (guaranteed adjacent — one step from current).
-    let region = region.insert(target).unwrap_or(region);
+    let cage = cage.insert(target).unwrap_or(cage);
 
-    remaining.insert(region);
+    remaining.insert(cage);
     State {
         active: Cell::new(tr, tc),
         provisional_cages: remaining,
@@ -874,8 +874,8 @@ mod tests {
 
         assert_eq!(result.active, Cell::new(0, 1));
         assert_eq!(result.provisional_cages.len(), 1);
-        let region = result.provisional_cages.iter().next().unwrap();
-        assert_eq!(cells_of(region), vec![(0, 0), (0, 1)]);
+        let cage = result.provisional_cages.iter().next().unwrap();
+        assert_eq!(cells_of(cage), vec![(0, 0), (0, 1)]);
     }
 
     #[test]
@@ -888,8 +888,8 @@ mod tests {
 
         assert_eq!(result.active, Cell::new(0, 2));
         assert_eq!(result.provisional_cages.len(), 1);
-        let region = result.provisional_cages.iter().next().unwrap();
-        assert_eq!(cells_of(region), vec![(0, 0), (0, 1), (0, 2)]);
+        let cage = result.provisional_cages.iter().next().unwrap();
+        assert_eq!(cells_of(cage), vec![(0, 0), (0, 1), (0, 2)]);
     }
 
     #[test]
@@ -897,7 +897,7 @@ mod tests {
         let mut state = State::new(4).unwrap();
         assert!(state.provisional_cages.insert(poly(&[(3, 3), (3, 2)])));
 
-        // (0,0) is not in any existing cage — a new region is started while the
+        // (0,0) is not in any existing cage — a new cage is started while the
         // unrelated cage is left untouched.
         let result = step_provisional_cage(0, 0, 1, 0, state);
 
@@ -911,8 +911,8 @@ mod tests {
             .provisional_cages
             .iter()
             .any(|p| cells_of(p) == vec![(3, 2), (3, 3)]);
-        assert!(has_new, "new region should be present");
-        assert!(has_old, "pre-existing region should be preserved");
+        assert!(has_new, "new cage should be present");
+        assert!(has_old, "pre-existing cage should be preserved");
     }
 
     #[test]

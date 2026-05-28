@@ -1,4 +1,4 @@
-//! Region component: "?" label in the anchor cell corner.
+//! Provisional cage component: "?" label in the anchor cell corner.
 
 #![allow(dead_code)] // Leptos #[component] macro generates structs from props; dead_code can't see the macro's use of
 // them
@@ -7,9 +7,9 @@ use leptos::prelude::*;
 
 use crate::theme::{INK, OP_INSET, SERIF};
 
-/// "?" label rendered at the top-left of the region's anchor cell.
+/// "?" label rendered at the top-left of the provisional cage's anchor cell.
 #[component]
-pub fn Region(
+pub fn ProvisionalCage(
     /// Top-left x of the anchor cell.
     x: f64,
     /// Top-left y of the anchor cell.

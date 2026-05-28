@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { installTauriStubs, gotoApp } from './helpers';
 
-// A 3×3 puzzle with two cages and no regions.
+// A 3×3 puzzle with two cages; the remaining cells are uncovered.
 // Cage 0: cells (0,0),(0,1) — Add 3
 // Cage 1: cell  (0,2)       — Given 3
 const PUZZLE_3 = {

@@ -6,7 +6,7 @@
 //! parallel engine, with an early exit at the first completion.
 //!
 //! [`feasible_op_targets`] enumerates the globally-feasible `(operator, target)`
-//! pairs for a candidate region; [`cached_feasible_op_targets`] memoizes that
+//! pairs for a candidate cage; [`cached_feasible_op_targets`] memoizes that
 //! result so the dropdown does not recompute on every open.
 
 #![allow(
@@ -24,7 +24,7 @@ use mathdoku::{Cage, Cell, Grid, M, Operation, Operator, Polyomino, Puzzle, oper
 
 /// Products above this ceiling are never offered as `Multiply` targets. No
 /// realistic cage in an `n ≤ 9` grid has a larger product, and the bound keeps
-/// the candidate enumeration finite for pathologically large regions.
+/// the candidate enumeration finite for pathologically large cages.
 const MAX_PRODUCT: M = 1_000_000_000;
 
 /// Returns `true` if the puzzle extended with `candidate` has at least one
@@ -32,7 +32,7 @@ const MAX_PRODUCT: M = 1_000_000_000;
 ///
 /// The query constrains a fresh grid by the extended puzzle and asks the
 /// solution iterator for its first completion, stopping immediately once one
-/// is found. A region conflict, a propagation wipeout, or an empty solution
+/// is found. A cage conflict, a propagation wipeout, or an empty solution
 /// stream all mean infeasible.
 #[must_use]
 pub fn is_globally_feasible(puzzle: &Puzzle, candidate: &Cage) -> bool {
@@ -48,7 +48,7 @@ pub fn is_globally_feasible(puzzle: &Puzzle, candidate: &Cage) -> bool {
 /// Enumerates all globally-feasible `(operator, target)` pairs for `polyomino`
 /// against the current `puzzle`.
 ///
-/// Per-pair strategy (see issue #25): for each operator valid for the region's
+/// Per-pair strategy (see issue #25): for each operator valid for the cage's
 /// size, every candidate target is tested with [`is_globally_feasible`]. The
 /// candidate targets are a tight superset derived by reachability, so the only
 /// pairs returned are the ones that actually admit a completion.
@@ -115,13 +115,13 @@ fn reachable(k: usize, n: M, seed: M, step: impl Fn(M, M) -> M) -> BTreeSet<M> {
 
 // ---- dropdown-query cache (Piece 5) ----
 //
-// Keyed on `(puzzle content hash, region cells)`. Using a content hash of the
+// Keyed on `(puzzle content hash, cage cells)`. Using a content hash of the
 // committed cages rather than a manual version counter makes the cache
 // self-invalidating: any commit, delete, fix, or unfix changes the puzzle and
 // therefore the key, so there is no "forgot to bump the counter" staleness bug.
 // WASM is single-threaded, so a `thread_local` is sound and needs no locking.
 
-/// Cache key: a content hash of the committed cages, plus the candidate region's cells.
+/// Cache key: a content hash of the committed cages, plus the candidate cage's cells.
 type CacheKey = (u64, Vec<Cell>);
 type FeasibleCache = HashMap<CacheKey, Vec<(Operator, M)>>;
 
@@ -205,8 +205,8 @@ mod tests {
     }
 
     #[test]
-    fn overlapping_region_is_infeasible() {
-        // A region conflict (overlapping an existing cage) is never feasible.
+    fn overlapping_cage_is_infeasible() {
+        // A cage conflict (overlapping an existing cage) is never feasible.
         let puzzle = Puzzle::new(3)
             .unwrap()
             .insert_cage(cage(&[(0, 0), (0, 1)], Operator::Add, 3))
