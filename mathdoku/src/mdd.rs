@@ -62,7 +62,7 @@ struct Node {
 
 /// A reduced ordered MDD over the valid tuples of a cage.
 #[derive(Debug, Clone)]
-pub(crate) struct Mdd {
+pub struct Mdd {
     nodes: Vec<Node>,
     root: Option<NodeId>,
     k: usize,

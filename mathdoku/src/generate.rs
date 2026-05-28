@@ -24,7 +24,7 @@ use crate::puzzle::Puzzle;
 /// falls in `[1, n²]`. The mean must be strictly positive so rejection sampling
 /// is guaranteed to terminate.
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct SizeDistribution {
+pub struct SizeDistribution {
     mean: f64,
 }
 
@@ -78,7 +78,7 @@ fn poisson<R: Rng>(mean: f64, rng: &mut R) -> usize {
 /// Returns [`Error::EmptyOpPolicyValues`] if `values` is empty. A cage always
 /// covers at least one cell, so callers that obtain `values` from a cage's
 /// cells will never trigger this.
-pub(crate) fn default_op_policy(values: &[N], n: usize) -> Result<Operation, Error> {
+pub fn default_op_policy(values: &[N], n: usize) -> Result<Operation, Error> {
     let op = |operator, target| Ok(Operation::new(operator, target));
     match values.len() {
         0 => Err(Error::EmptyOpPolicyValues),
@@ -124,7 +124,7 @@ pub fn generate<R: Rng>(n: usize, rng: &mut R) -> Result<Puzzle, Error> {
 /// # Errors
 /// Returns `Error` if `n` is not in `1..=9`, or any error returned by `op`.
 #[allow(clippy::cast_possible_truncation)]
-pub(crate) fn generate_with<R: Rng, F>(
+pub fn generate_with<R: Rng, F>(
     n: usize,
     rng: &mut R,
     op: F,
@@ -160,7 +160,7 @@ where
 /// # Errors
 /// Returns [`Error::DisconnectedPolyomino`] or [`Error::EmptyPolyomino`] if
 /// the grown cell set fails validation (structurally unreachable in practice).
-pub(crate) fn greedy<R: Rng>(
+pub fn greedy<R: Rng>(
     n: usize,
     dist: SizeDistribution,
     rng: &mut R,
