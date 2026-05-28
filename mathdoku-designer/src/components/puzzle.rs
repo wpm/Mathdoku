@@ -12,7 +12,7 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use mathdoku::{Cage, Cell, Grid, Operation, Operator, Polyomino, Target, operators};
-use mathdoku_designer_shared::State;
+use mathdoku_designer_core::State;
 
 use super::cage::Cage as CageComponent;
 use super::cage_stats::CageStats;
@@ -774,7 +774,7 @@ fn step_provisional_cage(r: usize, c: usize, tr: usize, tc: usize, state: State)
 mod tests {
     use super::{singleton_digit_commit, step_provisional_cage};
     use mathdoku::{Cage, Cell, Operation, Operator, Polyomino};
-    use mathdoku_designer_shared::State;
+    use mathdoku_designer_core::State;
 
     fn poly(positions: &[(usize, usize)]) -> Polyomino {
         let cells: Vec<Cell> = positions.iter().map(|&(r, c)| Cell::new(r, c)).collect();

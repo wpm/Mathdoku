@@ -8,9 +8,8 @@ pub mod commands;
 use std::fs;
 use std::sync::Mutex;
 
-use serde_json::from_str;
-
 use mathdoku::Puzzle;
+use mathdoku_designer_core::{self as core, AppState};
 use tauri::image::Image;
 use tauri::menu::{AboutMetadata, Menu, MenuItemBuilder, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Emitter, Manager, Runtime, WindowEvent};
@@ -155,29 +154,21 @@ fn handle_window_event<R: Runtime>(window: &tauri::Window<R>, event: &WindowEven
 
 /// Attempts to restore the last session from the recent-file record.
 ///
-/// Reads `last_open.json`, loads the referenced `.mathdoku` file, and
-/// populates [`AppState`] with the puzzle, solution, current grid, and view
-/// state. Returns the restored [`Puzzle`] on success, or `None` if no recent
+/// Reads `last_open.json`, loads the referenced `.mathdoku` file through
+/// [`core::apply_loaded`], and records the file path and last-known active
+/// cell. Returns the restored [`Puzzle`] on success, or `None` if no recent
 /// file exists, the file can't be read, or the save version is unsupported.
 fn try_restore<R: Runtime>(app: &AppHandle<R>) -> Option<Puzzle> {
     let record = read_recent(app)?;
     let path = record.path?;
     let json = fs::read_to_string(&path).ok()?;
-    let envelope: SaveEnvelope = from_str(&json).ok()?;
-    if envelope.version != SAVE_VERSION {
-        return None;
-    }
-    let current = constrain_current(envelope.solution.as_ref(), &envelope.puzzle).ok()?;
     let state = app.try_state::<Mutex<AppState>>()?;
     let mut s = state.lock().ok()?;
-    s.puzzle = Some(envelope.puzzle.clone());
-    s.solution = envelope.solution;
-    s.current = Some(current);
+    let designer = core::apply_loaded(&mut s, &json).ok()?;
     s.path = Some(path);
-    s.dirty = false;
     s.active = record.active;
     drop(s);
-    Some(envelope.puzzle)
+    Some(designer.puzzle)
 }
 
 // ---- run ----
@@ -230,13 +221,11 @@ mod tests {
     use serde::Serialize;
     use serde_json::{json, to_string, to_string_pretty};
 
-    use mathdoku::{Cell, Grid, Operator};
+    use mathdoku::Grid;
 
     use super::*;
-    use commands::{
-        SAVE_VERSION, SaveEnvelope, get_doc_state, get_puzzle, load_puzzle, new_empty, recent_path,
-        save_puzzle,
-    };
+    use commands::{load_puzzle, recent_path, save_puzzle};
+    use mathdoku_designer_core::{SAVE_VERSION, SaveEnvelope};
 
     // Serialize tests that read/write the shared on-disk recent file.
     static RECENT_FILE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -280,85 +269,6 @@ mod tests {
             ..AppState::default()
         }));
         app
-    }
-
-    // ---- new_empty ----
-
-    #[test]
-    fn new_empty_sets_puzzle_and_dirty() {
-        let app = app_with_state();
-        let result = new_empty(4, app.state::<Mutex<AppState>>()).unwrap();
-        assert_eq!(result.puzzle.n(), 4);
-        // Without-Solution mode: no solution snapshot.
-        assert!(result.solution.is_none());
-        let binding = app.state::<Mutex<AppState>>();
-        let s = binding.lock().unwrap();
-        assert!(s.puzzle.is_some());
-        assert!(s.solution.is_none());
-        assert!(s.dirty);
-        assert!(s.path.is_none());
-        drop(s);
-    }
-
-    #[test]
-    fn new_empty_clears_existing_path() {
-        let app = mock_app();
-        let _ = app.manage(Mutex::new(AppState {
-            path: Some("/old/path.mathdoku".to_string()),
-            ..AppState::default()
-        }));
-        let _ = new_empty(4, app.state::<Mutex<AppState>>()).unwrap();
-        let binding = app.state::<Mutex<AppState>>();
-        let s = binding.lock().unwrap();
-        assert!(s.path.is_none());
-        drop(s);
-    }
-
-    #[test]
-    fn new_empty_rejects_invalid_size() {
-        let app = app_with_state();
-        assert!(new_empty(0, app.state::<Mutex<AppState>>()).is_err());
-    }
-
-    // ---- insert_cage target (Without-Solution mode) ----
-
-    #[test]
-    fn insert_cage_uses_author_target_without_solution() {
-        let app = app_with_state();
-        let _ = new_empty(4, app.state::<Mutex<AppState>>()).unwrap();
-        let cells = vec![Cell::new(0, 0), Cell::new(0, 1)];
-        let st = insert_cage(
-            cells,
-            Operator::Add,
-            Some(7),
-            app.state::<Mutex<AppState>>(),
-        )
-        .unwrap();
-        let cage = st.puzzle.cages().next().unwrap();
-        assert_eq!(cage.operation().target, 7);
-        assert!(st.solution.is_none());
-    }
-
-    // ---- fix / unfix ----
-
-    #[test]
-    fn fix_errs_when_not_unique() {
-        let app = app_with_state();
-        // An empty 3×3 Without-Solution puzzle has many completions.
-        let _ = new_empty(3, app.state::<Mutex<AppState>>()).unwrap();
-        assert!(commands::fix(app.state::<Mutex<AppState>>()).is_err());
-    }
-
-    #[test]
-    fn unfix_clears_solution() {
-        let app = app_with_state();
-        let _ = new_latin_square(3, app.state::<Mutex<AppState>>()).unwrap();
-        let st = commands::unfix(app.state::<Mutex<AppState>>()).unwrap();
-        assert!(st.solution.is_none());
-        let binding = app.state::<Mutex<AppState>>();
-        let s = binding.lock().unwrap();
-        assert!(s.solution.is_none());
-        drop(s);
     }
 
     // ---- save_puzzle / load_puzzle round-trip ----
@@ -470,7 +380,7 @@ mod tests {
         let app = app_with_state();
         let err =
             load_puzzle(path, app.handle().clone(), app.state::<Mutex<AppState>>()).unwrap_err();
-        assert!(err.contains("unsupported version"));
+        assert!(err.contains("unsupported save version"));
     }
 
     #[test]
@@ -484,45 +394,6 @@ mod tests {
 
         let app = app_with_state();
         assert!(load_puzzle(path, app.handle().clone(), app.state::<Mutex<AppState>>()).is_err());
-    }
-
-    // ---- get_doc_state ----
-
-    #[test]
-    fn get_doc_state_returns_current_values() {
-        let app = mock_app();
-        let _ = app.manage(Mutex::new(AppState {
-            dirty: true,
-            path: Some("/some/path.mathdoku".to_string()),
-            ..AppState::default()
-        }));
-
-        let doc = get_doc_state(app.state::<Mutex<AppState>>());
-        assert!(doc.dirty);
-        assert_eq!(doc.path.as_deref(), Some("/some/path.mathdoku"));
-    }
-
-    #[test]
-    fn get_doc_state_default_is_clean_with_no_path() {
-        let app = app_with_state();
-        let doc = get_doc_state(app.state::<Mutex<AppState>>());
-        assert!(!doc.dirty);
-        assert!(doc.path.is_none());
-    }
-
-    // ---- get_puzzle ----
-
-    #[test]
-    fn get_puzzle_returns_none_when_no_puzzle() {
-        let app = app_with_state();
-        assert!(get_puzzle(app.state::<Mutex<AppState>>()).is_none());
-    }
-
-    #[test]
-    fn get_puzzle_returns_puzzle_when_loaded() {
-        let app = app_with_puzzle(6);
-        let p = get_puzzle(app.state::<Mutex<AppState>>()).unwrap();
-        assert_eq!(p.puzzle.n(), 6);
     }
 
     // ---- try_restore ----

@@ -7,7 +7,7 @@
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use mathdoku_designer_shared::State;
+use mathdoku_designer_core::State;
 use wasm_bindgen::prelude::*;
 
 use crate::ipc;

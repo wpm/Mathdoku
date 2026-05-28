@@ -2286,23 +2286,25 @@ name = "mathdoku-designer"
 version = "0.1.0"
 dependencies = [
  "mathdoku",
- "mathdoku-designer-shared",
+ "mathdoku-designer-core",
  "rand",
  "serde",
  "serde_json",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",
- "thiserror 2.0.18",
 ]
 
 [[package]]
-name = "mathdoku-designer-shared"
+name = "mathdoku-designer-core"
 version = "0.1.0"
 dependencies = [
+ "getrandom 0.4.2",
  "mathdoku",
+ "rand",
  "serde",
  "serde_json",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -2315,7 +2317,7 @@ dependencies = [
  "js-sys",
  "leptos",
  "mathdoku",
- "mathdoku-designer-shared",
+ "mathdoku-designer-core",
  "serde",
  "serde-wasm-bindgen",
  "serde_json",

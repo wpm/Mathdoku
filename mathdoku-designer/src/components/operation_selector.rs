@@ -419,8 +419,8 @@ pub fn key_to_operator(key: &str, allowed: &[Operator]) -> Option<Operator> {
 fn cancel_pending(
     pending: &PendingCommit,
     pending_commit: RwSignal<Option<PendingCommit>>,
-    designer_state: RwSignal<mathdoku_designer_shared::State>,
-    on_state_change: Callback<mathdoku_designer_shared::State>,
+    designer_state: RwSignal<mathdoku_designer_core::State>,
+    on_state_change: Callback<mathdoku_designer_core::State>,
 ) {
     pending_commit.set(None);
     let poly = pending.polyomino.clone();
@@ -441,8 +441,8 @@ fn handle_key_without_solution(
     pending: &PendingCommit,
     feasible: RwSignal<FeasibilityState>,
     pending_commit: RwSignal<Option<PendingCommit>>,
-    designer_state: RwSignal<mathdoku_designer_shared::State>,
-    on_state_change: Callback<mathdoku_designer_shared::State>,
+    designer_state: RwSignal<mathdoku_designer_core::State>,
+    on_state_change: Callback<mathdoku_designer_core::State>,
 ) {
     use crate::keys::{ARROW_LEFT, ARROW_RIGHT, ENTER, ESCAPE, TAB};
 
@@ -523,8 +523,8 @@ pub fn handle_key(
     shift: bool,
     pending: &PendingCommit,
     pending_commit: RwSignal<Option<PendingCommit>>,
-    designer_state: RwSignal<mathdoku_designer_shared::State>,
-    on_state_change: Callback<mathdoku_designer_shared::State>,
+    designer_state: RwSignal<mathdoku_designer_core::State>,
+    on_state_change: Callback<mathdoku_designer_core::State>,
 ) -> bool {
     use crate::keys::{ARROW_LEFT, ARROW_RIGHT, ENTER, ESCAPE, TAB};
 
@@ -726,7 +726,7 @@ mod tests {
         use leptos::prelude::*;
         use leptos::reactive::owner::Owner;
         use mathdoku::{Operator, Target};
-        use mathdoku_designer_shared::State;
+        use mathdoku_designer_core::State;
 
         const ALL_OPS: [Operator; 4] = [
             Operator::Add,
