@@ -269,7 +269,21 @@ fn SizeModal(
                         </select>
                     </label>
                 </div>
-                <div style="display:flex;justify-content:flex-end;gap:10px;">
+                <div style="display:flex;justify-content:center;gap:10px;">
+                    <button
+                        class="sz-btn"
+                        style=neutral_btn_style()
+                        on:click=move |_| on_create_empty.run(chosen.get_untracked())
+                    >
+                        "No Solution"
+                    </button>
+                    <button
+                        class="sz-btn"
+                        style=primary_btn_style()
+                        on:click=move |_| on_create_with_solution.run(chosen.get_untracked())
+                    >
+                        "Random Solution"
+                    </button>
                     {(!mandatory).then(||
                         view! {
                             <button class="sz-btn" style=neutral_btn_style() on:click=move |_| on_cancel.run(())>
@@ -277,20 +291,6 @@ fn SizeModal(
                             </button>
                         }
                     )}
-                    <button
-                        class="sz-btn"
-                        style=neutral_btn_style()
-                        on:click=move |_| on_create_empty.run(chosen.get_untracked())
-                    >
-                        "Empty"
-                    </button>
-                    <button
-                        class="sz-btn"
-                        style=primary_btn_style()
-                        on:click=move |_| on_create_with_solution.run(chosen.get_untracked())
-                    >
-                        "With Solution"
-                    </button>
                 </div>
             </div>
         </div>
@@ -430,6 +430,10 @@ pub fn App() -> impl IntoView {
                         redo_stack.update(std::vec::Vec::clear);
                         pending_commit.set(None);
                         designer_state.set(Some(st));
+                        // Loading a puzzle satisfies the New Puzzle condition, so
+                        // dismiss the size modal if it is open (including the
+                        // mandatory first-launch case).
+                        show_size_modal.set(false);
                     }
                     Ok(None) => {} // user cancelled dialog
                     Err(e) => error_msg.set(Some(e)),
