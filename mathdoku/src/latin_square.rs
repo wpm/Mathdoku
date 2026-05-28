@@ -49,6 +49,13 @@ fn pick_one_from_line(rng: &mut impl Rng, n: usize, line: impl Fn(usize) -> i8) 
 /// distributed random Latin squares", *Journal of Combinatorial Designs* 4(6),
 /// 1996, pp. 405–437.
 pub fn generate_latin_square(n: usize, rng: &mut impl Rng) -> Vec<Vec<Value>> {
+    // The 1×1 cube has no zero-cell, so the chain's rejection sampler (which
+    // needs one) would spin forever. The only 1×1 Latin square is [[1]], so
+    // return it directly without starting the chain.
+    if n == 1 {
+        return vec![vec![1]];
+    }
+
     // Seed with the cyclic Latin square: L[r][c] = ((r + c) mod n) + 1.
     let mut m: Vec<Vec<Vec<i8>>> = vec![vec![vec![0i8; n]; n]; n];
     for r in 0..n {
@@ -142,6 +149,16 @@ mod tests {
     fn generate_4x4_returns_valid_square() {
         let mut rng = ChaCha8Rng::seed_from_u64(42);
         let ls = generate_latin_square(4, &mut rng);
+        assert!(validate_latin_square(&ls));
+    }
+
+    #[test]
+    fn generate_1x1_returns_valid_square() {
+        // n = 1 used to hang: the incidence cube has no zero-cell for the
+        // chain's rejection sampler. The only 1×1 Latin square is [[1]].
+        let mut rng = ChaCha8Rng::seed_from_u64(7);
+        let ls = generate_latin_square(1, &mut rng);
+        assert_eq!(ls, vec![vec![1u8]]);
         assert!(validate_latin_square(&ls));
     }
 
