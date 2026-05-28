@@ -111,6 +111,19 @@ pub fn Puzzle(
     let cage_cells_static = cage_cells;
     let num_cages = cages.len();
 
+    // `Fix Solution` is only valid when the puzzle currently has exactly one
+    // completion (the backend rejects `fix` otherwise). Compute that once — the
+    // component re-mounts on every puzzle change — and only in Without-Solution
+    // mode, where the Fix button is shown. `None` while the solver runs keeps
+    // the button disabled.
+    let has_unique_solution: RwSignal<Option<bool>> = RwSignal::new(None);
+    if designer_state.get_untracked().solution.is_none() {
+        let ps = partial_solution.clone();
+        spawn_local(async move {
+            has_unique_solution.set(Some(ps.solution_count() == Some(1)));
+        });
+    }
+
     // Helper: apply a lightweight navigation state change (no undo entry).
     let set_state = move |new_st: State| {
         on_state_change.run(new_st.clone());
@@ -234,8 +247,18 @@ pub fn Puzzle(
         let st = designer_state.get_untracked();
         let (r, c) = (st.active.row, st.active.column);
 
-        // Operation selector intercepts all keys when active.
+        // Operation selector intercepts all keys when active. The exception is the
+        // Without-Solution target dropdown (a native <select>): let it own
+        // arrow/typing/Enter navigation, intercepting only Escape to back out.
         if let Some(p) = pending_commit.get_untracked() {
+            use wasm_bindgen::JsCast;
+            let from_select = ev
+                .target()
+                .and_then(|t| t.dyn_into::<web_sys::Element>().ok())
+                .is_some_and(|el| el.tag_name().eq_ignore_ascii_case("select"));
+            if from_select && key.as_str() != ESCAPE {
+                return;
+            }
             ev.prevent_default();
             handle_key(
                 key.as_str(),
@@ -516,9 +539,18 @@ pub fn Puzzle(
         }
     }
 
-    // Focus the SVG on mount and whenever the operation selector opens/closes.
+    // Focus the grid SVG on mount and whenever the operation selector opens/closes
+    // or backs out to the operator strip. While the Without-Solution target
+    // dropdown is open the <select> owns focus (see target_select_view), so don't
+    // steal it back here.
     Effect::new(move |_| {
-        let _ = pending_commit.get(); // re-run when selector changes
+        let pending = pending_commit.get(); // re-run when the selector changes
+        let target_dropdown_open = pending
+            .as_ref()
+            .is_some_and(|p| p.feasible.is_some() && p.picked_operator.get().is_some());
+        if target_dropdown_open {
+            return;
+        }
         use wasm_bindgen::JsCast;
         if let Some(el) = web_sys::window()
             .and_then(|w| w.document())
@@ -557,20 +589,28 @@ pub fn Puzzle(
             <div class="puzzle-footer">
                 <CageStats />
                 {move || {
-                    // `Fix` is offered in Without-Solution mode; the backend rejects
-                    // it unless the puzzle has exactly one completion. `Unfix` is
-                    // offered in With-Solution mode.
+                    // `Fix Solution` is offered in Without-Solution mode; the backend
+                    // rejects it unless the puzzle has exactly one completion, so it is
+                    // disabled until a unique solution exists. `Unfix Solution` is
+                    // offered in With-Solution mode. The button keeps a fixed width (set
+                    // in CSS) so its size never changes between the two labels.
                     let btn_style = format!(
                         "padding:4px 10px;border:0.5px solid {LINE};border-radius:5px;\
                          background:{BG};color:{INK};font-size:12px;cursor:pointer;"
                     );
                     if designer_state.get().solution.is_some() {
                         view! {
-                            <button style=btn_style on:click=move |_| on_unfix.run(())>"Unfix"</button>
+                            <button class="fix-solution-btn" style=btn_style on:click=move |_| on_unfix.run(())>"Unfix Solution"</button>
                         }.into_any()
                     } else {
+                        let enabled = has_unique_solution.get() == Some(true);
+                        let style = if enabled {
+                            btn_style
+                        } else {
+                            format!("{btn_style}opacity:0.5;cursor:default;")
+                        };
                         view! {
-                            <button style=btn_style on:click=move |_| on_fix.run(())>"Fix"</button>
+                            <button class="fix-solution-btn" style=style disabled=!enabled on:click=move |_| on_fix.run(())>"Fix Solution"</button>
                         }.into_any()
                     }
                 }}
