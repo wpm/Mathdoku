@@ -1519,8 +1519,11 @@ mod tests {
 
         #[test]
         fn different_seeds_differ() {
-            // Sanity check (not exhaustive): two fixed seeds should not collide.
-            assert_ne!(solution_for(4, 1), solution_for(4, 2));
+            // Sanity check (not exhaustive): a spread of fixed seeds should not
+            // all collapse onto a single 4×4 square.
+            let grids: std::collections::HashSet<Grid> =
+                (1u64..=8).map(|seed| solution_for(4, seed)).collect();
+            assert!(grids.len() > 1, "every seed produced the same grid");
         }
 
         #[test]
@@ -1885,6 +1888,10 @@ mod tests {
                 seed in any::<u64>(),
                 latin in any::<bool>(),
             ) {
+                // Generated ops always pass an explicit author target, so the
+                // With-Solution target-derivation path (target = None) is covered
+                // by Category 4, not here; this property only exercises the
+                // current/puzzle consistency invariant.
                 let mut state = AppState::default();
                 if latin {
                     let mut rng = StdRng::seed_from_u64(seed);
