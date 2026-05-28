@@ -208,7 +208,7 @@ pub struct Solutions<'a> {
 }
 
 impl<'a> Solutions<'a> {
-    pub fn new(grid: &Grid, puzzle: &'a Puzzle) -> Self {
+    pub(crate) fn new(grid: &Grid, puzzle: &'a Puzzle) -> Self {
         Self {
             stack: vec![grid.clone()],
             puzzle,
