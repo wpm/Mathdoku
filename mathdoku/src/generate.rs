@@ -29,20 +29,6 @@ pub struct SizeDistribution {
 }
 
 impl SizeDistribution {
-    /// Creates a Poisson size distribution with the given mean.
-    ///
-    /// Returns `None` if `mean` is not strictly positive. The mean must be
-    /// `> 0` so that rejection sampling on `Poisson(mean)` truncated to
-    /// `[1, n*n]` is guaranteed to terminate.
-    pub fn new(mean: f64) -> Option<Self> {
-        (mean > 0.0).then_some(Self { mean })
-    }
-
-    /// Returns the mean of the underlying (untruncated) Poisson distribution.
-    pub const fn mean(self) -> f64 {
-        self.mean
-    }
-
     /// Default distribution for an `n`×`n` grid: `Poisson(n / 3)`.
     ///
     /// For `n = 0`, the same distribution is returned as for `n = 1`. The
@@ -92,7 +78,7 @@ fn poisson<R: Rng>(mean: f64, rng: &mut R) -> usize {
 /// Returns [`Error::EmptyOpPolicyValues`] if `values` is empty. A cage always
 /// covers at least one cell, so callers that obtain `values` from a cage's
 /// cells will never trigger this.
-pub(crate) fn default_op_policy(values: &[N], n: usize) -> Result<Operation, Error> {
+pub fn default_op_policy(values: &[N], n: usize) -> Result<Operation, Error> {
     let op = |operator, target| Ok(Operation::new(operator, target));
     match values.len() {
         0 => Err(Error::EmptyOpPolicyValues),
@@ -118,7 +104,7 @@ pub(crate) fn default_op_policy(values: &[N], n: usize) -> Result<Operation, Err
 }
 
 /// Generates a random `n`×`n` puzzle using the default operation policy and
-/// [`SizeDistribution::default_for`].
+/// a default Poisson size distribution.
 ///
 /// # Errors
 /// Returns `Error` if `n` is not in `1..=9`.
@@ -174,7 +160,7 @@ where
 /// # Errors
 /// Returns [`Error::DisconnectedPolyomino`] or [`Error::EmptyPolyomino`] if
 /// the grown cell set fails validation (structurally unreachable in practice).
-pub(crate) fn greedy<R: Rng>(
+pub fn greedy<R: Rng>(
     n: usize,
     dist: SizeDistribution,
     rng: &mut R,
@@ -237,6 +223,16 @@ mod tests {
     use rand_chacha::ChaCha8Rng;
 
     use super::*;
+
+    impl SizeDistribution {
+        fn new(mean: f64) -> Option<Self> {
+            (mean > 0.0).then_some(Self { mean })
+        }
+
+        const fn mean(self) -> f64 {
+            self.mean
+        }
+    }
 
     fn op(operator: Operator, target: M) -> Operation {
         Operation::new(operator, target)

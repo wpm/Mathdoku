@@ -18,10 +18,10 @@ use crate::{Cell, N};
 
 /// A polyomino with an [`Operation`] constraining its cell values.
 ///
-/// The cage's [`Mdd`] is built lazily and cached for the life of the instance.
+/// The cage's allowed contents are built lazily and cached for the life of the instance.
 /// The cache participates in neither equality, ordering, hashing, nor
 /// serialization: two cages are equal exactly when their polyomino and operation
-/// match, regardless of whether either has materialized its MDD.
+/// match, regardless of whether either has materialized its contents.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Cage {
     polyomino: Polyomino,
@@ -55,12 +55,7 @@ impl Cage {
         &self.polyomino
     }
 
-    /// Returns the [`Mdd`] of this cage's valid tuples in an `n`×`n` grid.
-    ///
-    /// The MDD is built on first use and cached for the life of the cage. A cage
-    /// belongs to a single puzzle, so `n` is constant across calls; the
-    /// `debug_assert` guards that invariant.
-    pub fn mdd(&self, n: N) -> &Mdd {
+    pub(crate) fn mdd(&self, n: N) -> &Mdd {
         let (cached_n, mdd) = self
             .mdd
             .get_or_init(|| (n, Mdd::build(n, &self.polyomino, self.operation.clone())));
