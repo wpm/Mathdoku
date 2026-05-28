@@ -162,7 +162,11 @@ impl Mdd {
     /// co-reachability sweep (a variant of Perez & Régin's MDD-4R), rather than the
     /// `O(|paths|)` cost of filtering [`Mdd::tuples`].
     pub fn support(&self, values: &[Values]) -> Vec<Values> {
-        debug_assert_eq!(values.len(), self.k, "support expects one value set per cell");
+        debug_assert_eq!(
+            values.len(),
+            self.k,
+            "support expects one value set per cell"
+        );
         let Some(root) = self.root else {
             return vec![Values::default(); self.k];
         };

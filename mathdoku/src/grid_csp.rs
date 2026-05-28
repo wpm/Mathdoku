@@ -284,11 +284,7 @@ mod tests {
     use crate::csp::Constraint;
 
     fn grid_with_values(values: &[(&(usize, usize), &[u8])]) -> Grid {
-        let n = values
-            .iter()
-            .map(|((r, c), _)| r.max(c) + 1)
-            .max()
-            .unwrap();
+        let n = values.iter().map(|((r, c), _)| r.max(c) + 1).max().unwrap();
         let mut g = Grid::new(n).unwrap();
         for ((r, c), vals) in values {
             g = g

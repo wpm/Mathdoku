@@ -259,10 +259,7 @@ mod tests {
             Values::new(&[2]).unwrap(),
             Values::new(&[1, 3]).unwrap(),
         ];
-        assert_eq!(
-            sorted(&regin_gac(&values)),
-            vec![vec![1], vec![2], vec![3]]
-        );
+        assert_eq!(sorted(&regin_gac(&values)), vec![vec![1], vec![2], vec![3]]);
     }
 
     #[test]
