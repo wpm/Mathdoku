@@ -77,7 +77,7 @@ impl Mdd {
     /// and by the operator's arithmetic bounds before recursing, and the resulting
     /// node is hash-consed so equivalent subgraphs are shared.
     #[allow(clippy::needless_pass_by_value)]
-    pub fn build(n: N, polyomino: &Polyomino, operation: Operation) -> Self {
+    pub(crate) fn build(n: N, polyomino: &Polyomino, operation: Operation) -> Self {
         let cells = polyomino.cells();
         let k = cells.len();
         let shares = (0..k)
@@ -119,14 +119,8 @@ impl Mdd {
         }
     }
 
-    /// Returns `true` iff at least one valid tuple exists, i.e. the root reaches the
-    /// accept terminal. An O(1) lookup, since construction discards dead roots.
-    pub const fn is_feasible(&self) -> bool {
-        self.root.is_some()
-    }
-
     /// Enumerates every valid tuple by walking each root-to-terminal path.
-    pub fn tuples(&self) -> impl Iterator<Item = Tuple> {
+    pub(crate) fn tuples(&self) -> impl Iterator<Item = Tuple> {
         let mut out = Vec::new();
         if let Some(root) = self.root {
             let mut path = Vec::with_capacity(self.k);
@@ -161,7 +155,7 @@ impl Mdd {
     /// Runs in `O(|edges|)` via a top-down reachability sweep followed by a bottom-up
     /// co-reachability sweep (a variant of Perez & Régin's MDD-4R), rather than the
     /// `O(|paths|)` cost of filtering [`Mdd::tuples`].
-    pub fn support(&self, values: &[Values]) -> Vec<Values> {
+    pub(crate) fn support(&self, values: &[Values]) -> Vec<Values> {
         debug_assert_eq!(
             values.len(),
             self.k,
@@ -336,6 +330,12 @@ mod tests {
     use super::*;
     use crate::operation::operators;
     use crate::test_utils::{cells, col_pair, l_shape, pair, singleton};
+
+    impl Mdd {
+        const fn is_feasible(&self) -> bool {
+            self.root.is_some()
+        }
+    }
 
     fn square() -> Polyomino {
         Polyomino::from_cells(&cells(&[(0, 0), (0, 1), (1, 0), (1, 1)])).unwrap()
