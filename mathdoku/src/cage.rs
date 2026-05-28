@@ -14,7 +14,7 @@ use std::sync::OnceLock;
 use crate::mdd::Mdd;
 use crate::operation::Operation;
 use crate::polyomino::Polyomino;
-use crate::{Cell, N};
+use crate::Cell;
 
 /// A polyomino with an [`Operation`] constraining its cell values.
 ///
@@ -27,7 +27,7 @@ pub struct Cage {
     polyomino: Polyomino,
     operation: Operation,
     #[serde(skip)]
-    mdd: OnceLock<(N, Mdd)>,
+    mdd: OnceLock<(usize, Mdd)>,
 }
 
 impl Cage {
@@ -55,7 +55,7 @@ impl Cage {
         &self.polyomino
     }
 
-    pub(crate) fn mdd(&self, n: N) -> &Mdd {
+    pub(crate) fn mdd(&self, n: usize) -> &Mdd {
         let (cached_n, mdd) = self
             .mdd
             .get_or_init(|| (n, Mdd::build(n, &self.polyomino, self.operation.clone())));
@@ -96,9 +96,9 @@ impl PartialOrd for Cage {
 mod tests {
     use super::*;
     use crate::test_utils::{col_pair, l_shape, pair, singleton};
-    use crate::{M, Operator};
+    use crate::{Target, Operator};
 
-    fn cage(polyomino: Polyomino, operator: Operator, target: M) -> Cage {
+    fn cage(polyomino: Polyomino, operator: Operator, target: Target) -> Cage {
         Cage::new(polyomino, Operation { operator, target })
     }
 
