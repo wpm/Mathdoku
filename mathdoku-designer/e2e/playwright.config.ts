@@ -12,6 +12,9 @@ export default defineConfig({
   use: {
     baseURL: 'http://localhost:1420',
     browserName: 'chromium',
+    // Keep a trace (and its screenshots) only for tests that fail, so red CI
+    // runs upload a debuggable artifact while green runs stay lean.
+    trace: 'retain-on-failure',
     launchOptions: {
       args: ['--no-sandbox'],
       ...(chromiumExecutable ? { executablePath: chromiumExecutable } : {}),
