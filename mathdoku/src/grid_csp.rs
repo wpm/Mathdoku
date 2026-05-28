@@ -179,7 +179,7 @@ fn propagate_cage(
 ///
 /// # Errors
 /// Returns an error if any cell is out of bounds during propagation.
-pub fn grid_fixpoint(grid: &Grid, puzzle: &Puzzle) -> Result<Grid, Error> {
+pub(crate) fn grid_fixpoint(grid: &Grid, puzzle: &Puzzle) -> Result<Grid, Error> {
     let n = grid.n();
     let cages: Arc<Vec<Cage>> = Arc::new(puzzle.cages().cloned().collect());
     let rows =
@@ -202,7 +202,7 @@ pub fn grid_fixpoint(grid: &Grid, puzzle: &Puzzle) -> Result<Grid, Error> {
 /// the next branch.
 ///
 /// Obtained via [`Grid::solutions`].
-pub struct Solutions<'a> {
+pub(crate) struct Solutions<'a> {
     stack: Vec<Grid>,
     puzzle: &'a Puzzle,
 }
