@@ -129,7 +129,7 @@ a:hover {
   color: var(--paper-ink-2);
   margin-left: auto;
   /* Mirror the cage-stats left indent on the right side. */
-  padding-right: 2.3333%;
+  padding-right: calc(var(--grid-size) * 14 / 600);
 }
 
 .cage-stats {
@@ -138,8 +138,8 @@ a:hover {
   font-weight: 600;
   color: var(--paper-ink-2);
   /* Indent to align with the inner grid border, not the SVG outer edge.
-     SVG viewBox is 600 units wide; MARGIN=14, so 14/600 ≈ 2.333%. */
-  padding-left: 2.3333%;
+     SVG viewBox is 600 units wide; MARGIN=14, so offset = grid-size * 14/600. */
+  padding-left: calc(var(--grid-size) * 14 / 600);
 }
 
 /* The fix/unfix button sits in the centre column. The fixed width is wide
