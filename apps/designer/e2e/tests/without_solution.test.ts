@@ -10,22 +10,7 @@ const selectorLabels = (page: Page) =>
   page.locator('.grid-svg text[font-weight="700"]');
 
 test.describe('new-puzzle modal authoring mode', () => {
-  test('Empty button creates a Without-Solution puzzle', async ({ page }) => {
-    await installTauriStubs(page, null);
-    await gotoApp(page);
-    await expect(
-      page.locator('p').filter({ hasText: 'New puzzle' }),
-    ).toBeVisible();
-
-    await page.getByRole('button', { name: 'Empty', exact: true }).click();
-    await waitForGrid(page);
-
-    // Without-Solution mode offers the Fix control, not Unfix.
-    await expect(fixButton(page)).toBeVisible();
-    await expect(unfixButton(page)).toHaveCount(0);
-  });
-
-  test('With Solution button creates a With-Solution puzzle', async ({
+  test('No Solution button creates a Without-Solution puzzle', async ({
     page,
   }) => {
     await installTauriStubs(page, null);
@@ -35,7 +20,26 @@ test.describe('new-puzzle modal authoring mode', () => {
     ).toBeVisible();
 
     await page
-      .getByRole('button', { name: 'With Solution', exact: true })
+      .getByRole('button', { name: 'No Solution', exact: true })
+      .click();
+    await waitForGrid(page);
+
+    // Without-Solution mode offers the Fix control, not Unfix.
+    await expect(fixButton(page)).toBeVisible();
+    await expect(unfixButton(page)).toHaveCount(0);
+  });
+
+  test('Random Solution button creates a With-Solution puzzle', async ({
+    page,
+  }) => {
+    await installTauriStubs(page, null);
+    await gotoApp(page);
+    await expect(
+      page.locator('p').filter({ hasText: 'New puzzle' }),
+    ).toBeVisible();
+
+    await page
+      .getByRole('button', { name: 'Random Solution', exact: true })
       .click();
     await waitForGrid(page);
 
