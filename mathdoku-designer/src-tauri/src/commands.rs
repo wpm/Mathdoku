@@ -191,7 +191,7 @@ pub fn insert_cage(
     state: TauriState<Mutex<AppState>>,
 ) -> Result<State, String> {
     let mut s = state.lock().map_err(|e| e.to_string())?;
-    core::insert_cage(&mut s, cells, operator, target).map_err(|e| e.to_string())
+    core::insert_cage(&mut s, &cells, operator, target).map_err(|e| e.to_string())
 }
 
 /// Switches the current puzzle from Without-Solution to With-Solution by
@@ -225,5 +225,5 @@ pub fn unfix(state: TauriState<Mutex<AppState>>) -> Result<State, String> {
 #[tauri::command]
 pub fn remove_cage(cells: Vec<Cell>, state: TauriState<Mutex<AppState>>) -> Result<State, String> {
     let mut s = state.lock().map_err(|e| e.to_string())?;
-    core::remove_cage(&mut s, cells).map_err(|e| e.to_string())
+    core::remove_cage(&mut s, &cells).map_err(|e| e.to_string())
 }

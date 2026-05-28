@@ -227,7 +227,7 @@ pub struct SaveEnvelope {
 ///
 /// # Errors
 /// Returns an error if constraint propagation fails or `puzzle.n()` is invalid.
-pub fn constrain_current(
+pub(crate) fn constrain_current(
     solution: Option<&Grid>,
     puzzle: &Puzzle,
 ) -> Result<Grid, mathdoku::Error> {
@@ -298,15 +298,14 @@ pub fn new_latin_square<R: Rng>(
 /// # Errors
 /// Returns an error if no puzzle is loaded, the cells form an invalid polyomino,
 /// or `operator` is not valid for the polyomino size.
-#[allow(clippy::needless_pass_by_value)] // mirrors the Tauri command arg shape
 pub fn insert_cage(
     state: &mut AppState,
-    cells: Vec<Cell>,
+    cells: &[Cell],
     operator: Operator,
     target: Option<u64>,
 ) -> Result<State, Error> {
     let puzzle = state.puzzle.as_ref().ok_or(Error::NoPuzzle)?;
-    let poly = Polyomino::from_cells(&cells)?;
+    let poly = Polyomino::from_cells(cells)?;
 
     // `Some` in Without-Solution mode (author-chosen target); `None` in
     // With-Solution mode, where the target is derived from the fixed solution.
@@ -348,8 +347,7 @@ pub fn insert_cage(
 /// # Errors
 /// Returns an error if no puzzle is loaded, the cells form an invalid polyomino,
 /// or no matching cage is found.
-#[allow(clippy::needless_pass_by_value)] // mirrors the Tauri command arg shape
-pub fn remove_cage(state: &mut AppState, cells: Vec<Cell>) -> Result<State, Error> {
+pub fn remove_cage(state: &mut AppState, cells: &[Cell]) -> Result<State, Error> {
     let puzzle = state.puzzle.as_ref().ok_or(Error::NoPuzzle)?;
     let target_cells: HashSet<_> = cells.iter().copied().collect();
     let n = puzzle.n();
@@ -626,8 +624,8 @@ mod tests {
     fn insert_cage_uses_author_target_without_solution() {
         let mut state = AppState::default();
         let _ = new_empty(&mut state, 4).unwrap();
-        let cells = vec![Cell::new(0, 0), Cell::new(0, 1)];
-        let st = insert_cage(&mut state, cells, Operator::Add, Some(7)).unwrap();
+        let cells = [Cell::new(0, 0), Cell::new(0, 1)];
+        let st = insert_cage(&mut state, &cells, Operator::Add, Some(7)).unwrap();
         let cage = st.puzzle.cages().next().unwrap();
         assert_eq!(cage.operation().target, 7);
         assert!(st.solution.is_none());
