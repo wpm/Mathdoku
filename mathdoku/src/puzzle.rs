@@ -98,10 +98,10 @@ impl Puzzle {
         Self { n: self.n, cages }
     }
 
-    /// Returns `true` if any cage in this puzzle covers exactly the cells of `polyomino`.
+    /// Returns the cage covering exactly the cells of `polyomino`, or `None` if no such cage exists.
     #[must_use]
-    pub fn has_cage_at(&self, polyomino: &Polyomino) -> bool {
-        self.cages.iter().any(|cage| cage.polyomino() == polyomino)
+    pub fn get_cage_at(&self, polyomino: &Polyomino) -> Option<&Cage> {
+        self.cages.iter().find(|cage| cage.polyomino() == polyomino)
     }
 
     fn intersects_cage(&self, polyomino: &Polyomino) -> bool {
@@ -268,21 +268,21 @@ mod tests {
         assert_eq!(p.cages().count(), 1);
     }
 
-    // --- Puzzle::has_cage_at ---
+    // --- Puzzle::get_cage_at ---
 
     #[test]
-    fn has_cage_at_returns_true_for_present_polyomino() {
+    fn get_cage_at_returns_cage_for_present_polyomino() {
         let cage = cage_at(&[(0, 0), (0, 1)], Add, 3);
-        let p = Puzzle::new(4).unwrap().insert_cage(cage).unwrap();
+        let p = Puzzle::new(4).unwrap().insert_cage(cage.clone()).unwrap();
         let poly = Polyomino::from_cells(&[Cell::new(0, 0), Cell::new(0, 1)]).unwrap();
-        assert!(p.has_cage_at(&poly));
+        assert_eq!(p.get_cage_at(&poly), Some(&cage));
     }
 
     #[test]
-    fn has_cage_at_returns_false_for_absent_polyomino() {
+    fn get_cage_at_returns_none_for_absent_polyomino() {
         let p = Puzzle::new(4).unwrap();
         let poly = Polyomino::from_cells(&[Cell::new(0, 0)]).unwrap();
-        assert!(!p.has_cage_at(&poly));
+        assert!(p.get_cage_at(&poly).is_none());
     }
 
     // --- Puzzle::cages ---

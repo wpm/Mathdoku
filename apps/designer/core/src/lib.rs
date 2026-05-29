@@ -355,12 +355,10 @@ pub fn insert_cage(
 /// Returns an error if no puzzle is loaded or no cage covers exactly `polyomino`.
 pub fn remove_cage_at(state: &mut AppState, polyomino: &Polyomino) -> Result<State, Error> {
     let puzzle = state.puzzle.as_ref().ok_or(Error::NoPuzzle)?;
-    if !puzzle.has_cage_at(polyomino) {
-        return Err(Error::CageNotFound);
-    }
-    let Some(cage) = puzzle.cages().find(|c| c.polyomino() == polyomino).cloned() else {
-        return Err(Error::CageNotFound);
-    };
+    let cage = puzzle
+        .get_cage_at(polyomino)
+        .ok_or(Error::CageNotFound)?
+        .clone();
     let new_puzzle = puzzle.remove_cage(&cage);
     commit_puzzle(state, new_puzzle)
 }
