@@ -144,12 +144,7 @@ pub fn Puzzle(
             return;
         }
         let poly_for_cb = poly.clone();
-        let parked: std::collections::BTreeSet<Polyomino> = st
-            .provisional_cages
-            .iter()
-            .filter(|p| p.cells() != poly.cells())
-            .cloned()
-            .collect();
+        let parked = parked_cages(&st, &poly);
         let on_commit = Callback::new(move |(op, target): (Operator, Option<Target>)| {
             pending_commit.set(None);
             commit_cage(
@@ -192,6 +187,20 @@ pub fn Puzzle(
         }));
     });
 
+    // Helper: if the active cell is in a provisional cage, remove that cage.
+    let remove_provisional = move |st: &State, active_cell: Cell| {
+        if let Some(poly) = st
+            .provisional_cages
+            .iter()
+            .find(|p| p.cells().contains(&active_cell))
+            .cloned()
+        {
+            let mut new_st = st.clone();
+            new_st.provisional_cages.remove(&poly);
+            set_state(new_st);
+        }
+    };
+
     // Helper: swap the undo/redo stacks and apply the restored state.
     let apply_history = move |from: RwSignal<Vec<State>>, to: RwSignal<Vec<State>>| {
         if let Some(restored) = from.get_untracked().last().cloned() {
@@ -208,38 +217,25 @@ pub fn Puzzle(
     // Mode switching: `fix` snapshots the unique completion, `unfix` drops it.
     // Both go through the backend (which owns the persisted solution) and are
     // pushed onto the undo stack like any other puzzle change.
-    let on_fix = Callback::new(move |(): ()| {
-        spawn_local(async move {
-            match ipc::fix().await {
-                Ok(mut new_st) => {
-                    let pre = designer_state.get_untracked();
-                    new_st.provisional_cages.clone_from(&pre.provisional_cages);
-                    new_st.active = pre.active;
-                    undo_stack.update(|s| s.push(pre));
-                    redo_stack.update(Vec::clear);
-                    designer_state.set(new_st.clone());
-                    on_puzzle_change.run(new_st);
+    let mode_switch =
+        move |fut: std::pin::Pin<Box<dyn Future<Output = Result<State, ipc::IpcError>>>>| {
+            spawn_local(async move {
+                match fut.await {
+                    Ok(mut new_st) => {
+                        let pre = designer_state.get_untracked();
+                        new_st.provisional_cages.clone_from(&pre.provisional_cages);
+                        new_st.active = pre.active;
+                        undo_stack.update(|s| s.push(pre));
+                        redo_stack.update(Vec::clear);
+                        designer_state.set(new_st.clone());
+                        on_puzzle_change.run(new_st);
+                    }
+                    Err(e) => on_error.run(e.to_string()),
                 }
-                Err(e) => on_error.run(e.to_string()),
-            }
-        });
-    });
-    let on_unfix = Callback::new(move |(): ()| {
-        spawn_local(async move {
-            match ipc::unfix().await {
-                Ok(mut new_st) => {
-                    let pre = designer_state.get_untracked();
-                    new_st.provisional_cages.clone_from(&pre.provisional_cages);
-                    new_st.active = pre.active;
-                    undo_stack.update(|s| s.push(pre));
-                    redo_stack.update(Vec::clear);
-                    designer_state.set(new_st.clone());
-                    on_puzzle_change.run(new_st);
-                }
-                Err(e) => on_error.run(e.to_string()),
-            }
-        });
-    });
+            });
+        };
+    let on_fix = Callback::new(move |(): ()| mode_switch(Box::pin(ipc::fix())));
+    let on_unfix = Callback::new(move |(): ()| mode_switch(Box::pin(ipc::unfix())));
 
     let on_keydown = move |ev: leptos::ev::KeyboardEvent| {
         let key = ev.key();
@@ -381,17 +377,9 @@ pub fn Puzzle(
                         open_selector,
                         on_error,
                     );
-                } else if let Some(poly) = st
-                    .provisional_cages
-                    .iter()
-                    .find(|p| p.cells().contains(&active_cell))
-                    .cloned()
-                {
-                    // Active cell is in a provisional cage — delete it.
-                    let mut new_st = st.clone();
-                    new_st.provisional_cages.remove(&poly);
-                    set_state(new_st);
-                } // else: uncovered cell — do nothing
+                } else {
+                    remove_provisional(&st, active_cell); // else: uncovered cell — does nothing
+                }
             }
             DELETE | BACKSPACE => {
                 ev.prevent_default();
@@ -408,17 +396,9 @@ pub fn Puzzle(
                         on_puzzle_change,
                         on_error,
                     );
-                } else if let Some(poly) = st
-                    .provisional_cages
-                    .iter()
-                    .find(|p| p.cells().contains(&active_cell))
-                    .cloned()
-                {
-                    // Active cell is in a provisional cage — delete it.
-                    let mut new_st = st.clone();
-                    new_st.provisional_cages.remove(&poly);
-                    set_state(new_st);
-                } // else: uncovered cell — do nothing
+                } else {
+                    remove_provisional(&st, active_cell); // else: uncovered cell — does nothing
+                }
             }
             ENTER => {
                 ev.prevent_default();
@@ -444,17 +424,11 @@ pub fn Puzzle(
                 // commit immediately. Without-Solution singletons need a target
                 // chosen, so they fall through to the operation selector.
                 if st.solution.is_some() && operators_for(&poly) == [Operator::Given] {
-                    let parked: std::collections::BTreeSet<Polyomino> = st
-                        .provisional_cages
-                        .iter()
-                        .filter(|p| p.cells() != poly.cells())
-                        .cloned()
-                        .collect();
                     commit_cage(
                         &poly,
                         Operator::Given,
                         None,
-                        parked,
+                        parked_cages(&st, &poly),
                         undo_stack,
                         redo_stack,
                         designer_state,
@@ -514,28 +488,36 @@ pub fn Puzzle(
 
     // Gridlines.
     let mut lines = Vec::new();
+    let mut push_line = |x1: f64, y1: f64, x2: f64, y2: f64, thick: bool| {
+        let (stroke, width) = if thick { (INK, THICK) } else { (LINE, THIN) };
+        lines.push(view! {
+            <line x1=x1 y1=y1 x2=x2 y2=y2 stroke=stroke stroke-width=width stroke-linecap="round" />
+        });
+    };
     for r in 0..n.saturating_sub(1) {
         for c in 0..n {
-            let thick = is_thick(cage_index[r][c], cage_index[r + 1][c]);
-            let (stroke, width) = if thick { (INK, THICK) } else { (LINE, THIN) };
             let x1 = origin(cell, 0, c).0;
-            let x2 = x1 + cell;
             let y = origin(cell, r + 1, 0).1;
-            lines.push(view! {
-                <line x1=x1 y1=y x2=x2 y2=y stroke=stroke stroke-width=width stroke-linecap="round" />
-            });
+            push_line(
+                x1,
+                y,
+                x1 + cell,
+                y,
+                is_thick(cage_index[r][c], cage_index[r + 1][c]),
+            );
         }
     }
     for c in 0..n.saturating_sub(1) {
         for r in 0..n {
-            let thick = is_thick(cage_index[r][c], cage_index[r][c + 1]);
-            let (stroke, width) = if thick { (INK, THICK) } else { (LINE, THIN) };
             let x = origin(cell, 0, c + 1).0;
             let y1 = origin(cell, r, 0).1;
-            let y2 = y1 + cell;
-            lines.push(view! {
-                <line x1=x y1=y1 x2=x y2=y2 stroke=stroke stroke-width=width stroke-linecap="round" />
-            });
+            push_line(
+                x,
+                y1,
+                x,
+                y1 + cell,
+                is_thick(cage_index[r][c], cage_index[r][c + 1]),
+            );
         }
     }
 
@@ -639,6 +621,16 @@ pub struct InteractionState {
 type CageList = Vec<(Vec<Cell>, Cage)>;
 
 // ---- Helpers ----
+
+/// Returns all provisional cages in `state` except the one whose cells match `poly`.
+fn parked_cages(state: &State, poly: &Polyomino) -> std::collections::BTreeSet<Polyomino> {
+    state
+        .provisional_cages
+        .iter()
+        .filter(|p| p.cells() != poly.cells())
+        .cloned()
+        .collect()
+}
 
 /// A singleton `Given` cage to commit from a digit keypress, with the
 /// provisional cages to retain afterwards.

@@ -35,7 +35,7 @@ impl Cage {
     /// Creates a cage from a polyomino and an operation.
     ///
     /// # Errors
-    /// Returns [`Error::InfeasibleOperation`] if the operator is not valid for
+    /// Returns [`InfeasibleOperation`] if the operator is not valid for
     /// the polyomino's size.
     pub fn new(polyomino: Polyomino, operation: Operation) -> Result<Self, Error> {
         if !operators_for(&polyomino).contains(&operation.operator()) {
