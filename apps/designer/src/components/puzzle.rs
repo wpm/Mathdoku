@@ -11,7 +11,7 @@
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use mathdoku::{Cage, Cell, Grid, Operation, Operator, Polyomino, Target, operators};
+use mathdoku::{Cage, Cell, Grid, Operation, Operator, Polyomino, Target, operators_for};
 use mathdoku_designer_core::State;
 
 use super::cage::Cage as CageComponent;
@@ -136,7 +136,7 @@ pub fn Puzzle(
     let open_selector = Callback::new(move |poly: Polyomino| {
         let st = designer_state.get_untracked();
         let without_solution = st.solution.is_none();
-        let allowed = operators(&poly);
+        let allowed = operators_for(&poly);
         // With-Solution singletons commit immediately (Given target read from the
         // solution); they never open the selector. Without-Solution singletons
         // need a target chosen, so they do open it.
@@ -178,7 +178,7 @@ pub fn Puzzle(
             spawn_local(async move {
                 let pairs =
                     crate::feasibility::cached_feasible_op_targets(&puzzle, &poly_for_query);
-                sig.set(FeasibilityState::Ready(pairs));
+                sig.set(FeasibilityState::Ready(pairs.unwrap_or_default()));
             });
             sig
         });
@@ -216,7 +216,7 @@ pub fn Puzzle(
                     new_st.provisional_cages.clone_from(&pre.provisional_cages);
                     new_st.active = pre.active;
                     undo_stack.update(|s| s.push(pre));
-                    redo_stack.update(std::vec::Vec::clear);
+                    redo_stack.update(Vec::clear);
                     designer_state.set(new_st.clone());
                     on_puzzle_change.run(new_st);
                 }
@@ -232,7 +232,7 @@ pub fn Puzzle(
                     new_st.provisional_cages.clone_from(&pre.provisional_cages);
                     new_st.active = pre.active;
                     undo_stack.update(|s| s.push(pre));
-                    redo_stack.update(std::vec::Vec::clear);
+                    redo_stack.update(Vec::clear);
                     designer_state.set(new_st.clone());
                     on_puzzle_change.run(new_st);
                 }
@@ -443,7 +443,7 @@ pub fn Puzzle(
                 // With-Solution singleton: Given with a solution-derived target —
                 // commit immediately. Without-Solution singletons need a target
                 // chosen, so they fall through to the operation selector.
-                if st.solution.is_some() && operators(&poly) == [Operator::Given] {
+                if st.solution.is_some() && operators_for(&poly) == [Operator::Given] {
                     let parked: std::collections::BTreeSet<Polyomino> = st
                         .provisional_cages
                         .iter()
@@ -471,7 +471,7 @@ pub fn Puzzle(
             // cell coverage, and global feasibility) lives in the pure
             // `singleton_digit_commit` helper.
             key_str => {
-                if let Some(commit) = singleton_digit_commit(&st, key_str) {
+                if let Ok(Some(commit)) = singleton_digit_commit(&st, key_str) {
                     ev.prevent_default();
                     commit_cage(
                         &commit.poly,
@@ -664,11 +664,13 @@ struct SingletonDigitCommit {
 /// Feasibility uses the same [`crate::feasibility::is_globally_feasible`]
 /// predicate the value dropdown applies per target, so the digit shortcut and
 /// the dropdown always agree on which values are allowed.
-fn singleton_digit_commit(state: &State, key: &str) -> Option<SingletonDigitCommit> {
+fn singleton_digit_commit(state: &State, key: &str) -> Result<Option<SingletonDigitCommit>, Error> {
     if state.solution.is_some() || key.len() != 1 {
-        return None;
+        return Ok(None);
     }
-    let value = key.parse::<u8>().ok()?;
+    let Ok(value) = key.parse::<u8>() else {
+        return Ok(None);
+    };
     let active = state.active;
 
     // Covered by a committed cage → no shortcut.
@@ -677,7 +679,7 @@ fn singleton_digit_commit(state: &State, key: &str) -> Option<SingletonDigitComm
         .cages()
         .any(|cage| cage.cells().contains(&active))
     {
-        return None;
+        return Ok(None);
     }
     // Mid-draw inside a multi-cell provisional cage → no shortcut.
     if let Some(p) = state
@@ -686,14 +688,14 @@ fn singleton_digit_commit(state: &State, key: &str) -> Option<SingletonDigitComm
         .find(|p| p.cells().contains(&active))
         && p.len() > 1
     {
-        return None;
+        return Ok(None);
     }
 
-    let poly = Polyomino::from_cells(&[active]).ok()?;
+    let poly = Polyomino::from_cells(&[active])?;
     let target = Target::from(value);
-    let cage = Cage::new(poly.clone(), Operation::new(Operator::Given, target));
+    let cage = Cage::new(poly.clone(), Operation::new(Operator::Given, target))?;
     if !crate::feasibility::is_globally_feasible(&state.puzzle, &cage) {
-        return None;
+        return Ok(None);
     }
 
     // Drop a provisional singleton already at the cell (the commit replaces it);
@@ -704,11 +706,11 @@ fn singleton_digit_commit(state: &State, key: &str) -> Option<SingletonDigitComm
         .filter(|p| !p.cells().contains(&active))
         .cloned()
         .collect();
-    Some(SingletonDigitCommit {
+    Ok(Some(SingletonDigitCommit {
         poly,
         parked,
         target,
-    })
+    }))
 }
 
 /// Advances the provisional cage one step during Shift+Arrow drawing.
@@ -782,7 +784,7 @@ mod tests {
     }
 
     fn given_cage(r: usize, c: usize, target: u64) -> Cage {
-        Cage::new(poly(&[(r, c)]), Operation::new(Operator::Given, target))
+        Cage::new(poly(&[(r, c)]), Operation::new(Operator::Given, target)).unwrap()
     }
 
     #[test]
@@ -790,7 +792,7 @@ mod tests {
         let mut st = State::new(4).unwrap();
         st.active = Cell::new(1, 1);
         // 3 is feasible in an empty 4×4.
-        let commit = singleton_digit_commit(&st, "3").unwrap();
+        let commit = singleton_digit_commit(&st, "3").unwrap().unwrap();
         assert_eq!(commit.target, 3);
         assert_eq!(commit.poly.cells(), vec![Cell::new(1, 1)]);
         assert!(commit.parked.is_empty());
@@ -799,15 +801,15 @@ mod tests {
     #[test]
     fn digit_rejects_non_digit_and_multichar_keys() {
         let st = State::new(4).unwrap();
-        assert!(singleton_digit_commit(&st, "Enter").is_none());
-        assert!(singleton_digit_commit(&st, "a").is_none());
+        assert!(singleton_digit_commit(&st, "Enter").unwrap().is_none());
+        assert!(singleton_digit_commit(&st, "a").unwrap().is_none());
     }
 
     #[test]
     fn digit_rejected_in_with_solution_mode() {
         let mut st = State::new_with_solution(4).unwrap();
         st.active = Cell::new(0, 0);
-        assert!(singleton_digit_commit(&st, "1").is_none());
+        assert!(singleton_digit_commit(&st, "1").unwrap().is_none());
     }
 
     #[test]
@@ -815,7 +817,7 @@ mod tests {
         let mut st = State::new(4).unwrap();
         st.active = Cell::new(0, 0);
         // 9 can never appear in a 4×4 grid.
-        assert!(singleton_digit_commit(&st, "9").is_none());
+        assert!(singleton_digit_commit(&st, "9").unwrap().is_none());
     }
 
     #[test]
@@ -823,7 +825,7 @@ mod tests {
         let mut st = State::new(4).unwrap();
         st.puzzle = st.puzzle.insert_cage(given_cage(0, 0, 2)).unwrap();
         st.active = Cell::new(0, 0);
-        assert!(singleton_digit_commit(&st, "3").is_none());
+        assert!(singleton_digit_commit(&st, "3").unwrap().is_none());
     }
 
     #[test]
@@ -831,7 +833,7 @@ mod tests {
         let mut st = State::new(4).unwrap();
         assert!(st.provisional_cages.insert(poly(&[(0, 0), (0, 1)])));
         st.active = Cell::new(0, 0);
-        assert!(singleton_digit_commit(&st, "3").is_none());
+        assert!(singleton_digit_commit(&st, "3").unwrap().is_none());
     }
 
     #[test]
@@ -844,7 +846,7 @@ mod tests {
         st.active = Cell::new(2, 2);
 
         // 1 is feasible in an empty 4×4.
-        let commit = singleton_digit_commit(&st, "1").unwrap();
+        let commit = singleton_digit_commit(&st, "1").unwrap().unwrap();
         assert_eq!(commit.target, 1);
         assert_eq!(commit.parked.len(), 1);
         assert!(

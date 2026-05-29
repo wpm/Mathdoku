@@ -331,7 +331,7 @@ pub fn insert_cage(
     });
     let operation = Operation::new(operator, target);
 
-    let cage = Cage::new(poly, operation);
+    let cage = Cage::new(poly, operation)?;
     let new_puzzle = puzzle.insert_cage(cage)?;
     let new_current = constrain_current(state.solution.as_ref(), &new_puzzle)?;
     state.puzzle = Some(new_puzzle);
@@ -487,7 +487,7 @@ mod tests {
         pub(super) fn cage_at(positions: &[(usize, usize)], op: Operator, target: u64) -> Cage {
             let cells: Vec<Cell> = positions.iter().map(|&(r, c)| Cell::new(r, c)).collect();
             let poly = Polyomino::from_cells(&cells).unwrap();
-            Cage::new(poly, Operation::new(op, target))
+            Cage::new(poly, Operation::new(op, target)).unwrap()
         }
 
         /// Builds [`Cell`]s from `(row, column)` positions.
@@ -705,29 +705,25 @@ mod tests {
         }
 
         #[test]
-        fn insert_cage_subtract_on_three_cells_currently_succeeds() {
-            // TODO(#68): #55 expects Err(InvalidOperationArity). insert_cage does
-            // no arity validation: the cage is committed and the three cells
-            // collapse to empty domains. Asserting current behaviour.
+        fn insert_cage_subtract_on_three_cells_returns_err() {
             let mut state = AppState::default();
             let _ = new_empty(&mut state, 4).unwrap();
             let region = cells(&[(0, 0), (0, 1), (0, 2)]);
-            let st = insert_cage(&mut state, &region, Operator::Subtract, Some(1)).unwrap();
-            for &cell in &region {
-                assert!(st.current.cell_values(cell).unwrap().is_empty());
-            }
+            assert!(matches!(
+                insert_cage(&mut state, &region, Operator::Subtract, Some(1)),
+                Err(Error::Mathdoku(mathdoku::Error::InfeasibleOperation(_, _)))
+            ));
         }
 
         #[test]
-        fn insert_cage_given_on_two_cells_currently_succeeds() {
-            // TODO(#68): #55 expects an arity error; insert_cage commits the cage
-            // and both cells collapse to empty domains instead.
+        fn insert_cage_given_on_two_cells_returns_err() {
             let mut state = AppState::default();
             let _ = new_empty(&mut state, 4).unwrap();
             let region = cells(&[(0, 0), (0, 1)]);
-            let st = insert_cage(&mut state, &region, Operator::Given, Some(2)).unwrap();
-            assert!(st.current.cell_values(region[0]).unwrap().is_empty());
-            assert!(st.current.cell_values(region[1]).unwrap().is_empty());
+            assert!(matches!(
+                insert_cage(&mut state, &region, Operator::Given, Some(2)),
+                Err(Error::Mathdoku(mathdoku::Error::InfeasibleOperation(_, _)))
+            ));
         }
 
         #[test]
@@ -1200,8 +1196,7 @@ mod tests {
             assert!(state.solution.is_some());
             let _ = unfix(&mut state).unwrap();
             assert!(state.solution.is_none());
-            let _ =
-                insert_cage(&mut state, &cells(&[(1, 0)]), Operator::Multiply, Some(2)).unwrap();
+            let _ = insert_cage(&mut state, &cells(&[(1, 0)]), Operator::Given, Some(2)).unwrap();
             let puzzle = state.puzzle.as_ref().unwrap();
             assert_eq!(puzzle.cages().count(), 3);
             assert!(state.solution.is_none());
@@ -1655,7 +1650,7 @@ mod tests {
 
     mod cage_shapes {
         use super::helpers::{cells, without_solution};
-        use crate::insert_cage;
+        use crate::{Error, insert_cage};
         use mathdoku::{Cell, Operator};
 
         #[test]
@@ -1760,22 +1755,23 @@ mod tests {
         }
 
         #[test]
-        fn triomino_given_currently_succeeds_with_empty_domains() {
-            // TODO(#68): #55 expects Err(InvalidOperationArity). insert_cage
-            // commits the cage; the cells collapse to empty domains instead.
+        fn triomino_given_returns_err() {
             let mut state = without_solution(4);
             let region = cells(&[(0, 0), (0, 1), (0, 2)]);
-            let st = insert_cage(&mut state, &region, Operator::Given, Some(1)).unwrap();
-            assert!(st.current.cell_values(Cell::new(0, 0)).unwrap().is_empty());
+            assert!(matches!(
+                insert_cage(&mut state, &region, Operator::Given, Some(1)),
+                Err(Error::Mathdoku(mathdoku::Error::InfeasibleOperation(_, _)))
+            ));
         }
 
         #[test]
-        fn triomino_subtract_currently_succeeds_with_empty_domains() {
-            // TODO(#68): #55 expects Err(InvalidOperationArity).
+        fn triomino_subtract_returns_err() {
             let mut state = without_solution(4);
             let region = cells(&[(0, 0), (0, 1), (0, 2)]);
-            let st = insert_cage(&mut state, &region, Operator::Subtract, Some(1)).unwrap();
-            assert!(st.current.cell_values(Cell::new(0, 0)).unwrap().is_empty());
+            assert!(matches!(
+                insert_cage(&mut state, &region, Operator::Subtract, Some(1)),
+                Err(Error::Mathdoku(mathdoku::Error::InfeasibleOperation(_, _)))
+            ));
         }
     }
 
