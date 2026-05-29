@@ -12,7 +12,7 @@
 //! the free functions take `&mut AppState` and leave synchronization to the
 //! caller.
 
-use std::collections::{BTreeSet, HashSet};
+use std::collections::BTreeSet;
 
 use mathdoku::{Cage, Cell, Grid, Operation, Operator, Polyomino, Puzzle, generate_latin_square};
 use rand::Rng;
