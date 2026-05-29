@@ -1,4 +1,4 @@
-//! Wires [`Grid`] and [`Puzzle`] into the generic CSP framework from [`crate::csp`].
+//! Wires [`Grid`] and [`Puzzle`] into the generic CSP framework from [`crate::old_csp`].
 //!
 //! The Mathdoku solving problem maps onto the CSP abstractions as follows:
 //!
@@ -20,8 +20,8 @@ use std::sync::Arc;
 
 use crate::Error::GridPuzzleMismatch;
 use crate::cage::Cage;
-use crate::csp::{Constraint, Variable, generalized_arc_consistency};
 use crate::grid::Grid;
+use crate::old_csp::{Constraint, Variable, generalized_arc_consistency};
 use crate::puzzle::Puzzle;
 use crate::regin::regin_gac;
 use crate::{Cell, Error, Values};
@@ -290,7 +290,7 @@ impl Iterator for Solutions<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::csp::Constraint;
+    use crate::old_csp::Constraint;
 
     fn grid_with_values(values: &[(&(usize, usize), &[u8])]) -> Grid {
         let n = values.iter().map(|((r, c), _)| r.max(c) + 1).max().unwrap();

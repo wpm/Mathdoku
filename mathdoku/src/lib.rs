@@ -38,13 +38,14 @@
 
 mod cage;
 mod cell;
-mod csp;
+pub mod csp;
 mod error;
 mod generate;
 mod grid;
 mod grid_csp;
 mod latin_square;
 mod mdd;
+mod old_csp;
 mod operation;
 mod polyomino;
 mod puzzle;
