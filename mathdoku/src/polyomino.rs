@@ -51,6 +51,12 @@ impl Polyomino {
         self.0.iter().copied().collect()
     }
 
+    /// Does the polyomino contain the given cell?
+    #[must_use]
+    pub fn contains(&self, cell: &Cell) -> bool {
+        self.0.contains(cell)
+    }
+
     /// The cells grouped by row, in row-major order. Each inner vec is sorted by column.
     #[must_use]
     pub fn rows(&self) -> Vec<Vec<Cell>> {
@@ -157,12 +163,6 @@ mod tests {
 
     fn btree(positions: &[(usize, usize)]) -> BTreeSet<Cell> {
         cells(positions).into_iter().collect()
-    }
-
-    impl Polyomino {
-        fn contains(&self, cell: Cell) -> bool {
-            self.0.contains(&cell)
-        }
     }
 
     // --- is_edge_adjacent ---
@@ -317,8 +317,8 @@ mod tests {
     fn remove_shrinks_polyomino() {
         let p = pair().remove(c01()).unwrap();
         assert_eq!(p.len(), 1);
-        assert!(p.contains(c00()));
-        assert!(!p.contains(c01()));
+        assert!(p.contains(&c00()));
+        assert!(!p.contains(&c01()));
     }
 
     #[test]
@@ -373,13 +373,13 @@ mod tests {
 
     #[test]
     fn contains_present_cell() {
-        assert!(pair().contains(c00()));
-        assert!(pair().contains(c01()));
+        assert!(pair().contains(&c00()));
+        assert!(pair().contains(&c01()));
     }
 
     #[test]
     fn contains_absent_cell() {
-        assert!(!pair().contains(c10()));
+        assert!(!pair().contains(&c10()));
     }
 
     // --- serde round-trip ---

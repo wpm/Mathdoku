@@ -1,13 +1,13 @@
 //! The primitive grid types: [`Cell`], [`Values`], and numeric types.
 
+use crate::Error;
 use serde::de::Error as DeError;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::fmt::{Debug, Display, Formatter};
 use std::{
     fmt,
     ops::{BitAnd, BitOr},
 };
-
-use crate::Error;
 
 /// Possible cell value, a number in the range `1..=9`.
 pub type Value = u8;
@@ -47,6 +47,12 @@ impl Cell {
         ]
         .into_iter()
         .flatten()
+    }
+}
+
+impl Display for Cell {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "({}, {})", self.row, self.column)
     }
 }
 
@@ -115,6 +121,12 @@ impl Values {
     #[must_use]
     pub const fn contains(self, value: Value) -> bool {
         self.0 & (1u16 << value) != 0
+    }
+
+    /// Returns a copy of this set with `value` removed.
+    #[must_use]
+    pub(crate) const fn remove(self, value: Value) -> Self {
+        Self(self.0 & !(1u16 << value))
     }
 }
 
@@ -207,6 +219,11 @@ mod tests {
             Values::new(&[1, 2]).unwrap() & Values::new(&[3, 4]).unwrap(),
             Values::default()
         );
+    }
+
+    #[test]
+    fn cell_display_shows_row_and_column() {
+        assert_eq!(Cell::new(2, 3).to_string(), "(2, 3)");
     }
 
     #[test]

@@ -46,6 +46,7 @@ mod grid_csp;
 mod latin_square;
 mod mdd;
 mod old_csp;
+mod old_grid_csp;
 mod operation;
 mod polyomino;
 mod puzzle;

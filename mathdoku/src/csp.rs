@@ -8,29 +8,31 @@ use std::hash::Hash;
 
 /// A set of values of type `Z` for a variable.
 #[allow(dead_code)]
-trait Domain<Z>: Clone {
+pub trait Domain<Z>: Clone {
     /// Returns a copy of this domain with `z` removed.
+    #[must_use]
     fn remove(&self, z: Z) -> Self;
     /// Returns `true` if this domain has no remaining values.
     fn is_empty(&self) -> bool;
 }
 
 /// A variable that is assigned a [`Domain`] and is subject to [`Constraint`]s.
-trait Variable: Clone + Eq + Hash {}
+pub trait Variable: Clone + Eq + Hash {}
 
 /// A mapping of variables to their [`Domain`]s.
 #[allow(dead_code)]
-trait State<X, D, Z>: Clone + Extend<(X, D)>
+pub trait State<X, D, Z>: Clone + Extend<(X, D)>
 where
     D: Domain<Z>,
     X: Variable,
 {
+    /// The [`Domain`] of the variable.
     fn domain(&self, x: &X) -> D;
 }
 
 /// A constraint on the [`Domain`]s of a set of variables of type `X`.
 #[allow(dead_code)]
-trait Constraint<S, X, D, Z>: Clone
+pub trait Constraint<S, X, D, Z>: Clone
 where
     D: Domain<Z>,
     X: Variable,

@@ -121,7 +121,7 @@ impl Grid {
         if puzzle.n() != self.n {
             return Err(InvalidGridSize(puzzle.n()));
         }
-        crate::grid_csp::grid_fixpoint(self, puzzle)
+        crate::old_grid_csp::grid_fixpoint(self, puzzle)
     }
 
     /// Returns a new grid with the values of `cells` reset to `{1..=n}` and
@@ -161,7 +161,7 @@ impl Grid {
         &'a self,
         puzzle: &'a Puzzle,
     ) -> impl Iterator<Item = Result<Self, Error>> + 'a {
-        crate::grid_csp::Solutions::new(self, puzzle)
+        crate::old_grid_csp::Solutions::new(self, puzzle)
     }
 
     /// Returns `true` if every cell's values are a singleton.
