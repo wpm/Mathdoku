@@ -1,378 +1,273 @@
 //! Generic constraint satisfaction problem (CSP) abstractions.
 //!
-//! This module defines `Domain`, `Constraint`, and the `ac3` worklist algorithm.
-//! Concrete solvers implement these traits for a specific problem.
+//! This module defines the core traits of a CSP — [`Variable`] and [`Constraint`] —
+//! and the [`generalized_arc_consistency`] algorithm that ties them together. The
+//! concrete solver in [`crate::puzzle_csp`] implements these abstractions for the
+//! Mathdoku grid.
+//!
+//! ## Structure
+//!
+//! A CSP consists of:
+//!
+//! - **Variables** — decision points, each participating in a set of constraints.
+//! - **Constraints** — relations over subsets of variables (the constraint's *scope*) that rule out
+//!   inconsistent value combinations.
+//!
+//! The relationship between variables and constraints forms a bipartite *constraint graph*:
+//! variables on one side, constraints on the other, with edges connecting each variable to
+//! the constraints whose scope includes it.
+//!
+//! ## Propagation
+//!
+//! [`generalized_arc_consistency`] enforces GAC via the AC-3 worklist algorithm: it
+//! propagates each constraint in turn, and whenever a variable's domain shrinks, it
+//! re-queues all constraints adjacent to that variable. The algorithm terminates at a
+//! fixpoint where no constraint can narrow any domain further.
 
-use std::collections::{HashMap, VecDeque};
-use std::hash::Hash;
+use std::collections::VecDeque;
 
-/// A set of values of type `Z` for a variable.
-#[allow(dead_code)]
-pub trait Domain<Z>: Clone {
-    /// Returns a copy of this domain with `z` removed.
-    #[must_use]
-    fn remove(&self, z: Z) -> Self;
-    /// Returns `true` if this domain has no remaining values.
-    fn is_empty(&self) -> bool;
-}
-
-/// A variable that is assigned a [`Domain`] and is subject to [`Constraint`]s.
-pub trait Variable: Clone + Eq + Hash {}
-
-/// A mapping of variables to their [`Domain`]s.
-#[allow(dead_code)]
-pub trait State<X, D, Z>: Clone + Extend<(X, D)>
-where
-    D: Domain<Z>,
-    X: Variable,
-{
-    /// The [`Domain`] of the variable.
-    fn domain(&self, x: &X) -> D;
-}
-
-/// A constraint on the [`Domain`]s of a set of variables of type `X`.
-#[allow(dead_code)]
-pub trait Constraint<S, X, D, Z>: Clone
-where
-    D: Domain<Z>,
-    X: Variable,
-    S: State<X, D, Z>,
-{
-    /// Is `x` in this constraint's scope?
-    fn in_scope(&self, x: &X) -> bool;
-
-    /// Enforces this constraint against the domain state `s` and returns the updated domains.
-    ///
-    /// For each variable in scope, removes values from its domain that are not supported
-    /// by any consistent assignment of the other in-scope variables. Only entries whose
-    /// domains changed are required in the returned map.
-    fn propagate(&self, s: S) -> impl Iterator<Item = (X, D)>;
-}
-
-/// Enforces arc consistency via the AC-3 worklist algorithm.
+/// A decision variable in a constraint satisfaction problem.
 ///
-/// Processes constraints one at a time from a queue. When propagating a constraint
-/// narrows any variable's domain, all constraints that include that variable are
-/// re-queued. Terminates when no constraint can narrow any domain further.
-#[allow(dead_code)]
-fn ac3<S, X, D, C, Z>(mut s: S, constraints: &[C]) -> S
+/// Each variable ranges over a domain `D` and participates in a set of constraints. The
+/// associated type `C` fixes which constraint type this variable pairs with, enforcing at
+/// the type level that a variable and its constraints are compatible.
+///
+/// The constraint graph is bipartite: variables on one side, constraints on the other,
+/// with edges connecting each variable to the constraints that mention it.
+pub trait Variable<C> {
+    /// Returns the constraints that have this variable in their scope.
+    fn constraints(&self) -> Vec<C>;
+}
+
+/// A relation over a set of variables (the constraint's scope) in a constraint satisfaction
+/// problem.
+///
+/// A constraint is satisfied when the values assigned to its scope variables are jointly
+/// consistent. Propagation enforces generalized arc consistency (GAC): it removes from each
+/// variable's domain any value not supported by some consistent tuple over the scope.
+pub trait Constraint<S, V, E>: Sized + Clone {
+    /// Enforces GAC for this constraint against `state`.
+    ///
+    /// Returns the updated state and the variables whose domains were narrowed. Callers
+    /// use the changed-variable list to re-activate adjacent constraints in the worklist.
+    ///
+    /// # Errors
+    /// Returns an error if propagation fails (e.g. a cell is out of bounds).
+    fn propagate(&self, state: &S) -> Result<(S, Vec<V>), E>;
+}
+
+/// Enforces generalized arc consistency (GAC) via the AC-3 worklist algorithm.
+///
+/// AC-3 operates on the constraint graph, a bipartite graph with variables on one side and
+/// constraints on the other. It maintains a queue of constraints to process. When a constraint
+/// is propagated and reduces a variable's domain, all constraints adjacent to that variable are
+/// re-added to the queue. The algorithm terminates when the queue is empty, at which point the
+/// state is arc-consistent: no constraint can reduce any variable's domain further.
+///
+/// # Errors
+/// Returns the first error from any constraint's [`Constraint::propagate`] call.
+pub fn generalized_arc_consistency<S, V, C, E>(state: S, constraints: &[C]) -> Result<S, E>
 where
-    S: State<X, D, Z>,
-    X: Variable,
-    D: Domain<Z>,
-    C: Constraint<S, X, D, Z>,
+    V: Variable<C>,
+    C: Constraint<S, V, E>,
 {
-    let mut q: VecDeque<_> = constraints.iter().collect();
+    let mut state = state;
+    let mut q: VecDeque<C> = constraints.iter().cloned().collect();
     while let Some(constraint) = q.pop_front() {
-        let delta = constraint
-            .propagate(s.clone())
-            .fold(HashMap::new(), |mut r, (v, d)| {
-                let _ = r.insert(v, d);
-                r
-            });
-        // Apply the delta before re-queuing so subsequent propagations see the updated state.
-        let changed_vars: Vec<_> = delta.keys().cloned().collect();
-        s.extend(delta);
-        let affected: Vec<_> = constraints
-            .iter()
-            .filter(|c| changed_vars.iter().any(|x| c.in_scope(x)))
-            .collect();
-        q.extend(affected);
+        let (new_state, variables) = constraint.propagate(&state)?;
+        state = new_state;
+        for v in variables {
+            q.extend(v.constraints().iter().cloned());
+        }
     }
-    s
+    Ok(state)
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::csp::{Constraint, Domain, State, ac3};
-    use std::collections::{HashMap, HashSet};
+    //! Uses a minimal concrete CSP: state is `Vec<Vec<u32>>` (one domain per variable),
+    //! variables are structs carrying an id and their constraint list, errors are `String`.
+    //!
+    //! Two constraint types:
+    //! - `Equal(a, b)` — variables `a` and `b` must share the same value.
+    //! - `Sum(vars, target)` — the named variables must sum to `target`.
 
-    /// A set of natural numbers backed by a `HashSet<u8>`.
-    #[derive(Debug, Clone, PartialEq)]
-    struct N {
-        s: HashSet<u8>,
-    }
+    use super::{Constraint, Variable, generalized_arc_consistency};
 
-    impl N {
-        fn new(ns: &[u8]) -> Self {
-            Self {
-                s: ns.iter().copied().collect(),
-            }
-        }
-        fn intersection(&self, other: &Self) -> Self {
-            Self {
-                s: self.s.intersection(&other.s).copied().collect(),
-            }
-        }
-    }
+    type State = Vec<Vec<u32>>;
 
-    impl Domain<u8> for N {
-        fn remove(&self, z: u8) -> Self {
-            let mut s = self.s.clone();
-            let _ = s.remove(&z);
-            Self { s }
-        }
-
-        fn is_empty(&self) -> bool {
-            self.s.is_empty()
-        }
-    }
-
-    #[derive(Clone, PartialEq, Debug)]
-    struct Values(HashMap<String, N>);
-
-    impl Values {
-        fn from(values: &[(&str, N)]) -> Self {
-            Self(
-                values
-                    .iter()
-                    .map(|(k, v)| (k.to_string(), v.clone()))
-                    .collect(),
-            )
-        }
-    }
-
-    impl State<String, N, u8> for Values {
-        fn domain(&self, x: &String) -> N {
-            self.0[x].clone()
-        }
-    }
-
-    impl Extend<(String, N)> for Values {
-        fn extend<T: IntoIterator<Item = (String, N)>>(&mut self, iter: T) {
-            self.0.extend(iter);
-        }
-    }
-
-    /// A constraint requiring that two named variables share the same value.
     #[derive(Clone)]
-    struct Equals {
-        a: String,
-        b: String,
+    struct Var {
+        #[allow(dead_code)]
+        id: usize,
+        constraints: Vec<Csp>,
     }
 
-    impl Equals {
-        fn new(a: &str, b: &str) -> Self {
-            Self {
-                a: a.into(),
-                b: b.into(),
-            }
+    impl Variable<Csp> for Var {
+        fn constraints(&self) -> Vec<Csp> {
+            self.constraints.clone()
         }
     }
 
-    impl crate::csp::Variable for String {}
-
-    impl Constraint<Values, String, N, u8> for Equals {
-        fn in_scope(&self, x: &String) -> bool {
-            *x == self.a || *x == self.b
-        }
-
-        fn propagate(&self, s: Values) -> impl Iterator<Item = (String, N)> {
-            let da = s.domain(&self.a);
-            let db = s.domain(&self.b);
-            let intersection = da.intersection(&db);
-            let mut out = Vec::new();
-            if intersection != da {
-                out.push((self.a.clone(), intersection.clone()));
-            }
-            if intersection != db {
-                out.push((self.b.clone(), intersection));
-            }
-            out.into_iter()
-        }
-    }
-
-    /// A constraint requiring that named variables sum to a target value.
     #[derive(Clone)]
-    struct Sum {
-        vars: Vec<String>,
-        target: u8,
+    enum Csp {
+        Equal(usize, usize),
+        Sum(Vec<usize>, u32),
     }
 
-    impl Sum {
-        fn new(vars: &[&str], target: u8) -> Self {
-            Self {
-                vars: vars.iter().map(|&v| v.to_string()).collect(),
-                target,
+    impl Constraint<State, Var, String> for Csp {
+        fn propagate(&self, state: &State) -> Result<(State, Vec<Var>), String> {
+            match self {
+                Self::Equal(a, b) => Ok(equal_propagate(*a, *b, state)),
+                Self::Sum(vars, target) => Ok(sum_propagate(vars, *target, state)),
             }
         }
     }
 
-    fn sum_extend(
+    fn equal_propagate(a: usize, b: usize, state: &State) -> (State, Vec<Var>) {
+        let intersection: Vec<u32> = state[a]
+            .iter()
+            .filter(|v| state[b].contains(v))
+            .copied()
+            .collect();
+        let mut new_state = state.clone();
+        let mut changed = vec![];
+        if intersection != state[a] {
+            new_state[a] = intersection.clone();
+            changed.push(Var {
+                id: a,
+                constraints: vec![Csp::Equal(a, b)],
+            });
+        }
+        if intersection != state[b] {
+            new_state[b] = intersection;
+            changed.push(Var {
+                id: b,
+                constraints: vec![Csp::Equal(a, b)],
+            });
+        }
+        (new_state, changed)
+    }
+
+    fn extend_sum(
         pos: usize,
-        current: &mut Vec<u8>,
-        domains: &[Vec<u8>],
-        target: u8,
-        survivors: &mut Vec<HashSet<u8>>,
+        domains: &[&Vec<u32>],
+        current: &mut Vec<u32>,
+        target: u32,
+        survivors: &mut Vec<Vec<u32>>,
     ) {
         if pos == domains.len() {
-            if current.iter().map(|&v| u32::from(v)).sum::<u32>() == u32::from(target) {
+            if current.iter().sum::<u32>() == target {
                 for (i, &v) in current.iter().enumerate() {
-                    let _ = survivors[i].insert(v);
+                    if !survivors[i].contains(&v) {
+                        survivors[i].push(v);
+                    }
                 }
             }
             return;
         }
-        for &v in &domains[pos] {
+        for &v in domains[pos] {
             current.push(v);
-            sum_extend(pos + 1, current, domains, target, survivors);
+            extend_sum(pos + 1, domains, current, target, survivors);
             let _ = current.pop();
         }
     }
 
-    impl Constraint<Values, String, N, u8> for Sum {
-        fn in_scope(&self, x: &String) -> bool {
-            self.vars.contains(x)
-        }
-
-        fn propagate(&self, s: Values) -> impl Iterator<Item = (String, N)> {
-            use std::sync::Arc;
-            let map = Arc::new(s.0);
-            let vars = self.vars.clone();
-            let target = self.target;
-            let domains: Vec<Vec<u8>> = vars
-                .iter()
-                .map(|v| map[v].s.iter().copied().collect())
-                .collect();
-            let mut survivors: Vec<HashSet<u8>> = vars.iter().map(|_| HashSet::new()).collect();
-            sum_extend(0, &mut vec![], &domains, target, &mut survivors);
-            vars.into_iter().zip(survivors).filter_map(move |(v, sv)| {
-                if sv == map[&v].s {
-                    None
-                } else {
-                    Some((v, N { s: sv }))
-                }
-            })
-        }
-    }
-
-    #[derive(Clone)]
-    enum NumericConstraint {
-        Equals(Equals),
-        Sum(Sum),
-    }
-
-    impl Constraint<Values, String, N, u8> for NumericConstraint {
-        fn in_scope(&self, x: &String) -> bool {
-            match self {
-                Self::Equals(c) => c.in_scope(x),
-                Self::Sum(c) => c.in_scope(x),
+    fn sum_propagate(vars: &[usize], target: u32, state: &State) -> (State, Vec<Var>) {
+        let domains: Vec<&Vec<u32>> = vars.iter().map(|&i| &state[i]).collect();
+        let mut survivors: Vec<Vec<u32>> = vars.iter().map(|_| vec![]).collect();
+        extend_sum(0, &domains, &mut vec![], target, &mut survivors);
+        let mut new_state = state.clone();
+        let mut changed = vec![];
+        for (i, &var) in vars.iter().enumerate() {
+            if survivors[i] != *domains[i] {
+                new_state[var] = survivors[i].clone();
+                changed.push(Var {
+                    id: var,
+                    constraints: vec![Csp::Sum(vars.to_vec(), target)],
+                });
             }
         }
-
-        fn propagate(&self, s: Values) -> impl Iterator<Item = (String, N)> {
-            match self {
-                Self::Equals(c) => {
-                    Box::new(c.propagate(s)) as Box<dyn Iterator<Item = (String, N)>>
-                }
-                Self::Sum(c) => Box::new(c.propagate(s)),
-            }
-        }
+        (new_state, changed)
     }
 
-    fn run<C: Constraint<Values, String, N, u8> + Clone>(
-        domains: &[(&str, &[u8])],
-        constraints: &[C],
-    ) -> Values {
-        let initial = Values::from(
-            &domains
-                .iter()
-                .map(|(k, vs)| (*k, N::new(vs)))
-                .collect::<Vec<_>>(),
-        );
-        ac3(initial, constraints)
+    fn state(domains: &[&[u32]]) -> State {
+        domains.iter().map(|d| d.to_vec()).collect()
     }
 
-    fn expect(domains: &[(&str, &[u8])]) -> Values {
-        Values::from(
-            &domains
-                .iter()
-                .map(|(k, vs)| (*k, N::new(vs)))
-                .collect::<Vec<_>>(),
-        )
+    fn run(initial: State, constraints: &[Csp]) -> State {
+        generalized_arc_consistency(initial, constraints).unwrap()
     }
 
     #[test]
-    // x ∈ {1,2,3}, y ∈ {2,3,4}, x=y  →  both {2,3}
     fn equal_overlapping_domains_intersects_both() {
-        assert_eq!(
-            run(
-                &[("x", &[1, 2, 3]), ("y", &[2, 3, 4])],
-                &[Equals::new("x", "y")]
-            ),
-            expect(&[("x", &[2, 3]), ("y", &[2, 3])])
-        );
+        // x ∈ {1,2,3}, y ∈ {2,3,4}, x=y  →  both {2,3}
+        let result = run(state(&[&[1, 2, 3], &[2, 3, 4]]), &[Csp::Equal(0, 1)]);
+        assert_eq!(result[0], [2, 3]);
+        assert_eq!(result[1], [2, 3]);
     }
 
     #[test]
-    // x ∈ {5}, y ∈ {1,2,3,4,5}, x=y  →  both {5}
     fn equal_singleton_pins_other_variable() {
-        assert_eq!(
-            run(
-                &[("x", &[5]), ("y", &[1, 2, 3, 4, 5])],
-                &[Equals::new("x", "y")]
-            ),
-            expect(&[("x", &[5]), ("y", &[5])])
-        );
+        // x ∈ {5}, y ∈ {1,2,3,4,5}, x=y  →  both {5}
+        let result = run(state(&[&[5], &[1, 2, 3, 4, 5]]), &[Csp::Equal(0, 1)]);
+        assert_eq!(result[0], [5]);
+        assert_eq!(result[1], [5]);
     }
 
     #[test]
-    // x ∈ {1,2}, y ∈ {3,4}, x=y  →  both empty (infeasible)
     fn equal_disjoint_domains_empties_both() {
-        assert_eq!(
-            run(&[("x", &[1, 2]), ("y", &[3, 4])], &[Equals::new("x", "y")]),
-            expect(&[("x", &[]), ("y", &[])])
-        );
+        // x ∈ {1,2}, y ∈ {3,4}, x=y  →  both empty (infeasible)
+        let result = run(state(&[&[1, 2], &[3, 4]]), &[Csp::Equal(0, 1)]);
+        assert!(result[0].is_empty());
+        assert!(result[1].is_empty());
     }
 
     #[test]
-    // x,y ∈ {1,2,3}, x+y=5  →  only (2,3),(3,2) work, so x,y ∈ {2,3}
     fn sum_two_vars_prunes_unsupported_values() {
-        assert_eq!(
-            run(
-                &[("x", &[1, 2, 3]), ("y", &[1, 2, 3])],
-                &[Sum::new(&["x", "y"], 5)]
-            ),
-            expect(&[("x", &[2, 3]), ("y", &[2, 3])])
-        );
+        // x,y ∈ {1,2,3}, x+y=5  →  only (2,3),(3,2) work, so x,y ∈ {2,3}
+        let mut result = run(state(&[&[1, 2, 3], &[1, 2, 3]]), &[Csp::Sum(vec![0, 1], 5)]);
+        result[0].sort_unstable();
+        result[1].sort_unstable();
+        assert_eq!(result[0], [2, 3]);
+        assert_eq!(result[1], [2, 3]);
     }
 
     #[test]
-    // x,y,z ∈ {1,2,3}, x+y+z=6  →  permutations of (1,2,3) use every value
     fn sum_three_vars_all_values_survive() {
-        assert_eq!(
-            run(
-                &[("x", &[1, 2, 3]), ("y", &[1, 2, 3]), ("z", &[1, 2, 3])],
-                &[Sum::new(&["x", "y", "z"], 6)]
-            ),
-            expect(&[("x", &[1, 2, 3]), ("y", &[1, 2, 3]), ("z", &[1, 2, 3])])
+        // x,y,z ∈ {1,2,3}, x+y+z=6  →  permutations of (1,2,3) use every value
+        let mut result = run(
+            state(&[&[1, 2, 3], &[1, 2, 3], &[1, 2, 3]]),
+            &[Csp::Sum(vec![0, 1, 2], 6)],
         );
+        result[0].sort_unstable();
+        result[1].sort_unstable();
+        result[2].sort_unstable();
+        assert_eq!(result[0], [1, 2, 3]);
+        assert_eq!(result[1], [1, 2, 3]);
+        assert_eq!(result[2], [1, 2, 3]);
     }
 
     #[test]
-    // x,y ∈ {1,2}, x+y=10 — impossible
     fn sum_infeasible_target_empties_domains() {
-        assert_eq!(
-            run(
-                &[("x", &[1, 2]), ("y", &[1, 2])],
-                &[Sum::new(&["x", "y"], 10)]
-            ),
-            expect(&[("x", &[]), ("y", &[])])
-        );
+        // x,y ∈ {1,2}, x+y=10 — impossible
+        let result = run(state(&[&[1, 2], &[1, 2]]), &[Csp::Sum(vec![0, 1], 10)]);
+        assert!(result[0].is_empty());
+        assert!(result[1].is_empty());
     }
 
     #[test]
-    // x,y,z ∈ {1,2,3}; x+y=5 pins x,y ∈ {2,3}; then x=z chains to pin z ∈ {2,3}
     fn propagation_chains_across_constraints() {
-        assert_eq!(
-            run(
-                &[("x", &[1, 2, 3]), ("y", &[1, 2, 3]), ("z", &[1, 2, 3])],
-                &[
-                    NumericConstraint::Sum(Sum::new(&["x", "y"], 5)),
-                    NumericConstraint::Equals(Equals::new("x", "z")),
-                ]
-            ),
-            expect(&[("x", &[2, 3]), ("y", &[2, 3]), ("z", &[2, 3])])
+        // x,y,z ∈ {1,2,3}; x+y=5 pins x,y ∈ {2,3}; then x=z chains to pin z ∈ {2,3}
+        let mut result = run(
+            state(&[&[1, 2, 3], &[1, 2, 3], &[1, 2, 3]]),
+            &[Csp::Sum(vec![0, 1], 5), Csp::Equal(0, 2)],
         );
+        for d in &mut result {
+            d.sort_unstable();
+        }
+        assert_eq!(result[0], [2, 3]);
+        assert_eq!(result[1], [2, 3]);
+        assert_eq!(result[2], [2, 3]);
     }
 }

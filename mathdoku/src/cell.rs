@@ -124,7 +124,7 @@ impl Values {
     }
 
     /// Returns a copy of this set with `value` removed.
-    #[must_use]
+    #[allow(dead_code)]
     pub(crate) const fn remove(self, value: Value) -> Self {
         Self(self.0 & !(1u16 << value))
     }
