@@ -4,7 +4,6 @@ use std::collections::{BTreeSet, HashMap};
 use std::fmt::{Display, Formatter};
 use std::hash::{Hash, Hasher};
 
-use serde::de::Error as DeError;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::Error::CageConflict;
@@ -12,12 +11,12 @@ use crate::Error::InfeasibleOperation;
 use crate::Error::InvalidGridSize;
 use crate::cage::Cage;
 use crate::mdd::{MonotonicMDD, build_mdd};
-use crate::{Error, Polyomino};
+use crate::{Error, Grid, Polyomino};
 
 // Serde wire format — only n and cages cross the wire; the MDD is rebuilt on load.
 #[derive(Serialize, Deserialize)]
 struct PuzzleWire {
-    n: usize,
+    grid: Grid,
     #[serde(default)]
     cages: BTreeSet<Cage>,
 }
@@ -30,11 +29,9 @@ struct PuzzleWire {
 /// The MDD is rebuilt from the cages on deserialization.
 ///
 /// Cell values live in [`Grid`].
-///
-/// [`Grid`]: crate::Grid
 #[derive(Debug, Clone)]
 pub struct Puzzle {
-    n: usize,
+    grid: Grid,
     cages: BTreeSet<Cage>,
     /// Per-cage MDD, keyed by cage. Not serialized; rebuilt from `cages` on load.
     mdd: HashMap<Cage, MonotonicMDD>,
@@ -42,7 +39,7 @@ pub struct Puzzle {
 
 impl PartialEq for Puzzle {
     fn eq(&self, other: &Self) -> bool {
-        self.n == other.n && self.cages == other.cages
+        self.n() == other.n() && self.cages == other.cages
     }
 }
 
@@ -50,7 +47,7 @@ impl Eq for Puzzle {}
 
 impl Hash for Puzzle {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.n.hash(state);
+        self.grid.hash(state);
         self.cages.hash(state);
     }
 }
@@ -65,7 +62,7 @@ impl Puzzle {
             return Err(InvalidGridSize(n));
         }
         Ok(Self {
-            n,
+            grid: Grid::new(n)?,
             cages: BTreeSet::new(),
             mdd: HashMap::new(),
         })
@@ -74,7 +71,7 @@ impl Puzzle {
     /// Returns the grid size `n` (puzzle is `n`×`n`).
     #[must_use]
     pub const fn n(&self) -> usize {
-        self.n
+        self.grid.n()
     }
 
     /// Returns an iterator over all cages in this puzzle in polyomino order.
@@ -94,7 +91,7 @@ impl Puzzle {
     /// propagate constraints — call [`Grid::constrain`] separately to apply the
     /// new cage's constraints to a grid.
     ///
-    /// [`Grid::constrain`]: crate::Grid::constrain
+    /// [`Grid::constrain`]: Grid::constrain
     ///
     /// # Errors
     /// Returns [`CageConflict`] if `cage`'s polyomino overlaps an existing cage's
@@ -110,7 +107,7 @@ impl Puzzle {
         }
         let mut cages = self.cages.clone();
         let mut mdd_map = self.mdd.clone();
-        if let Some(mdd) = build_mdd(self.n, &cage) {
+        if let Some(mdd) = build_mdd(self.n(), &cage) {
             if mdd.is_empty() {
                 return Err(InfeasibleOperation(
                     cage.polyomino().clone(),
@@ -121,7 +118,7 @@ impl Puzzle {
         }
         let _ = cages.insert(cage);
         Ok(Self {
-            n: self.n,
+            grid: self.grid,
             cages,
             mdd: mdd_map,
         })
@@ -137,7 +134,7 @@ impl Puzzle {
         let _ = cages.remove(cage);
         let _ = mdd_map.remove(cage);
         Self {
-            n: self.n,
+            grid: self.grid,
             cages,
             mdd: mdd_map,
         }
@@ -167,7 +164,7 @@ impl Puzzle {
 impl Serialize for Puzzle {
     fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
         PuzzleWire {
-            n: self.n,
+            grid: self.grid,
             cages: self.cages.clone(),
         }
         .serialize(s)
@@ -177,13 +174,10 @@ impl Serialize for Puzzle {
 impl<'de> Deserialize<'de> for Puzzle {
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         let wire = PuzzleWire::deserialize(d)?;
-        let n = wire.n;
-        if !(1..=9).contains(&n) {
-            return Err(DeError::custom(format!("invalid grid size {n}")));
-        }
-        let mdd = Self::build_mdd_map(n, &wire.cages);
+        let grid = wire.grid;
+        let mdd = Self::build_mdd_map(grid.n(), &wire.cages);
         Ok(Self {
-            n,
+            grid,
             cages: wire.cages,
             mdd,
         })
@@ -192,13 +186,8 @@ impl<'de> Deserialize<'de> for Puzzle {
 
 impl Display for Puzzle {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}×{} puzzle, {} cages",
-            self.n,
-            self.n,
-            self.cages.len()
-        )
+        let n = self.n();
+        write!(f, "{}×{} puzzle, {} cages", n, n, self.cages.len())
     }
 }
 

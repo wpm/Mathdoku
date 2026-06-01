@@ -27,7 +27,7 @@ struct GridWire {
 /// `values` is a flat `[Values; 81]` array stored inline (no heap allocation).
 /// Only the first `n*n` entries are used; the rest are `Values::default()`.
 /// Cloning a `Grid` is a plain stack copy — no allocator involvement.
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct Grid {
     n: usize,
     values: [Values; 81],
