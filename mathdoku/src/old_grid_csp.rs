@@ -178,55 +178,6 @@ fn propagate_cage(
     apply_values(state, puzzle, &cells, &old_values, &new_values)
 }
 
-/// Computes GAC support for non-monotonic cages (Given, Subtract, Divide) by enumerating
-/// all valid tuples over the domain `1..=n` and intersecting with the current cell values.
-fn brute_force_support(cage: &Cage, n: usize, values: &[Values]) -> Vec<Values> {
-    use crate::Target;
-    use crate::operation::Operator;
-
-    let arity = cage.polyomino().len();
-    let op = cage.operation();
-    let target = op.target;
-    let n_val = u8::try_from(n).unwrap_or(u8::MAX);
-    let mut support = vec![Values::default(); arity];
-
-    // Enumerate all arity-tuples over 1..=n via an odometer.
-    let mut tuple = vec![1u8; arity];
-    loop {
-        // Check arithmetic constraint.
-        let satisfies = match op.operator() {
-            Operator::Given => arity == 1 && Target::from(tuple[0]) == target,
-            Operator::Subtract => {
-                arity == 2 && Target::from(tuple[0]).abs_diff(Target::from(tuple[1])) == target
-            }
-            Operator::Divide => {
-                arity == 2 && {
-                    let (va, vb) = (Target::from(tuple[0]), Target::from(tuple[1]));
-                    va == vb * target || vb == va * target
-                }
-            }
-            // Monotonic operators handled by MDD; shouldn't reach here.
-            _ => false,
-        };
-        if satisfies && tuple.iter().zip(values).all(|(&v, d)| d.contains(v)) {
-            for (pos, &v) in tuple.iter().enumerate() {
-                support[pos] = support[pos] | Values::singleton(v);
-            }
-        }
-        // Advance odometer.
-        let mut pos = 0;
-        while pos < arity && tuple[pos] == n_val {
-            tuple[pos] = 1;
-            pos += 1;
-        }
-        if pos == arity {
-            break;
-        }
-        tuple[pos] += 1;
-    }
-    support
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
