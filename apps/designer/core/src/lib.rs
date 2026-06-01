@@ -941,7 +941,7 @@ mod tests {
     // ---- Category 2: state invariants after each command ----
 
     mod invariants {
-        use super::helpers::{all_cells, cells, poly, unique_3x3_app_state, with_solution_3x3};
+        use super::helpers::{all_cells, poly, unique_3x3_app_state, with_solution_3x3};
         use crate::{
             AppState, fix, insert_cage, new_empty, new_latin_square, remove_cage_at, unfix,
         };

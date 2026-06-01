@@ -122,7 +122,6 @@ pub(crate) fn puzzle_constraints(puzzle: &Arc<Puzzle>) -> Vec<PuzzleConstraint> 
     rows.chain(cols).chain(cages).collect()
 }
 
-
 // ---- Helpers ----
 
 fn apply_values(
