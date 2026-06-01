@@ -44,6 +44,36 @@ pub fn with_state_mut<R>(f: impl FnOnce(&mut AppState) -> R) -> R {
     APP_STATE.with(|cell| f(&mut cell.borrow_mut()))
 }
 
+/// Sets the browser tab title via `document.title`.
+///
+/// The native build routes the equivalent through Tauri's `set_window_title`
+/// command (`window.set_title`); the web build has no window to title, so it
+/// writes the DOM directly. A missing `window`/`document` (impossible in a real
+/// browser) is silently ignored.
+pub fn set_window_title(title: &str) {
+    if let Some(document) = web_sys::window().and_then(|w| w.document()) {
+        document.set_title(title);
+    }
+}
+
+/// A short banner rendered above the canvas, making the ephemeral nature of the
+/// web preview explicit: reloading the tab starts the visitor over (ADR-0002).
+///
+/// Invoked as `<EphemeralBanner />` through Leptos's `view!` macro, never for
+/// its return value, so `must_use_candidate` does not apply.
+#[allow(clippy::must_use_candidate)]
+#[leptos::component]
+pub fn EphemeralBanner() -> impl leptos::IntoView {
+    use leptos::prelude::*;
+    let style = "padding:6px 12px;background:#FFF7E6;border-bottom:0.5px solid #E5D8B8;\
+                 color:#7A5C00;font-family:sans-serif;font-size:12.5px;text-align:center;";
+    view! {
+        <div style=style>
+            "Ephemeral demo \u{2014} install the app to save what you make."
+        </div>
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::panic)]
 mod tests {
