@@ -207,7 +207,7 @@ pub fn Puzzle(
         if let Some(poly) = st
             .provisional_cages
             .iter()
-            .find(|p| p.cells().contains(&active_cell))
+            .find(|p| p.contains(active_cell))
             .cloned()
         {
             let mut new_st = st.clone();
@@ -450,7 +450,7 @@ pub fn Puzzle(
                 let poly = if let Some(p) = st
                     .provisional_cages
                     .iter()
-                    .find(|p| p.cells().contains(&active_cell))
+                    .find(|p| p.contains(active_cell))
                     .cloned()
                 {
                     p
@@ -655,7 +655,7 @@ fn parked_cages(state: &State, poly: &Polyomino) -> std::collections::BTreeSet<P
     state
         .provisional_cages
         .iter()
-        .filter(|p| p.cells() != poly.cells())
+        .filter(|p| *p != poly)
         .cloned()
         .collect()
 }
@@ -694,18 +694,11 @@ fn singleton_digit_commit(state: &State, key: &str) -> Result<Option<SingletonDi
     let active = state.active;
 
     // Covered by a committed cage → no shortcut.
-    if state
-        .puzzle
-        .cages()
-        .any(|cage| cage.cells().contains(&active))
-    {
+    if state.puzzle.cages().any(|cage| cage.contains(active)) {
         return Ok(None);
     }
     // Mid-draw inside a multi-cell provisional cage → no shortcut.
-    if let Some(p) = state
-        .provisional_cages
-        .iter()
-        .find(|p| p.cells().contains(&active))
+    if let Some(p) = state.provisional_cages.iter().find(|p| p.contains(active))
         && p.len() > 1
     {
         return Ok(None);
@@ -723,7 +716,7 @@ fn singleton_digit_commit(state: &State, key: &str) -> Result<Option<SingletonDi
     let parked = state
         .provisional_cages
         .iter()
-        .filter(|p| !p.cells().contains(&active))
+        .filter(|p| !p.contains(active))
         .cloned()
         .collect();
     Ok(Some(SingletonDigitCommit {
@@ -748,7 +741,7 @@ fn step_provisional_cage(r: usize, c: usize, tr: usize, tc: usize, state: State)
     let active = state
         .provisional_cages
         .iter()
-        .find(|p| p.cells().contains(&current))
+        .find(|p| p.contains(current))
         .cloned();
 
     let (cage, mut remaining): (Polyomino, BTreeSet<Polyomino>) = match active {

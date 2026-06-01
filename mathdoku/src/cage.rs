@@ -53,6 +53,12 @@ impl Cage {
         &self.polyomino
     }
 
+    /// Does the cage contain the given cell?
+    #[must_use]
+    pub fn contains(&self, cell: Cell) -> bool {
+        self.polyomino.contains(cell)
+    }
+
     /// Builds the [`MonotonicMDD`] for this cage over the domain `1..=n`.
     ///
     /// Returns `None` for operators that are not monotonic (Given, Subtract, Divide);

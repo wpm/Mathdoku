@@ -54,8 +54,8 @@ impl Polyomino {
 
     /// Does the polyomino contain the given cell?
     #[must_use]
-    pub fn contains(&self, cell: &Cell) -> bool {
-        self.0.contains(cell)
+    pub fn contains(&self, cell: Cell) -> bool {
+        self.0.contains(&cell)
     }
 
     /// The cells grouped by row, in row-major order. Each inner vec is sorted by column.
@@ -295,7 +295,7 @@ mod tests {
     #[test]
     fn insert_adds_adjacent_cell() {
         let p2 = singleton().insert(c01()).unwrap();
-        assert!(p2.cells().contains(&c01()));
+        assert!(p2.contains(c01()));
         assert_eq!(p2.len(), 2);
     }
 
@@ -318,8 +318,8 @@ mod tests {
     fn remove_shrinks_polyomino() {
         let p = pair().remove(c01()).unwrap();
         assert_eq!(p.len(), 1);
-        assert!(p.contains(&c00()));
-        assert!(!p.contains(&c01()));
+        assert!(p.contains(c00()));
+        assert!(!p.contains(c01()));
     }
 
     #[test]
@@ -374,13 +374,13 @@ mod tests {
 
     #[test]
     fn contains_present_cell() {
-        assert!(pair().contains(&c00()));
-        assert!(pair().contains(&c01()));
+        assert!(pair().contains(c00()));
+        assert!(pair().contains(c01()));
     }
 
     #[test]
     fn contains_absent_cell() {
-        assert!(!pair().contains(&c10()));
+        assert!(!pair().contains(c10()));
     }
 
     // --- serde round-trip ---

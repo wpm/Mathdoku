@@ -89,7 +89,7 @@ impl PartialSolution {
         puzzle
             .cages()
             .enumerate()
-            .find(|(_, cage)| cage.cells().contains(&cell))
+            .find(|(_, cage)| cage.contains(cell))
             .map(|(i, _)| i)
     }
 }

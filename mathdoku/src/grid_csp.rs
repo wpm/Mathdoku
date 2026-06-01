@@ -101,7 +101,7 @@ impl Variable<PuzzleConstraint> for PuzzleCell {
         let cage = self
             .puzzle
             .cages()
-            .filter(|c| c.cells().contains(&self.cell))
+            .filter(|c| c.contains(self.cell))
             .map(move |c| PuzzleConstraint::Cage(c.clone(), Arc::clone(&cage_puzzle)));
         all_different.chain(cage).collect()
     }
@@ -183,8 +183,7 @@ fn brute_force_support(cage: &Cage, n: usize, values: &[Values]) -> Vec<Values> 
     use crate::Target;
     use crate::operation::Operator;
 
-    let cells = cage.cells();
-    let arity = cells.len();
+    let arity = cage.polyomino().len();
     let op = cage.operation();
     let target = op.target;
     let n_val = u8::try_from(n).unwrap_or(u8::MAX);
