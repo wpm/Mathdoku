@@ -63,20 +63,21 @@ where
 ///
 /// # Errors
 /// Returns the first error from any constraint's [`Constraint::propagate`] call.
-pub fn generalized_arc_consistency<S, V, C, D, E>(state: S, constraints: &[C]) -> Result<S, E>
+pub fn generalized_arc_consistency<S, V, C, D, E>(mut state: S, constraints: &[C]) -> Result<S, E>
 where
     S: State<V, D, E>,
+    V: Clone,
     C: Constraint<S, V, D, E>,
 {
-    let state = state;
-    let mut q = VecDeque::from(constraints);
+    let mut q: VecDeque<C> = constraints.iter().cloned().collect();
     while let Some(constraint) = q.pop_front() {
         let narrowed_variables;
         (state, narrowed_variables) = constraint.propagate(&state)?;
         q.extend(
-            constraints.filter(|constraint| {
-                narrowed_variables.any(|variable| constraint.in_scope(variable))
-            }),
+            constraints
+                .iter()
+                .filter(|c| narrowed_variables.iter().any(|v| c.in_scope(v.clone())))
+                .cloned(),
         );
     }
     Ok(state)
@@ -87,16 +88,6 @@ mod tests {
     use super::{Constraint, State, generalized_arc_consistency};
     use crate::csp::tests::Constraints::{Equal, Sum};
     use std::collections::{HashMap, HashSet};
-
-    fn run(state: IntegerSets, constraints: &[Constraints]) -> IntegerSets {
-        generalized_arc_consistency(state, constraints).unwrap()
-    }
-
-    fn sorted(result: &IntegerSets, var: &str) -> Vec<u8> {
-        let mut v: Vec<u8> = result.get(var.to_string()).unwrap().into_iter().collect();
-        v.sort_unstable();
-        v
-    }
 
     #[test]
     fn equal_overlapping_domains_intersects_both() {
@@ -169,7 +160,18 @@ mod tests {
         assert_eq!(sorted(&result, "z"), [2, 3]);
     }
 
+    fn run(state: IntegerSets, constraints: &[Constraints]) -> IntegerSets {
+        generalized_arc_consistency(state, constraints).unwrap()
+    }
+
+    fn sorted(result: &IntegerSets, var: &str) -> Vec<u8> {
+        let mut v: Vec<u8> = result.get(var.to_string()).unwrap().into_iter().collect();
+        v.sort_unstable();
+        v
+    }
+
     type Domain = HashSet<u8>;
+
     struct IntegerSets(HashMap<String, Domain>);
 
     impl IntegerSets {
@@ -212,55 +214,56 @@ mod tests {
             &self,
             state: &IntegerSets,
         ) -> Result<(IntegerSets, Vec<String>), InvalidVariable> {
-            // Create a new state and determine which variables were changed.
-            let r = |a, b| -> (IntegerSets, Vec<String>) {
-                let (a, old_a, narrowed_a) = a;
-                let (b, old_b, narrowed_b) = b;
-                let mut changed_variables: Vec<String> = vec![];
-                let new_state = IntegerSets::new(&[(a, narrowed_a), (b, narrowed_b)]);
-                if old_a != narrowed_a {
-                    changed_variables.push(a.into());
+            // Returns updated state and names of variables whose domains shrank.
+            let update = |name_a: &str,
+                          old_a: &Domain,
+                          new_a: Domain,
+                          name_b: &str,
+                          old_b: &Domain,
+                          new_b: Domain|
+             -> (IntegerSets, Vec<String>) {
+                let mut changed = vec![];
+                if &new_a != old_a {
+                    changed.push(name_a.to_string());
                 }
-                if old_b != narrowed_b {
-                    changed_variables.push(b.into());
+                if &new_b != old_b {
+                    changed.push(name_b.to_string());
                 }
-                (new_state, changed_variables)
+                let new_state = IntegerSets(HashMap::from([
+                    (name_a.to_string(), new_a),
+                    (name_b.to_string(), new_b),
+                ]));
+                (new_state, changed)
             };
 
             match self {
                 Equal(a, b) => {
-                    let current_a = state.get(*a)?;
-                    let current_b = state.get(*b)?;
-                    let common = current_a.intersection(*current_b).collect();
-                    Ok(r((a, current_a, common), (b, current_b, common)))
+                    let da = state.get(a.clone())?;
+                    let db = state.get(b.clone())?;
+                    let common: Domain = da.intersection(&db).copied().collect();
+                    Ok(update(a, &da, common.clone(), b, &db, common))
                 }
                 Sum(vars, target) => {
-                    let current_a = state.get(vars[0])?;
-                    let current_b = state.get(vars[1])?;
-                    let (narrowed_a, narrowed_b) = current_a.fold(
-                        (HashSet::new(), HashSet::new()),
-                        |(mut acc_a, mut acc_b), x| {
-                            current_b
-                                .map(|y| (x, y))
-                                .filter(|(x, y)| x + y == target)
-                                .for_each(|(x, y)| {
-                                    acc_a.insert(x);
-                                    acc_b.insert(y);
-                                });
-                            (acc_a, acc_b)
-                        },
-                    );
-                    Ok(r(
-                        (vars[0], current_a, narrowed_a),
-                        (vars[1], current_b, narrowed_b),
-                    ))
+                    let da = state.get(vars[0].clone())?;
+                    let db = state.get(vars[1].clone())?;
+                    let mut new_a: Domain = HashSet::new();
+                    let mut new_b: Domain = HashSet::new();
+                    for &x in &da {
+                        for &y in &db {
+                            if x + y == *target {
+                                new_a.insert(x);
+                                new_b.insert(y);
+                            }
+                        }
+                    }
+                    Ok(update(&vars[0], &da, new_a, &vars[1], &db, new_b))
                 }
             }
         }
 
         fn in_scope(&self, variable: String) -> bool {
             match self {
-                Equal(a, b) => [*a, *b].contains(&variable),
+                Equal(a, b) => a == &variable || b == &variable,
                 Sum(vars, _) => vars.contains(&variable),
             }
         }
