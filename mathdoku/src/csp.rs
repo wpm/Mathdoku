@@ -206,7 +206,7 @@ mod tests {
             Equal(a.to_string(), b.to_string())
         }
         fn sum(vars: &[&str], target: u8) -> Self {
-            Sum(vars.iter().map(|s| s.to_string()).collect(), target)
+            Sum(vars.iter().map(ToString::to_string).collect(), target)
         }
     }
 
@@ -252,8 +252,8 @@ mod tests {
                     for &x in &da {
                         for &y in &db {
                             if x + y == *target {
-                                new_a.insert(x);
-                                new_b.insert(y);
+                                let _ = new_a.insert(x);
+                                let _ = new_b.insert(y);
                             }
                         }
                     }

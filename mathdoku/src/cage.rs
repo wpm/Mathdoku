@@ -84,7 +84,7 @@ impl Cage {
     ///
     /// [`build_mdd`]: Cage::build_mdd
     #[must_use]
-    pub fn mdd(&self) -> Option<&MonotonicMDD> {
+    pub const fn mdd(&self) -> Option<&MonotonicMDD> {
         self.mdd.as_ref()
     }
 

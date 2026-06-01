@@ -109,12 +109,10 @@ impl Constraint<Grid, Cell, Values, Error> for PuzzleConstraint {
 /// plus one cage constraint per cage.
 pub(crate) fn puzzle_constraints(puzzle: &Arc<Puzzle>) -> Vec<PuzzleConstraint> {
     let n = puzzle.n();
-    let rows = (0..n).map(|r| {
-        PuzzleConstraint::AllDifferent(AllDifferent::row(n, r, Arc::clone(puzzle)))
-    });
-    let cols = (0..n).map(|c| {
-        PuzzleConstraint::AllDifferent(AllDifferent::column(n, c, Arc::clone(puzzle)))
-    });
+    let rows =
+        (0..n).map(|r| PuzzleConstraint::AllDifferent(AllDifferent::row(n, r, Arc::clone(puzzle))));
+    let cols = (0..n)
+        .map(|c| PuzzleConstraint::AllDifferent(AllDifferent::column(n, c, Arc::clone(puzzle))));
     let cages = puzzle.cages().cloned().map(|cage| {
         PuzzleConstraint::Cage(CageConstraint {
             cage,
@@ -130,10 +128,7 @@ pub(crate) fn puzzle_constraints(puzzle: &Arc<Puzzle>) -> Vec<PuzzleConstraint> 
 ///
 /// # Errors
 /// Returns an error if propagation fails.
-pub(crate) fn run_to_fixpoint(
-    grid: Grid,
-    constraints: &[PuzzleConstraint],
-) -> Result<Grid, Error> {
+pub(crate) fn run_to_fixpoint(grid: Grid, constraints: &[PuzzleConstraint]) -> Result<Grid, Error> {
     generalized_arc_consistency(grid, constraints)
 }
 
