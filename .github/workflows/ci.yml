@@ -151,6 +151,66 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
+  # ── Web preview build (ADR-0002 `--features web`) ──────────────────────────
+  # Builds the standalone in-browser preview bundle. The deploy workflows and
+  # the bundle-size gate reuse this exact `trunk build` command.
+  web-build:
+    name: Web build
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: apps/designer
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache cargo registry & build artifacts
+        uses: Swatinem/rust-cache@v2
+
+      # Prebuilt trunk binary (matches the e2e and coverage jobs).
+      - name: Install trunk
+        uses: taiki-e/install-action@v2
+        with:
+          tool: trunk
+
+      - name: trunk build --release --features web
+        run: trunk build --release --features web
+
+  # ── Feature isolation ──────────────────────────────────────────────────────
+  # ADR-0002 requires the `web` feature stay namespaced to the frontend crate
+  # and inert in native builds. Fail if `web` is pulled into the default build
+  # graph.
+  feature-isolation:
+    name: Feature isolation
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: apps/designer
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry & build artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Assert `web` is absent from the default build graph
+        run: |
+          if cargo tree -e features -p mathdoku-designer-ui | grep -q 'mathdoku-designer-ui feature "web"'; then
+            echo "::error::the 'web' feature is enabled in the default build graph"
+            exit 1
+          fi
+          echo "ok: the 'web' feature is namespaced and inert in native builds"
+
   # ── Slow tests (main only) ────────────────────────────────────────────────
   slow-tests:
     name: Slow tests

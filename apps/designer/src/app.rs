@@ -19,11 +19,32 @@ use crate::theme::{ACCENT, BG, INK, INK2, LINE, SANS as SANS_FONT};
 //
 // Command IPC lives in `crate::ipc`; only the `listen` event-bus binding,
 // which takes a JS callback, stays here.
+#[cfg(not(feature = "web"))]
 #[wasm_bindgen]
 extern "C" {
     #[wasm_bindgen(js_namespace = ["window", "__TAURI__", "event"])]
     async fn listen(event: &str, handler: &js_sys::Function) -> JsValue;
 }
+
+// The web build (ADR-0002) has no Tauri event bus. Menu-driven actions either
+// arrive through the first-launch modal (New) or are hidden entirely (Save,
+// Open, Quit/close), so `listen` becomes a no-op: the handlers below are still
+// registered but never fire, and nothing touches `window.__TAURI__`.
+#[cfg(feature = "web")]
+#[allow(clippy::unused_async)] // call sites `.await` it; mirrors the Tauri binding
+async fn listen(_event: &str, _handler: &js_sys::Function) -> JsValue {
+    JsValue::NULL
+}
+
+/// The ephemeral-demo banner: rendered above the canvas in the web build,
+/// nothing at all in the Tauri build.
+#[cfg(feature = "web")]
+fn ephemeral_banner() -> impl IntoView {
+    view! { <crate::web_shims::EphemeralBanner /> }
+}
+
+#[cfg(not(feature = "web"))]
+fn ephemeral_banner() -> impl IntoView {}
 
 /// Saves the current puzzle. `Ok(None)` means the user cancelled the save
 /// dialog, `Ok(Some(path))` means the write succeeded, and `Err(e)` means the
@@ -500,6 +521,7 @@ pub fn App() -> impl IntoView {
 
     view! {
         <main class="app-main">
+            {ephemeral_banner()}
             {move || designer_state.get().map(|st| {
             let on_puzzle_change = Callback::new(move |new_st: State| {
                 designer_state.set(Some(new_st));

@@ -2326,6 +2326,7 @@ dependencies = [
  "leptos",
  "mathdoku",
  "mathdoku-designer-core",
+ "rand 0.10.1",
  "serde",
  "serde-wasm-bindgen",
  "wasm-bindgen",
