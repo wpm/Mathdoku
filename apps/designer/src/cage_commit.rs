@@ -52,9 +52,9 @@ pub fn commit_cage(
     on_puzzle_change: Callback<State>,
     on_error: Callback<String>,
 ) {
-    let cells = polyomino.cells();
+    let poly = polyomino.clone();
     spawn_local(async move {
-        let new_st = match ipc::insert_cage(cells, operator, target).await {
+        let new_st = match ipc::insert_cage(poly, operator, target).await {
             Ok(st) => st,
             Err(e) => {
                 on_error.run(e.to_string());

@@ -124,12 +124,12 @@ export async function installTauriStubs(
               // Add the cells as a new cage and return a State.
               const typedArgs = args as
                 | {
-                    cells?: { row: number; column: number }[];
+                    polyomino?: { row: number; column: number }[];
                     operator?: string;
                     target?: number | null;
                   }
                 | undefined;
-              const cells = typedArgs?.cells ?? [];
+              const cells = typedArgs?.polyomino ?? [];
               const operator = typedArgs?.operator ?? 'Given';
               const currentPuzzle = puzzle as BareP;
               if (!currentPuzzle) return Promise.resolve(null);
