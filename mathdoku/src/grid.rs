@@ -122,7 +122,7 @@ impl Grid {
         if puzzle.n() != self.n {
             return Err(InvalidGridSize(puzzle.n()));
         }
-        puzzle.fixpoint(self)
+        puzzle.propagate_grid(self)
     }
 
     /// Returns an iterator over all solutions for this grid under `puzzle`'s constraints.

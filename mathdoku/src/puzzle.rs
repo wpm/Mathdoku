@@ -190,6 +190,38 @@ impl Puzzle {
         grid.constrain(self)
     }
 
+    /// Returns an iterator over all solutions for this puzzle.
+    ///
+    /// Uses the puzzle's propagated grid as the starting state. Each item is a
+    /// solved [`Grid`] where every cell's values are a singleton.
+    pub fn solutions(&self) -> impl Iterator<Item = Result<Grid, Error>> + '_ {
+        crate::solutions::Solutions::new(&self.grid, self)
+    }
+
+    /// Runs all constraints to a GAC fixpoint on `self.grid` and returns the
+    /// updated puzzle.
+    ///
+    /// # Errors
+    /// Returns an error if propagation fails (e.g. a cell is out of bounds).
+    pub(crate) fn fixpoint(&self) -> Result<Self, Error> {
+        let grid = self.propagate_grid(&self.grid)?;
+        Ok(Self {
+            grid,
+            ..self.clone()
+        })
+    }
+
+    /// Propagates all constraints against an arbitrary `grid` and returns the
+    /// narrowed result. Used by [`Grid::constrain`] and the MAC solver.
+    ///
+    /// # Errors
+    /// Returns an error if propagation fails (e.g. a cell is out of bounds).
+    pub(crate) fn propagate_grid(&self, grid: &Grid) -> Result<Grid, Error> {
+        let puzzle = Arc::new(self.clone());
+        let constraints = Self::constraints(&puzzle);
+        crate::csp::generalized_arc_consistency(*grid, &constraints)
+    }
+
     /// Builds the full constraint list: one `AllDifferent` per row and column,
     /// plus one cage constraint per cage.
     fn constraints(puzzle: &Arc<Self>) -> Vec<crate::grid_csp::PuzzleConstraint> {
@@ -209,31 +241,9 @@ impl Puzzle {
         rows.chain(cols).chain(cages).collect()
     }
 
-    /// Runs all row, column, and cage constraints to a GAC fixpoint on `grid`.
-    ///
-    /// # Errors
-    /// Returns an error if propagation fails (e.g. a cell is out of bounds).
-    pub(crate) fn fixpoint(&self, grid: &Grid) -> Result<Grid, Error> {
-        let puzzle = Arc::new(self.clone());
-        let constraints = Self::constraints(&puzzle);
-        crate::csp::generalized_arc_consistency(*grid, &constraints)
-    }
-
-    /// Returns an iterator over all solutions for this puzzle.
-    ///
-    /// Uses the puzzle's propagated grid as the starting state. Each item is a
-    /// solved [`Grid`] where every cell's values are a singleton.
-    pub fn solutions(&self) -> impl Iterator<Item = Result<Grid, Error>> + '_ {
-        crate::solutions::Solutions::new(&self.grid, self)
-    }
-
     /// Propagate all constraints to a fixpoint and return the updated puzzle.
     fn constrain(&self) -> Result<Self, Error> {
-        let grid = self.fixpoint(&self.grid)?;
-        Ok(Self {
-            grid,
-            ..self.clone()
-        })
+        self.fixpoint()
     }
 }
 

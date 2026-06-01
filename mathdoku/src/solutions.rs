@@ -53,7 +53,7 @@ impl Iterator for Solutions<'_> {
     fn next(&mut self) -> Option<Self::Item> {
         while let Some(grid) = self.stack.pop() {
             // Propagate to fixpoint.
-            let grid = match self.puzzle.fixpoint(&grid) {
+            let grid = match self.puzzle.propagate_grid(&grid) {
                 Ok(g) => g,
                 Err(e) => return Some(Err(e)),
             };
