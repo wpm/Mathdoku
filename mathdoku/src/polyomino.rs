@@ -8,6 +8,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use crate::{Cell, Error};
 
 /// A contiguous region of edge-connected [`Cell`]s.
+#[must_use]
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Polyomino(BTreeSet<Cell>);
 

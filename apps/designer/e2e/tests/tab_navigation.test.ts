@@ -122,13 +122,19 @@ test.describe('tab navigation between cages', () => {
     expect(after.y).toBeLessThan(before.y);
   });
 
-  test('selection rect always visible (no accent lines after Tab)', async ({ page }) => {
+  test('selection rect always visible (no accent lines after Tab)', async ({
+    page,
+  }) => {
     await setup(page);
     await page.keyboard.press(TAB);
 
     // There is always exactly one accent rect (active cell highlight).
-    await expect(page.locator(`.grid-svg rect[stroke="${ACCENT}"]`)).toHaveCount(1);
+    await expect(
+      page.locator(`.grid-svg rect[stroke="${ACCENT}"]`),
+    ).toHaveCount(1);
     // No accent lines (those are only in the operation selector).
-    await expect(page.locator(`.grid-svg line[stroke="${ACCENT}"]`)).toHaveCount(0);
+    await expect(
+      page.locator(`.grid-svg line[stroke="${ACCENT}"]`),
+    ).toHaveCount(0);
   });
 });

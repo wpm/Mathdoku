@@ -23,6 +23,7 @@ use crate::puzzle::Puzzle;
 /// Cage sizes are drawn from `Poisson(mean)` and resampled until the result
 /// falls in `[1, n²]`. The mean must be strictly positive so rejection sampling
 /// is guaranteed to terminate.
+#[must_use]
 #[derive(Debug, Clone, Copy)]
 pub struct SizeDistribution {
     mean: f64,

@@ -11,7 +11,7 @@
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use mathdoku::{Cage, Cell, Grid, Operation, Operator, Polyomino, Target, operators_for};
+use mathdoku::{Cage, Cell, Operation, Operator, Polyomino, Target, operators_for};
 use mathdoku_designer_core::State;
 
 use super::cage::Cage as CageComponent;
@@ -60,9 +60,7 @@ pub fn Puzzle(
 
     // Propagate cage constraints from an unconstrained grid so each cell's
     // values show all candidates still possible given the cages, not just the solution.
-    let propagated = Grid::new(n)
-        .and_then(|g| g.constrain(&state.puzzle))
-        .unwrap_or_else(|_| state.current.clone());
+    let propagated = state.puzzle.grid();
     let mut cell_values = vec![vec![vec![]; n]; n];
     let mut solution_values = vec![vec![None::<u8>; n]; n];
     for (r, row) in cell_values.iter_mut().enumerate() {
@@ -80,7 +78,7 @@ pub fn Puzzle(
         }
     }
 
-    let partial_solution = PartialSolution::new(state.puzzle.clone(), state.current.clone());
+    let partial_solution = PartialSolution::new(state.puzzle.clone(), state.current);
 
     let grid_size = cell * n as f64;
     let total = 2.0f64.mul_add(MARGIN, grid_size);

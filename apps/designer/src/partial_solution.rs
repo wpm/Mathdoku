@@ -48,8 +48,7 @@ impl PartialSolution {
         if covered.len() < n * n {
             return None;
         }
-        let propagated = Grid::new(n).ok()?.constrain(&puzzle).ok()?;
-        Some(propagated.solutions(&puzzle).count())
+        Some(puzzle.grid().solutions(&puzzle).count())
     }
 
     /// Returns the singleton solution value for `cell`, or `None` if not a singleton.
@@ -69,10 +68,7 @@ impl PartialSolution {
     pub fn viable_counts(&self, cage_idx: usize) -> Option<(usize, usize)> {
         let puzzle = self.lock_puzzle();
         let cage = puzzle.cages().nth(cage_idx)?;
-        let n = puzzle.n();
-        // Propagate all cage constraints from a fresh unconstrained grid.
-        let propagated = Grid::new(n).ok()?.constrain(&puzzle).ok()?;
-        let tuples = propagated.cage_tuples(&puzzle, cage).ok()?;
+        let tuples = puzzle.grid().cage_tuples(&puzzle, cage).ok()?;
         drop(puzzle);
         let multisets: HashSet<Vec<u8>> = tuples
             .iter()
@@ -199,6 +195,22 @@ mod tests {
         let puzzle = row_sums_3x3();
         let ps = PartialSolution::new(puzzle, Grid::new(3).unwrap());
         assert_eq!(ps.viable_counts(99), None);
+    }
+
+    #[test]
+    fn viable_counts_given_cage_after_add_cage_has_one_tuple() {
+        // PUZZLE_3: Add(3) on (0,0)+(0,1) forces (0,2)={3} via row all-different.
+        // Given(3) at (0,2) has no MDD (Given is non-monotonic) but brute-force
+        // enumeration finds the single valid tuple (3,).
+        let puzzle = Puzzle::new(3)
+            .unwrap()
+            .insert_cage(cage_at(&[(0, 0), (0, 1)], Operator::Add, 3))
+            .unwrap()
+            .insert_cage(cage_at(&[(0, 2)], Operator::Given, 3))
+            .unwrap();
+        let ps = PartialSolution::new(puzzle, Grid::new(3).unwrap());
+        assert_eq!(ps.viable_counts(0), Some((1, 2))); // Add(3): (1,2) and (2,1)
+        assert_eq!(ps.viable_counts(1), Some((1, 1))); // Given(3): only (3,)
     }
 
     #[test]

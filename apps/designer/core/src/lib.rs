@@ -119,7 +119,7 @@ impl State {
     pub fn new_with_solution(n: usize) -> Result<Self, String> {
         let puzzle = Puzzle::new(n).map_err(|e| e.to_string())?;
         let solution = Grid::new(n).map_err(|e| e.to_string())?;
-        let current = solution.clone();
+        let current = solution;
         Ok(Self {
             puzzle,
             solution: Some(solution),
@@ -136,8 +136,7 @@ impl State {
     /// Returns [`Error::NotUnique`] if the puzzle does not have exactly one
     /// global completion, or [`Error::Mathdoku`] if propagation fails.
     pub fn fix(&mut self) -> Result<(), Error> {
-        let n = self.puzzle.n();
-        let grid = Grid::new(n).and_then(|g| g.constrain(&self.puzzle))?;
+        let grid = self.puzzle.grid();
         let mut solutions = grid.solutions(&self.puzzle);
         let first = match solutions.next() {
             Some(Ok(g)) => g,
@@ -193,10 +192,10 @@ impl AppState {
     /// `provisional_cages` is always empty — provisional state lives only in the frontend.
     fn to_designer_state(&self) -> Option<State> {
         let puzzle = self.puzzle.clone()?;
-        let current = self.current.clone()?;
+        let current = self.current?;
         Some(State {
             puzzle,
-            solution: self.solution.clone(),
+            solution: self.solution,
             current,
             active: self.active.unwrap_or_else(|| Cell::new(0, 0)),
             provisional_cages: BTreeSet::new(),
@@ -231,10 +230,7 @@ pub(crate) fn constrain_current(
     solution: Option<&Grid>,
     puzzle: &Puzzle,
 ) -> Result<Grid, mathdoku::Error> {
-    solution.map_or_else(
-        || Grid::new(puzzle.n()).and_then(|g| g.constrain(puzzle)),
-        |grid| grid.constrain(puzzle),
-    )
+    solution.map_or_else(|| Ok(puzzle.grid()), |grid| puzzle.constrain_grid(grid))
 }
 
 // ---- puzzle-mutation command bodies ----
@@ -260,7 +256,7 @@ fn commit_puzzle(state: &mut AppState, new_puzzle: Puzzle) -> Result<State, Erro
 /// Returns an error if `n` is invalid.
 pub fn new_empty(state: &mut AppState, n: usize) -> Result<State, Error> {
     let puzzle = Puzzle::new(n)?;
-    let current = Grid::new(n).and_then(|g| g.constrain(&puzzle))?;
+    let current = puzzle.grid();
     state.puzzle = Some(puzzle);
     state.solution = None;
     state.current = Some(current);
@@ -285,7 +281,7 @@ pub fn new_latin_square<R: Rng>(
     let puzzle = Puzzle::new(n)?;
     let latin = generate_latin_square(n, rng);
     let solution = Grid::from_latin_square(n, &latin)?;
-    let current = solution.clone();
+    let current = solution;
     state.puzzle = Some(puzzle);
     state.solution = Some(solution);
     state.current = Some(current);
@@ -359,7 +355,7 @@ pub fn remove_cage_at(state: &mut AppState, polyomino: &Polyomino) -> Result<Sta
         .get_cage_at(polyomino)
         .ok_or(Error::CageNotFound)?
         .clone();
-    let new_puzzle = puzzle.remove_cage(&cage);
+    let new_puzzle = puzzle.remove_cage(&cage)?;
     commit_puzzle(state, new_puzzle)
 }
 
@@ -420,7 +416,7 @@ pub fn get_puzzle(state: &AppState) -> Option<State> {
 /// serialization fails.
 pub fn serialize_save(state: &AppState) -> Result<String, Error> {
     let puzzle = state.puzzle.as_ref().ok_or(Error::NoPuzzle)?.clone();
-    let solution = state.solution.clone();
+    let solution = state.solution;
     let envelope = SaveEnvelope {
         version: SAVE_VERSION,
         puzzle,
@@ -723,7 +719,7 @@ mod tests {
             let region = cells(&[(0, 0), (0, 1), (0, 2)]);
             assert!(matches!(
                 insert_cage(&mut state, &region, Operator::Subtract, Some(1)),
-                Err(Error::Mathdoku(mathdoku::Error::InfeasibleOperation(_, _)))
+                Err(Error::Mathdoku(mathdoku::Error::InfeasibleCage(_, _)))
             ));
         }
 
@@ -734,7 +730,7 @@ mod tests {
             let region = cells(&[(0, 0), (0, 1)]);
             assert!(matches!(
                 insert_cage(&mut state, &region, Operator::Given, Some(2)),
-                Err(Error::Mathdoku(mathdoku::Error::InfeasibleOperation(_, _)))
+                Err(Error::Mathdoku(mathdoku::Error::InfeasibleCage(_, _)))
             ));
         }
 
@@ -748,7 +744,7 @@ mod tests {
             let region = cells(&[(0, 0), (0, 1)]);
             assert!(matches!(
                 insert_cage(&mut state, &region, Operator::Add, Some(2)),
-                Err(Error::Mathdoku(mathdoku::Error::InfeasibleOperation(_, _)))
+                Err(Error::Mathdoku(mathdoku::Error::InfeasibleCage(_, _)))
             ));
         }
 
@@ -795,16 +791,14 @@ mod tests {
         }
 
         #[test]
-        fn fix_zero_completions_is_not_unique() {
-            // Over-constrained: two `Given` cells in the same row both fixed to 1
-            // admits no completion. `fix` requires exactly one, so it reports
-            // NotUnique (confirming the "exactly one completion" wording covers
-            // the zero-completion case too).
+        fn insert_cage_conflicting_givens_returns_infeasible() {
+            // Two Given cells in the same row both fixed to 1 is caught during
+            // propagation in insert_cage, so the second insert returns an error
+            // rather than producing an infeasible puzzle.
             let mut state = AppState::default();
             let _ = new_empty(&mut state, 3).unwrap();
             let _ = insert_cage(&mut state, &cells(&[(0, 0)]), Operator::Given, Some(1)).unwrap();
-            let _ = insert_cage(&mut state, &cells(&[(0, 1)]), Operator::Given, Some(1)).unwrap();
-            assert!(matches!(fix(&mut state), Err(Error::NotUnique)));
+            assert!(insert_cage(&mut state, &cells(&[(0, 1)]), Operator::Given, Some(1)).is_err());
         }
 
         #[test]
@@ -937,16 +931,16 @@ mod tests {
         }
 
         #[test]
-        fn apply_loaded_out_of_bounds_cage_cell_is_invalid_cell() {
-            // #55 guessed `Serde`, but a syntactically valid envelope whose cage
-            // references a cell outside the grid parses fine and is caught during
-            // constraint propagation — surfacing as Mathdoku(InvalidCell), the
-            // correct behaviour.
+        fn apply_loaded_out_of_bounds_cage_cell_is_serde() {
+            // A syntactically valid envelope whose cage references a cell outside
+            // the grid (row 5 in a 3×3) fails during Puzzle deserialization, which
+            // calls insert_cage → constrain → InvalidCell and wraps it as a serde
+            // error. The outer apply_loaded call therefore surfaces it as Serde.
             let json = r#"{"version":1,"puzzle":{"n":3,"cages":[{"polyomino":[{"row":5,"column":5}],"operation":{"operator":"Given","target":1}}]}}"#;
             let mut state = AppState::default();
             assert!(matches!(
                 apply_loaded(&mut state, json),
-                Err(Error::Mathdoku(mathdoku::Error::InvalidCell(_)))
+                Err(Error::Serde(_))
             ));
         }
 
@@ -1055,7 +1049,9 @@ mod tests {
             let st = insert_cage(&mut state, &region, mathdoku::Operator::Given, None).unwrap();
             let puzzle = state.puzzle.as_ref().unwrap();
             assert!(puzzle.cages().any(|c| c.cells() == region));
-            let expected = state.solution.as_ref().unwrap().constrain(puzzle).unwrap();
+            let expected = puzzle
+                .constrain_grid(state.solution.as_ref().unwrap())
+                .unwrap();
             assert_eq!(state.current.as_ref().unwrap(), &expected);
             assert!(state.dirty);
             assert!(st.solution.is_some());
@@ -1069,7 +1065,7 @@ mod tests {
             let _ = insert_cage(&mut state, &region, mathdoku::Operator::Add, Some(3)).unwrap();
             let puzzle = state.puzzle.as_ref().unwrap();
             assert!(puzzle.cages().any(|c| c.cells() == region));
-            let expected = Grid::new(4).unwrap().constrain(puzzle).unwrap();
+            let expected = puzzle.grid();
             assert_eq!(state.current.as_ref().unwrap(), &expected);
             assert!(state.dirty);
         }
@@ -1092,7 +1088,7 @@ mod tests {
             let puzzle = state.puzzle.as_ref().unwrap();
             assert!(!puzzle.cages().any(|c| c.cells() == region));
             assert!(puzzle.cages().any(|c| c.cells() == cells(&[(1, 0)])));
-            let expected = Grid::new(4).unwrap().constrain(puzzle).unwrap();
+            let expected = puzzle.grid();
             assert_eq!(state.current.as_ref().unwrap(), &expected);
             assert!(state.dirty);
         }
@@ -1746,7 +1742,7 @@ mod tests {
             let region = cells(&[(0, 0), (0, 1), (0, 2)]);
             assert!(matches!(
                 insert_cage(&mut state, &region, Operator::Given, Some(1)),
-                Err(Error::Mathdoku(mathdoku::Error::InfeasibleOperation(_, _)))
+                Err(Error::Mathdoku(mathdoku::Error::InfeasibleCage(_, _)))
             ));
         }
 
@@ -1756,7 +1752,7 @@ mod tests {
             let region = cells(&[(0, 0), (0, 1), (0, 2)]);
             assert!(matches!(
                 insert_cage(&mut state, &region, Operator::Subtract, Some(1)),
-                Err(Error::Mathdoku(mathdoku::Error::InfeasibleOperation(_, _)))
+                Err(Error::Mathdoku(mathdoku::Error::InfeasibleCage(_, _)))
             ));
         }
     }
@@ -1768,7 +1764,7 @@ mod tests {
             AppState, apply_loaded, insert_cage, new_empty, new_latin_square, remove_cage_at,
             serialize_save, unfix,
         };
-        use mathdoku::{Cell, Grid, Operator};
+        use mathdoku::{Cell, Operator};
         use proptest::prelude::*;
         use rand::{SeedableRng, rngs::StdRng};
 
@@ -1850,10 +1846,10 @@ mod tests {
         fn assert_consistent(state: &AppState) {
             let puzzle = state.puzzle.as_ref().unwrap();
             let current = state.current.as_ref().unwrap();
-            let expected = state.solution.as_ref().map_or_else(
-                || Grid::new(puzzle.n()).unwrap().constrain(puzzle).unwrap(),
-                |sol| sol.constrain(puzzle).unwrap(),
-            );
+            let expected = state
+                .solution
+                .as_ref()
+                .map_or_else(|| puzzle.grid(), |sol| puzzle.constrain_grid(sol).unwrap());
             assert_eq!(current, &expected);
         }
 

@@ -133,7 +133,7 @@ fn apply_values(
     old_values: &[Values],
     new_values: &[Values],
 ) -> Result<(Grid, Vec<PuzzleCell>), Error> {
-    let mut new_state = state.clone();
+    let mut new_state = *state;
     let mut changed = vec![];
     for ((&cell, old), new) in cells.iter().zip(old_values).zip(new_values) {
         if new != old {
@@ -238,7 +238,7 @@ fn brute_force_support(cage: &Cage, n: usize, values: &[Values]) -> Vec<Values> 
 pub fn grid_fixpoint(grid: &Grid, puzzle: &Puzzle) -> Result<Grid, Error> {
     if grid.n() != puzzle.n() {
         return Err(GridPuzzleMismatch(
-            Box::new(grid.clone()),
+            Box::new(*grid),
             Box::new(puzzle.clone()),
         ));
     }
@@ -253,7 +253,7 @@ pub fn grid_fixpoint(grid: &Grid, puzzle: &Puzzle) -> Result<Grid, Error> {
         .cloned()
         .map(|cage| PuzzleConstraint::Cage(cage, Arc::clone(&puzzle)));
     let constraints: Vec<_> = rows.chain(cols).chain(cage_constraints).collect();
-    generalized_arc_consistency(grid.clone(), &constraints)
+    generalized_arc_consistency(*grid, &constraints)
 }
 
 /// An iterator over all solutions for a [`Grid`] under a [`Puzzle`]'s constraints.
@@ -266,6 +266,7 @@ pub fn grid_fixpoint(grid: &Grid, puzzle: &Puzzle) -> Result<Grid, Error> {
 /// Obtained via [`Grid::solutions`].
 // Explicit `pub(crate)` marks the crate-internal API surface; the lint sees it as
 // redundant because `grid_csp` is a private module.
+#[must_use]
 #[allow(clippy::redundant_pub_crate)]
 pub(crate) struct Solutions<'a> {
     stack: Vec<Grid>,
@@ -275,7 +276,7 @@ pub(crate) struct Solutions<'a> {
 impl<'a> Solutions<'a> {
     pub(crate) fn new(grid: &Grid, puzzle: &'a Puzzle) -> Self {
         Self {
-            stack: vec![grid.clone()],
+            stack: vec![*grid],
             puzzle,
         }
     }

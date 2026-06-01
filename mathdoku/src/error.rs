@@ -22,9 +22,9 @@ pub enum Error {
     InvalidCell(Cell),
     /// A new [`Cage`] conflicts with an existing cage.
     CageConflict(Cage),
-    /// A polyomino cannot support the requested [`Operation`]: either the
-    /// operator is invalid for the cell count, or the target is unreachable.
-    InfeasibleOperation(Polyomino, Operation),
+    /// A cage is infeasible: either the operator is invalid for the cell count,
+    /// or the target is unreachable given the current grid domains.
+    InfeasibleCage(Polyomino, Operation),
     /// A [`Cell`] referenced by an operation is not covered by any polyomino.
     CellNotCovered(Cell),
     /// Removing a [`Cell`] from a polyomino would disconnect the remaining cells.
@@ -68,7 +68,7 @@ impl fmt::Display for Error {
                     "cage {new:?} conflicts with an existing cage in the puzzle"
                 )
             }
-            Self::InfeasibleOperation(p, op) => {
+            Self::InfeasibleCage(p, op) => {
                 write!(f, "operation {op:?} is infeasible for polyomino {p:?}")
             }
             Self::CellNotCovered(c) => write!(

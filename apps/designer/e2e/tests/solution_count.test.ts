@@ -6,9 +6,21 @@ import { installTauriStubs, gotoApp, waitForGrid } from './helpers';
 const COMPLETE_2X2 = {
   n: 2,
   cages: [
-    { polyomino: [{ row: 0, column: 0 }], operation: { operator: 'Given', target: 1 } },
-    { polyomino: [{ row: 0, column: 1 }], operation: { operator: 'Given', target: 2 } },
-    { polyomino: [{ row: 1, column: 0 }, { row: 1, column: 1 }], operation: { operator: 'Add', target: 3 } },
+    {
+      polyomino: [{ row: 0, column: 0 }],
+      operation: { operator: 'Given', target: 1 },
+    },
+    {
+      polyomino: [{ row: 0, column: 1 }],
+      operation: { operator: 'Given', target: 2 },
+    },
+    {
+      polyomino: [
+        { row: 1, column: 0 },
+        { row: 1, column: 1 },
+      ],
+      operation: { operator: 'Add', target: 3 },
+    },
   ],
 };
 
@@ -16,7 +28,10 @@ const COMPLETE_2X2 = {
 const INCOMPLETE_3X3 = {
   n: 3,
   cages: [
-    { polyomino: [{ row: 0, column: 0 }], operation: { operator: 'Given', target: 1 } },
+    {
+      polyomino: [{ row: 0, column: 0 }],
+      operation: { operator: 'Given', target: 1 },
+    },
   ],
 };
 
@@ -30,27 +45,38 @@ test.describe('solution count', () => {
     await waitForGrid(page);
 
     // Wait for the async solver to finish and set the count.
-    await expect(page.locator('.solution-count')).toContainText('solution', { timeout: 5000 });
+    await expect(page.locator('.solution-count')).toContainText('solution', {
+      timeout: 5000,
+    });
   });
 
   test('solution count is right-aligned with the puzzle', async ({ page }) => {
     await installTauriStubs(page, COMPLETE_2X2);
     await gotoApp(page);
     await waitForGrid(page);
-    await expect(page.locator('.solution-count')).toContainText('solution', { timeout: 5000 });
+    await expect(page.locator('.solution-count')).toContainText('solution', {
+      timeout: 5000,
+    });
 
     // The element is pushed right via margin-left: auto in a flex row.
     // Verify its right edge aligns with the SVG's right edge.
     const svgBox = await page.locator('.grid-svg').boundingBox();
     const countBox = await page.locator('.solution-count').boundingBox();
-    expect(countBox!.x + countBox!.width).toBeCloseTo(svgBox!.x + svgBox!.width, 0);
+    expect(countBox!.x + countBox!.width).toBeCloseTo(
+      svgBox!.x + svgBox!.width,
+      0,
+    );
   });
 
-  test('solution count text is aligned with inner grid border', async ({ page }) => {
+  test('solution count text is aligned with inner grid border', async ({
+    page,
+  }) => {
     await installTauriStubs(page, COMPLETE_2X2);
     await gotoApp(page);
     await waitForGrid(page);
-    await expect(page.locator('.solution-count')).toContainText('solution', { timeout: 5000 });
+    await expect(page.locator('.solution-count')).toContainText('solution', {
+      timeout: 5000,
+    });
 
     const svgBox = await page.locator('.grid-svg').boundingBox();
     // padding-right mirrors padding-left on cage-stats: 14/600 of SVG width.
@@ -62,7 +88,9 @@ test.describe('solution count', () => {
     expect(paddingRight).toBeCloseTo(expectedPadding, 0);
   });
 
-  test('solution count not shown for an incomplete puzzle', async ({ page }) => {
+  test('solution count not shown for an incomplete puzzle', async ({
+    page,
+  }) => {
     await installTauriStubs(page, INCOMPLETE_3X3);
     await gotoApp(page);
     await waitForGrid(page);
@@ -70,7 +98,9 @@ test.describe('solution count', () => {
     await expect(page.locator('.solution-count')).toBeHidden();
   });
 
-  test('solution count not shown and no hang for brand-new empty 9×9', async ({ page }) => {
+  test('solution count not shown and no hang for brand-new empty 9×9', async ({
+    page,
+  }) => {
     await installTauriStubs(page, EMPTY_9X9);
     await gotoApp(page);
     await waitForGrid(page);
@@ -84,7 +114,11 @@ test.describe('solution count', () => {
     await gotoApp(page);
     await waitForGrid(page);
 
-    await expect(page.locator('.solution-count')).toContainText('1 solution', { timeout: 5000 });
-    await expect(page.locator('.solution-count')).not.toContainText('1 solutions');
+    await expect(page.locator('.solution-count')).toContainText('1 solution', {
+      timeout: 5000,
+    });
+    await expect(page.locator('.solution-count')).not.toContainText(
+      '1 solutions',
+    );
   });
 });

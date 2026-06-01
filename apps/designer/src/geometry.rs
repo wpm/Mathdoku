@@ -39,7 +39,6 @@ pub const fn origin(cell: f64, row: usize, col: usize) -> (f64, f64) {
 
 /// Returns the anchor cell of a cage: the first cell in row-major order
 /// (topmost row, leftmost column within that row).
-#[must_use]
 pub fn anchor(cells: &[Cell]) -> Cell {
     cells.iter().copied().min().unwrap_or(Cell::new(0, 0))
 }

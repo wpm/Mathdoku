@@ -17,6 +17,7 @@ use log::debug;
 /// Each internal node maps to the list of outgoing edges. A node absent from
 /// `edges` is a terminal — its path through the diagram reached the constraint
 /// target.
+#[must_use]
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct MonotonicMDD {
     /// Maximum value any variable may take (values range over `1..=n`).
@@ -28,7 +29,6 @@ pub struct MonotonicMDD {
 
 impl MonotonicMDD {
     /// Build an MDD for `constraint` over the domain `1..=n`.
-    #[must_use]
     pub fn new(n: u32, constraint: MonotonicConstraint) -> Self {
         let mut mmd = Self {
             n,
@@ -356,6 +356,7 @@ impl Display for MonotonicMDD {
 }
 
 /// Parameters shared by all monotonic constraint variants.
+#[must_use]
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct Constraint {
     /// The value the accumulated result must equal at a terminal node.
@@ -478,25 +479,6 @@ impl Display for Node {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "Node({} @ level {})", self.value, self.depth)
     }
-}
-
-/// Build the [`MonotonicMDD`] for `cage` at grid size `n`.
-///
-/// Returns `None` for operators that are not monotonic (Given, Subtract, Divide);
-/// those cages require brute-force tuple enumeration instead.
-#[must_use]
-#[allow(clippy::cast_possible_truncation)]
-pub fn build_mdd(n: usize, cage: &crate::cage::Cage) -> Option<MonotonicMDD> {
-    use crate::operation::Operator;
-    let op = cage.operation();
-    let arity = cage.cells().len() as u32;
-    let target = op.target as u32;
-    let constraint = match op.operator() {
-        Operator::Add => MonotonicConstraint::Sum(Constraint { target, arity }),
-        Operator::Multiply => MonotonicConstraint::Product(Constraint { target, arity }),
-        _ => return None,
-    };
-    Some(MonotonicMDD::new(n as u32, constraint))
 }
 
 #[cfg(test)]

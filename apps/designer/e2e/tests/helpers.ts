@@ -135,8 +135,37 @@ export async function installTauriStubs(
               const currentPuzzle = puzzle as BareP;
               if (!currentPuzzle) return Promise.resolve(null);
               // Without-Solution mode supplies the target; With-Solution derives it.
-              const target =
-                typedArgs?.target ?? (operator === 'Given' ? 1 : 0);
+              // Use the maximum valid target so the cage stays feasible even after
+              // other cages have narrowed adjacent cell domains.
+              // Max sum for k cells with distinct values 1..n: k*n - k*(k-1)/2
+              // Max product: n! / (n-k)!
+              // Subtract (2 cells): n-1 (largest gap between distinct values)
+              // Divide (2 cells): n (n/1 is the largest valid ratio)
+              const k = cells.length;
+              const n = currentPuzzle.n;
+              const maxAdd = k * n - (k * (k - 1)) / 2;
+              const maxMul = Array.from({ length: k }, (_, i) => n - i).reduce(
+                (a, b) => a * b,
+                1,
+              );
+              // For Given singletons, derive a cell-unique value using the latin
+              // square pattern (r+c) % n + 1 so multiple Given cages in the same
+              // row/column don't conflict.
+              const givenTarget =
+                cells.length === 1
+                  ? ((cells[0].row + cells[0].column) % n) + 1
+                  : 1;
+              const defaultTarget =
+                operator === 'Given'
+                  ? givenTarget
+                  : operator === 'Add'
+                    ? maxAdd
+                    : operator === 'Multiply'
+                      ? maxMul
+                      : operator === 'Subtract'
+                        ? n - 1
+                        : n; // Divide: largest valid ratio is n/1 = n
+              const target = typedArgs?.target ?? defaultTarget;
               const newCage = {
                 polyomino: cells.map(({ row, column }) => ({ row, column })),
                 operation: { operator, target },
@@ -201,9 +230,7 @@ export async function interceptInvokeCommand(
       const orig = tauri.core.invoke;
       tauri.core.invoke = (cmd, args) => {
         if (cmd === commandName) {
-          (window as unknown as Record<string, unknown[]>)[arrayKey].push(
-            args,
-          );
+          (window as unknown as Record<string, unknown[]>)[arrayKey].push(args);
         }
         return orig(cmd, args);
       };

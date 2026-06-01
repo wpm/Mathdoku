@@ -7,12 +7,14 @@ use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::hash::Hash;
 
-use crate::Error::InfeasibleOperation;
-use crate::operation::Operation;
+use crate::Error::InfeasibleCage;
+use crate::mdd::MonotonicMDD;
+use crate::operation::{Operation, Operator};
 use crate::polyomino::Polyomino;
 use crate::{Cell, Error, operators_for};
 
 /// A polyomino with an [`Operation`] constraining its cell values.
+#[must_use]
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Cage {
     polyomino: Polyomino,
@@ -23,11 +25,11 @@ impl Cage {
     /// Creates a cage from a polyomino and an operation.
     ///
     /// # Errors
-    /// Returns [`InfeasibleOperation`] if the operator is not valid for the polyomino's
+    /// Returns [`InfeasibleCage`] if the operator is not valid for the polyomino's
     /// size.
     pub fn new(polyomino: Polyomino, operation: Operation) -> Result<Self, Error> {
         if !operators_for(&polyomino).contains(&operation.operator()) {
-            return Err(InfeasibleOperation(polyomino, operation));
+            return Err(InfeasibleCage(polyomino, operation));
         }
         Ok(Self {
             polyomino,
@@ -42,15 +44,32 @@ impl Cage {
     }
 
     /// Returns the operation (operator and target) for this cage.
-    #[must_use]
     pub fn operation(&self) -> Operation {
         self.operation.clone()
     }
 
     /// Returns a reference to the polyomino for this cage.
-    #[must_use]
     pub const fn polyomino(&self) -> &Polyomino {
         &self.polyomino
+    }
+
+    /// Builds the [`MonotonicMDD`] for this cage over the domain `1..=n`.
+    ///
+    /// Returns `None` for operators that are not monotonic (Given, Subtract, Divide);
+    /// those cages require brute-force tuple enumeration instead.
+    #[must_use]
+    #[allow(clippy::cast_possible_truncation)]
+    pub fn mdd(&self, n: usize) -> Option<MonotonicMDD> {
+        use crate::mdd::{Constraint, MonotonicConstraint};
+        let op = self.operation();
+        let arity = self.cells().len() as u32;
+        let target = op.target as u32;
+        let constraint = match op.operator() {
+            Operator::Add => MonotonicConstraint::Sum(Constraint { target, arity }),
+            Operator::Multiply => MonotonicConstraint::Product(Constraint { target, arity }),
+            _ => return None,
+        };
+        Some(MonotonicMDD::new(n as u32, constraint))
     }
 }
 
@@ -98,7 +117,7 @@ mod tests {
         // Divide is only valid for exactly two cells.
         assert!(matches!(
             Cage::new(l_shape(), Operation::new(Operator::Divide, 2)),
-            Err(InfeasibleOperation(_, _))
+            Err(InfeasibleCage(_, _))
         ));
     }
 
@@ -106,7 +125,7 @@ mod tests {
     fn subtract_non_pair_returns_infeasible() {
         assert!(matches!(
             Cage::new(l_shape(), Operation::new(Operator::Subtract, 1)),
-            Err(InfeasibleOperation(_, _))
+            Err(InfeasibleCage(_, _))
         ));
     }
 

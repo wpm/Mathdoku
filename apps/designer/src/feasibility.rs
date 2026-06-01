@@ -20,9 +20,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::collections::{BTreeSet, HashMap};
 use std::hash::{Hash, Hasher};
 
-use mathdoku::{
-    Cage, Cell, Error, Grid, Operation, Operator, Polyomino, Puzzle, Target, operators_for,
-};
+use mathdoku::{Cage, Cell, Error, Operation, Operator, Polyomino, Puzzle, Target, operators_for};
 
 /// Products above this ceiling are never offered as `Multiply` targets. No
 /// realistic cage in an `n ≤ 9` grid has a larger product, and the bound keeps
@@ -41,10 +39,7 @@ pub fn is_globally_feasible(puzzle: &Puzzle, candidate: &Cage) -> bool {
     let Ok(extended) = puzzle.insert_cage(candidate.clone()) else {
         return false;
     };
-    let Ok(initial) = Grid::new(puzzle.n()).and_then(|g| g.constrain(&extended)) else {
-        return false;
-    };
-    matches!(initial.solutions(&extended).next(), Some(Ok(_)))
+    matches!(extended.grid().solutions(&extended).next(), Some(Ok(_)))
 }
 
 /// Enumerates all globally-feasible `(operator, target)` pairs for `polyomino`

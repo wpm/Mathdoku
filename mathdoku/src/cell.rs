@@ -18,6 +18,7 @@ pub type Tuple = Vec<Value>;
 
 /// A cell in a Mathdoku grid, identified by 0-based row and column index values
 /// in row-major order.
+#[must_use]
 #[derive(Ord, Eq, PartialEq, PartialOrd, Debug, Copy, Clone, Hash, Serialize, Deserialize)]
 pub struct Cell {
     /// 0-based row index.
@@ -28,7 +29,6 @@ pub struct Cell {
 
 impl Cell {
     /// Creates a cell at the given `row` and `column`.
-    #[must_use]
     pub const fn new(row: usize, column: usize) -> Self {
         Self { row, column }
     }
@@ -57,6 +57,7 @@ impl Display for Cell {
 }
 
 /// The set of values in `1..=9` that a cell contains, stored as a bitmap.
+#[must_use]
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Default)]
 pub struct Values(u16);
 
@@ -78,7 +79,6 @@ impl Values {
 
     /// Returns the full set `{1, ..., n}`.
     #[allow(clippy::cast_possible_truncation)]
-    #[must_use]
     pub fn all(n: usize) -> Self {
         Self((1..=(n as Value)).fold(0u16, |acc, n| acc | (1u16 << u32::from(n))))
     }

@@ -21,12 +21,13 @@ struct GridWire {
 /// An `n×n` grid of cell values.
 ///
 /// Each cell has a [`Values`] set — the candidate values `1..=n` still
-/// consistent with the constraints applied so far. Use [`Grid::constrain`] to
-/// propagate a [`Puzzle`]'s cage constraints into the grid.
+/// consistent with the constraints applied so far. Use [`Puzzle::constrain_grid`]
+/// or [`Puzzle::grid`] to get a propagated grid from a [`Puzzle`].
 ///
 /// `values` is a flat `[Values; 81]` array stored inline (no heap allocation).
 /// Only the first `n*n` entries are used; the rest are `Values::default()`.
 /// Cloning a `Grid` is a plain stack copy — no allocator involvement.
+#[must_use]
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct Grid {
     n: usize,
@@ -117,33 +118,11 @@ impl Grid {
     /// # Errors
     /// Returns [`InvalidGridSize`] if `puzzle.n() != self.n`, or an error
     /// if any cell is out of bounds during propagation.
-    pub fn constrain(&self, puzzle: &Puzzle) -> Result<Self, Error> {
+    pub(crate) fn constrain(&self, puzzle: &Puzzle) -> Result<Self, Error> {
         if puzzle.n() != self.n {
             return Err(InvalidGridSize(puzzle.n()));
         }
         crate::grid_csp::grid_fixpoint(self, puzzle)
-    }
-
-    /// Returns a new grid with the values of `cells` reset to `{1..=n}` and
-    /// all constraints re-propagated.
-    ///
-    /// This is the inverse of narrowing: use it when a constraint that was
-    /// previously narrowing those cells is removed and their values may have
-    /// widened beyond what the remaining constraints require.
-    ///
-    /// # Errors
-    /// Returns [`InvalidGridSize`] if `puzzle.n() != self.n`, or an error
-    /// if any cell is out of bounds or propagation fails.
-    pub fn loosen(&self, cells: &[Cell], puzzle: &Puzzle) -> Result<Self, Error> {
-        if puzzle.n() != self.n {
-            return Err(InvalidGridSize(puzzle.n()));
-        }
-        let mut values = self.values;
-        let full = Values::all(self.n);
-        for &cell in cells {
-            values[self.index(cell)?] = full;
-        }
-        Self { n: self.n, values }.constrain(puzzle)
     }
 
     /// Returns an iterator over all solutions for this grid under `puzzle`'s constraints.
@@ -181,30 +160,73 @@ impl Grid {
     /// # Errors
     /// Returns [`Error::InvalidCage`] if `cage` is not present in `puzzle`.
     pub fn cage_tuples(&self, puzzle: &Puzzle, cage: &Cage) -> Result<Vec<Tuple>, Error> {
+        use crate::operation::Operator;
         if !puzzle.cages().any(|c| c == cage) {
             return Err(Error::InvalidCage(cage.clone()));
         }
         let cells = cage.cells();
-        let mdd = puzzle.mdd(cage);
-        Ok(mdd
-            .into_iter()
-            .flat_map(super::mdd::MonotonicMDD::tuples)
-            .filter(|tuple| {
-                // Filter by current cell values.
-                let fits_domain = tuple
-                    .iter()
-                    .zip(&cells)
-                    .all(|(&v, &cell)| self.cell_values(cell).is_ok_and(|d| d.contains(v)));
-                // Filter by collinearity: values must differ within any shared row or column.
-                let collinear_ok = (0..cells.len()).all(|i| {
-                    (0..i).all(|j| {
-                        (cells[i].row != cells[j].row && cells[i].column != cells[j].column)
-                            || tuple[i] != tuple[j]
-                    })
-                });
-                fits_domain && collinear_ok
-            })
-            .collect())
+        let n = puzzle.n();
+
+        // Predicate shared by both paths: tuple must fit current cell domains
+        // and respect all-different within collinear cells.
+        let valid = |tuple: &Tuple| {
+            let fits_domain = tuple
+                .iter()
+                .zip(&cells)
+                .all(|(&v, &cell)| self.cell_values(cell).is_ok_and(|d| d.contains(v)));
+            let collinear_ok = (0..cells.len()).all(|i| {
+                (0..i).all(|j| {
+                    (cells[i].row != cells[j].row && cells[i].column != cells[j].column)
+                        || tuple[i] != tuple[j]
+                })
+            });
+            fits_domain && collinear_ok
+        };
+
+        if let Some(mdd) = puzzle.mdd(cage) {
+            // Add / Multiply: iterate the MDD.
+            return Ok(mdd.tuples().into_iter().filter(|t| valid(t)).collect());
+        }
+
+        // Given / Subtract / Divide: enumerate all k-tuples over 1..=n.
+        let arity = cells.len();
+        let op = cage.operation();
+        let target = op.target;
+        let n_u8 = u8::try_from(n).unwrap_or(u8::MAX);
+        let mut result = Vec::new();
+        let mut tuple = vec![1u8; arity];
+        loop {
+            // Check the arithmetic constraint.
+            let satisfies = match op.operator() {
+                Operator::Given => arity == 1 && u64::from(tuple[0]) == target,
+                Operator::Subtract => {
+                    arity == 2 && u64::from(tuple[0]).abs_diff(u64::from(tuple[1])) == target
+                }
+                Operator::Divide => {
+                    arity == 2 && {
+                        let (a, b) = (u64::from(tuple[0]), u64::from(tuple[1]));
+                        a == b * target || b == a * target
+                    }
+                }
+                _ => false,
+            };
+            if satisfies && valid(&tuple) {
+                result.push(tuple.clone());
+            }
+            // Advance the odometer.
+            let mut pos = arity - 1;
+            loop {
+                tuple[pos] += 1;
+                if tuple[pos] <= n_u8 {
+                    break;
+                }
+                tuple[pos] = 1;
+                if pos == 0 {
+                    return Ok(result);
+                }
+                pos -= 1;
+            }
+        }
     }
 
     /// Returns a new grid with the cells of `cage` set to the values in the
@@ -233,7 +255,7 @@ impl Grid {
         let tuple = tuples
             .get(index)
             .ok_or(Error::InvalidTupleIndex(index, tuples.len()))?;
-        let mut grid = self.clone();
+        let mut grid = *self;
         for (cell, &value) in cage.cells().iter().zip(tuple) {
             grid = grid.set_cell_value(*cell, value)?;
         }
@@ -531,15 +553,12 @@ mod tests {
 
     #[test]
     fn solutions_infeasible_yields_none() {
-        // A Given cage with value 5 is out of range for a 2×2 (valid values:
-        // 1..=2). `insert_cage` rejects such an infeasible cage, so we route it
-        // in through the deserialization seam — the way a corrupt save would —
-        // to confirm the solver still yields no solutions rather than panicking.
-        let cage = cage_at(&[(0, 0)], Given, 5);
-        let json = format!(r#"{{"n":2,"cages":[{}]}}"#, to_string(&cage).unwrap());
-        let puzzle: Puzzle = from_str(&json).unwrap();
-        let g = Grid::new(2).unwrap();
-        assert!(g.solutions(&puzzle).map(Result::unwrap).next().is_none());
+        // Two Given cages that force conflicting values in the same row: (0,0)=1
+        // and (0,1)=1 violate all-different. The second insert_cage detects this
+        // via propagation and returns Err, so no solutions are ever produced.
+        let p = Puzzle::new(2).unwrap();
+        let p = p.insert_cage(cage_at(&[(0, 0)], Given, 1)).unwrap();
+        assert!(p.insert_cage(cage_at(&[(0, 1)], Given, 1)).is_err());
     }
 
     #[test]

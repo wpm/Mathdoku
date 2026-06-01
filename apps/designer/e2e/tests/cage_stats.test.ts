@@ -25,9 +25,7 @@ test.describe('cage stats', () => {
     await expect(page.locator('.cage-stats')).toBeHidden();
   });
 
-  test('stats shown when active cell is in a cage', async ({
-    page,
-  }) => {
+  test('stats shown when active cell is in a cage', async ({ page }) => {
     await installTauriStubs(page, PUZZLE_3);
     await gotoApp(page);
     await waitForGrid(page);
