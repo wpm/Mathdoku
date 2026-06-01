@@ -484,6 +484,7 @@ impl Display for Node {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Tuple;
 
     // ---- MonotonicMDD display ----
 
@@ -774,8 +775,6 @@ mod tests {
     }
 
     // ---- helpers and fixtures ----
-
-    type Tuple = Vec<u8>;
 
     fn init_logging() {
         let _ = env_logger::builder()
