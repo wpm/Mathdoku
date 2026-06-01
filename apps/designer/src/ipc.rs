@@ -11,6 +11,7 @@
 #![allow(
     clippy::future_not_send,         // WASM async is inherently single-threaded
     clippy::missing_errors_doc,      // every wrapper's error is "the Tauri command failed"
+    clippy::unused_async,            // `web` bodies keep `async` to match the native signatures
     unused_results,                  // quit_app discards its fire-and-forget JsValue
 )]
 
@@ -52,6 +53,13 @@ impl core::fmt::Display for IpcError {
 
 // ---- argument shapes ----
 
+// The argument shapes below feed `raw_invoke`, so they exist only on the native
+// (non-`web`) path. The `web` build calls core directly and passes these values
+// as plain function arguments, so the ones used solely by migrated commands are
+// gated out to avoid dead code there. `PathArgs` and `TitleArgs` stay ungated:
+// they back the un-migrated save/load/title commands, which still use Tauri.
+
+#[cfg(not(feature = "web"))]
 #[derive(Serialize)]
 struct NewPuzzleArgs {
     n: usize,
@@ -62,11 +70,13 @@ struct PathArgs {
     path: String,
 }
 
+#[cfg(not(feature = "web"))]
 #[derive(Serialize)]
 struct ActiveArgs {
     active: Cell,
 }
 
+#[cfg(not(feature = "web"))]
 #[derive(Serialize)]
 struct InsertCageArgs {
     cells: Vec<Cell>,
@@ -76,6 +86,7 @@ struct InsertCageArgs {
     target: Option<Target>,
 }
 
+#[cfg(not(feature = "web"))]
 #[derive(Serialize)]
 struct RemoveCageAtArgs {
     polyomino: Polyomino,
@@ -121,6 +132,10 @@ async fn call_unit<A: Serialize>(cmd: &str, args: A) -> Result<(), IpcError> {
 }
 
 /// Invokes a no-argument command returning `Result<R, String>`.
+///
+/// Only `fix` / `unfix` used this, and both are migrated, so it is dead on the
+/// `web` path.
+#[cfg(not(feature = "web"))]
 async fn call_no_args<R: DeserializeOwned>(cmd: &str) -> Result<R, IpcError> {
     let result = raw_invoke(cmd, JsValue::NULL).await;
     if let Some(err) = command_error(&result) {
@@ -132,23 +147,58 @@ async fn call_no_args<R: DeserializeOwned>(cmd: &str) -> Result<R, IpcError> {
 // ---- command wrappers ----
 
 /// Returns the document state, falling back to the default on any IPC error.
+#[cfg(not(feature = "web"))]
 pub async fn get_doc_state() -> DocState {
     let result = raw_invoke("get_doc_state", JsValue::NULL).await;
     from_value(result).unwrap_or_default()
 }
 
+/// Returns the document state, falling back to the default on any IPC error.
+#[cfg(feature = "web")]
+// WASM-only: no Tauri command bus on web — read the thread-local AppState directly.
+pub async fn get_doc_state() -> DocState {
+    crate::web_state::with_state(mathdoku_designer_core::get_doc_state)
+}
+
 /// Returns the restored designer state, or `None` if no puzzle is loaded.
+#[cfg(not(feature = "web"))]
 pub async fn get_puzzle() -> Option<State> {
     let result = raw_invoke("get_puzzle", JsValue::NULL).await;
     from_value(result).unwrap_or(None)
 }
 
+/// Returns the restored designer state, or `None` if no puzzle is loaded.
+#[cfg(feature = "web")]
+// WASM-only: no Tauri command bus on web — read the thread-local AppState directly.
+pub async fn get_puzzle() -> Option<State> {
+    crate::web_state::with_state(mathdoku_designer_core::get_puzzle)
+}
+
+#[cfg(not(feature = "web"))]
 pub async fn new_latin_square(n: usize) -> Result<State, IpcError> {
     call("new_latin_square", NewPuzzleArgs { n }).await
 }
 
+#[cfg(feature = "web")]
+// WASM-only: no Tauri command bus on web — run core against thread-local state,
+// feeding it the web build's own RNG instead of the backend's.
+pub async fn new_latin_square(n: usize) -> Result<State, IpcError> {
+    crate::web_state::with_state_mut(|s| {
+        mathdoku_designer_core::new_latin_square(s, n, &mut rand::rng())
+    })
+    .map_err(|e| IpcError::Command(e.to_string()))
+}
+
+#[cfg(not(feature = "web"))]
 pub async fn new_empty(n: usize) -> Result<State, IpcError> {
     call("new_empty", NewPuzzleArgs { n }).await
+}
+
+#[cfg(feature = "web")]
+// WASM-only: no Tauri command bus on web — call core directly against thread-local state.
+pub async fn new_empty(n: usize) -> Result<State, IpcError> {
+    crate::web_state::with_state_mut(|s| mathdoku_designer_core::new_empty(s, n))
+        .map_err(|e| IpcError::Command(e.to_string()))
 }
 
 pub async fn save_puzzle(path: String) -> Result<SaveResult, IpcError> {
@@ -159,10 +209,19 @@ pub async fn load_puzzle(path: String) -> Result<State, IpcError> {
     call("load_puzzle", PathArgs { path }).await
 }
 
+#[cfg(not(feature = "web"))]
 pub async fn set_active_cell(active: Cell) -> Result<(), IpcError> {
     call_unit("set_active_cell", ActiveArgs { active }).await
 }
 
+#[cfg(feature = "web")]
+// WASM-only: no Tauri command bus on web — mutate the thread-local AppState directly.
+pub async fn set_active_cell(active: Cell) -> Result<(), IpcError> {
+    crate::web_state::with_state_mut(|s| mathdoku_designer_core::set_active_cell(s, active));
+    Ok(())
+}
+
+#[cfg(not(feature = "web"))]
 pub async fn insert_cage(
     cells: Vec<Cell>,
     operator: Operator,
@@ -179,19 +238,59 @@ pub async fn insert_cage(
     .await
 }
 
+#[cfg(feature = "web")]
+// WASM-only: no Tauri command bus on web — call core directly against thread-local state.
+pub async fn insert_cage(
+    cells: Vec<Cell>,
+    operator: Operator,
+    target: Option<Target>,
+) -> Result<State, IpcError> {
+    crate::web_state::with_state_mut(|s| {
+        mathdoku_designer_core::insert_cage(s, &cells, operator, target)
+    })
+    .map_err(|e| IpcError::Command(e.to_string()))
+}
+
+#[cfg(not(feature = "web"))]
 pub async fn remove_cage_at(polyomino: Polyomino) -> Result<State, IpcError> {
     call("remove_cage_at", RemoveCageAtArgs { polyomino }).await
 }
 
+#[cfg(feature = "web")]
+// WASM-only: no Tauri command bus on web — call core directly against thread-local state.
+pub async fn remove_cage_at(polyomino: Polyomino) -> Result<State, IpcError> {
+    crate::web_state::with_state_mut(|s| mathdoku_designer_core::remove_cage_at(s, &polyomino))
+        .map_err(|e| IpcError::Command(e.to_string()))
+}
+
 /// Snapshots the unique completion into the solution (Without-Solution →
 /// With-Solution). Errors if the puzzle does not have exactly one completion.
+#[cfg(not(feature = "web"))]
 pub async fn fix() -> Result<State, IpcError> {
     call_no_args("fix").await
 }
 
+/// Snapshots the unique completion into the solution (Without-Solution →
+/// With-Solution). Errors if the puzzle does not have exactly one completion.
+#[cfg(feature = "web")]
+// WASM-only: no Tauri command bus on web — call core directly against thread-local state.
+pub async fn fix() -> Result<State, IpcError> {
+    crate::web_state::with_state_mut(mathdoku_designer_core::fix)
+        .map_err(|e| IpcError::Command(e.to_string()))
+}
+
 /// Discards the solution (With-Solution → Without-Solution).
+#[cfg(not(feature = "web"))]
 pub async fn unfix() -> Result<State, IpcError> {
     call_no_args("unfix").await
+}
+
+/// Discards the solution (With-Solution → Without-Solution).
+#[cfg(feature = "web")]
+// WASM-only: no Tauri command bus on web — call core directly against thread-local state.
+pub async fn unfix() -> Result<State, IpcError> {
+    crate::web_state::with_state_mut(mathdoku_designer_core::unfix)
+        .map_err(|e| IpcError::Command(e.to_string()))
 }
 
 pub async fn set_window_title(title: String) -> Result<(), IpcError> {
