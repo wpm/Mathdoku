@@ -55,7 +55,6 @@ export async function installTauriStubs(
           ? {
               puzzle: p,
               solution: hasSolution ? { n: p.n } : null,
-              current: { n: p.n },
               active: { row: 0, column: 0 },
               provisional_cages: [],
             }

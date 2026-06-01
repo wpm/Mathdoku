@@ -80,8 +80,6 @@ pub struct State {
     /// in Without-Solution mode.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub solution: Option<Grid>,
-    /// Working grid: cell values constrained by the current cages.
-    pub current: Grid,
     /// The currently active cell.
     pub active: Cell,
     /// Provisional cages: disjoint from each other and from puzzle cages.
@@ -98,11 +96,9 @@ impl State {
     /// Returns an error if `n` is invalid for `Puzzle` or `Grid`.
     pub fn new(n: usize) -> Result<Self, String> {
         let puzzle = Puzzle::new(n).map_err(|e| e.to_string())?;
-        let current = Grid::new(n).map_err(|e| e.to_string())?;
         Ok(Self {
             puzzle,
             solution: None,
-            current,
             active: Cell::new(0, 0),
             provisional_cages: BTreeSet::new(),
         })
@@ -119,14 +115,23 @@ impl State {
     pub fn new_with_solution(n: usize) -> Result<Self, String> {
         let puzzle = Puzzle::new(n).map_err(|e| e.to_string())?;
         let solution = Grid::new(n).map_err(|e| e.to_string())?;
-        let current = solution;
         Ok(Self {
             puzzle,
             solution: Some(solution),
-            current,
             active: Cell::new(0, 0),
             provisional_cages: BTreeSet::new(),
         })
+    }
+
+    /// Returns the working grid: cages propagated onto `solution` in
+    /// With-Solution mode, or `puzzle.grid()` in Without-Solution mode.
+    ///
+    /// # Errors
+    /// Returns an error if constraint propagation fails.
+    pub fn current(&self) -> Result<Grid, mathdoku::Error> {
+        self.solution
+            .as_ref()
+            .map_or_else(|| Ok(self.puzzle.grid()), |s| self.puzzle.constrain_grid(s))
     }
 
     /// Switches from Without-Solution to With-Solution by snapshotting the
@@ -165,7 +170,7 @@ impl State {
 /// Mutable backend state owned by the host (native: `Mutex<AppState>`).
 ///
 /// All fields are `None` until a puzzle is created or loaded.
-/// `solution` and `current` are always kept in sync with `puzzle`
+/// `solution` is always kept in sync with `puzzle`
 /// by every function that mutates the puzzle.
 #[derive(Default)]
 pub struct AppState {
@@ -173,8 +178,6 @@ pub struct AppState {
     pub puzzle: Option<Puzzle>,
     /// Latin-square solution fixed at puzzle creation. Singleton values for every cell.
     pub solution: Option<Grid>,
-    /// Working grid: cell values constrained by the current cages against the solution.
-    pub current: Option<Grid>,
     /// Path of the currently open `.mathdoku` file, or `None` if unsaved.
     pub path: Option<String>,
     /// Whether the puzzle has unsaved changes.
@@ -187,16 +190,13 @@ pub struct AppState {
 impl AppState {
     /// Assembles a [`State`] from the current fields, or `None` if no puzzle is loaded.
     ///
-    /// A loaded puzzle requires both `puzzle` and `current`; `solution` is `None`
-    /// in Without-Solution mode and passes through unchanged.
+    /// `solution` is `None` in Without-Solution mode and passes through unchanged.
     /// `provisional_cages` is always empty — provisional state lives only in the frontend.
     fn to_designer_state(&self) -> Option<State> {
         let puzzle = self.puzzle.clone()?;
-        let current = self.current?;
         Some(State {
             puzzle,
             solution: self.solution,
-            current,
             active: self.active.unwrap_or_else(|| Cell::new(0, 0)),
             provisional_cages: BTreeSet::new(),
         })
@@ -217,31 +217,13 @@ pub struct SaveEnvelope {
     pub solution: Option<Grid>,
 }
 
-/// Computes the working `current` grid for `puzzle`.
-///
-/// In With-Solution mode the cages are re-applied to the fixed Latin square so
-/// its singleton values are preserved. In Without-Solution mode there is no
-/// solution to start from, so the cages are propagated from a fresh
-/// unconstrained grid.
-///
-/// # Errors
-/// Returns an error if constraint propagation fails or `puzzle.n()` is invalid.
-pub(crate) fn constrain_current(
-    solution: Option<&Grid>,
-    puzzle: &Puzzle,
-) -> Result<Grid, mathdoku::Error> {
-    solution.map_or_else(|| Ok(puzzle.grid()), |grid| puzzle.constrain_grid(grid))
-}
-
 // ---- puzzle-mutation command bodies ----
 
-/// Stores `new_puzzle` and its re-constrained grid into `state`, marks dirty,
+/// Stores `new_puzzle` into `state`, marks dirty,
 /// and returns the updated designer state. Shared tail of `insert_cage` and
 /// `remove_cage_at`.
 fn commit_puzzle(state: &mut AppState, new_puzzle: Puzzle) -> Result<State, Error> {
-    let new_current = constrain_current(state.solution.as_ref(), &new_puzzle)?;
     state.puzzle = Some(new_puzzle);
-    state.current = Some(new_current);
     state.dirty = true;
     state.to_designer_state().ok_or(Error::NoPuzzle)
 }
@@ -250,16 +232,14 @@ fn commit_puzzle(state: &mut AppState, new_puzzle: Puzzle) -> Result<State, Erro
 /// Latin-square solution.
 ///
 /// `solution` is `None`; the author chooses operator and target for each cage,
-/// filtered by global feasibility. `current` starts as an unconstrained grid.
+/// filtered by global feasibility.
 ///
 /// # Errors
 /// Returns an error if `n` is invalid.
 pub fn new_empty(state: &mut AppState, n: usize) -> Result<State, Error> {
     let puzzle = Puzzle::new(n)?;
-    let current = puzzle.grid();
     state.puzzle = Some(puzzle);
     state.solution = None;
-    state.current = Some(current);
     state.path = None;
     state.dirty = true;
     state.to_designer_state().ok_or(Error::NoPuzzle)
@@ -268,8 +248,8 @@ pub fn new_empty(state: &mut AppState, n: usize) -> Result<State, Error> {
 /// Creates a new puzzle whose solution is a random Latin square drawn from `rng`.
 ///
 /// `solution` holds the fixed Latin-square values (a single value per cell).
-/// `current` starts as the same Latin-square grid. Taking `rng` rather than
-/// calling `rand::rng()` internally gives tests a deterministic-seed knob.
+/// Taking `rng` rather than calling `rand::rng()` internally gives tests a
+/// deterministic-seed knob.
 ///
 /// # Errors
 /// Returns an error if `n` is invalid.
@@ -281,10 +261,8 @@ pub fn new_latin_square<R: Rng>(
     let puzzle = Puzzle::new(n)?;
     let latin = generate_latin_square(n, rng);
     let solution = Grid::from_latin_square(n, &latin)?;
-    let current = solution;
     state.puzzle = Some(puzzle);
     state.solution = Some(solution);
-    state.current = Some(current);
     state.path = None;
     state.dirty = true;
     state.to_designer_state().ok_or(Error::NoPuzzle)
@@ -425,28 +403,23 @@ pub fn serialize_save(state: &AppState) -> Result<String, Error> {
     to_string_pretty(&envelope).map_err(|e| Error::Serde(e.to_string()))
 }
 
-/// Parses a [`SaveEnvelope`] from `json`, version-checks it, recomputes the
-/// working grid via [`constrain_current`], and writes the result into `state`.
+/// Parses a [`SaveEnvelope`] from `json`, version-checks it, and writes the
+/// result into `state`.
 ///
-/// On success the puzzle, solution, and current grid are replaced, `dirty` is
-/// cleared, and `active` is reset to `None`. Returns the loaded designer
-/// [`State`]. The caller is responsible for recording the file path.
+/// On success the puzzle and solution are replaced, `dirty` is cleared, and
+/// `active` is reset to `None`. Returns the loaded designer [`State`]. The
+/// caller is responsible for recording the file path.
 ///
 /// # Errors
-/// Returns [`Error::Serde`] if the JSON is malformed, [`Error::UnsupportedVersion`]
-/// if the save version is not supported, or [`Error::Mathdoku`] if the working
-/// grid cannot be reconstructed.
+/// Returns [`Error::Serde`] if the JSON is malformed, or
+/// [`Error::UnsupportedVersion`] if the save version is not supported.
 pub fn apply_loaded(state: &mut AppState, json: &str) -> Result<State, Error> {
     let envelope: SaveEnvelope = from_str(json).map_err(|e| Error::Serde(e.to_string()))?;
     if envelope.version != SAVE_VERSION {
         return Err(Error::UnsupportedVersion(envelope.version));
     }
-    let puzzle = envelope.puzzle;
-    let solution = envelope.solution;
-    let current = constrain_current(solution.as_ref(), &puzzle)?;
-    state.puzzle = Some(puzzle);
-    state.solution = solution;
-    state.current = Some(current);
+    state.puzzle = Some(envelope.puzzle);
+    state.solution = envelope.solution;
     state.dirty = false;
     state.active = None;
     state.to_designer_state().ok_or(Error::NoPuzzle)
@@ -527,8 +500,7 @@ mod tests {
             let solution = known_3x3_solution();
             AppState {
                 puzzle: Some(Puzzle::new(3).unwrap()),
-                solution: Some(solution.clone()),
-                current: Some(solution),
+                solution: Some(solution),
                 ..AppState::default()
             }
         }
@@ -639,7 +611,6 @@ mod tests {
             let restored: State = from_str(&json).unwrap();
             assert!(restored.solution.is_none());
             assert_eq!(restored.puzzle, st.puzzle);
-            assert_eq!(restored.current, st.current);
             assert_eq!(restored.active, st.active);
             assert_eq!(restored.provisional_cages, st.provisional_cages);
         }
@@ -975,7 +946,7 @@ mod tests {
         use crate::{
             AppState, fix, insert_cage, new_empty, new_latin_square, remove_cage_at, unfix,
         };
-        use mathdoku::{Cell, Grid, Values};
+        use mathdoku::{Cell, Values};
         use rand::{SeedableRng, rngs::StdRng};
 
         #[test]
@@ -1004,12 +975,11 @@ mod tests {
         #[test]
         fn new_empty_establishes_invariants() {
             let mut state = AppState::default();
-            let _ = new_empty(&mut state, 4).unwrap();
+            let st = new_empty(&mut state, 4).unwrap();
             assert!(state.puzzle.is_some());
             assert!(state.solution.is_none());
-            assert!(state.current.is_some());
             // current is unconstrained: every cell holds the full value set.
-            let current = state.current.as_ref().unwrap();
+            let current = st.current().unwrap();
             for cell in all_cells(4) {
                 assert_eq!(current.cell_values(cell).unwrap(), Values::all(4));
             }
@@ -1022,11 +992,11 @@ mod tests {
         fn new_latin_square_establishes_invariants() {
             let mut state = AppState::default();
             let mut rng = StdRng::seed_from_u64(99);
-            let _ = new_latin_square(&mut state, 4, &mut rng).unwrap();
+            let st = new_latin_square(&mut state, 4, &mut rng).unwrap();
             assert!(state.puzzle.is_some());
             assert!(state.solution.is_some());
-            // current == solution initially.
-            assert_eq!(state.current, state.solution);
+            // current == solution initially (no cages, so constrain_grid is identity).
+            assert_eq!(st.current().unwrap(), state.solution.unwrap());
             assert!(state.path.is_none());
             assert!(state.dirty);
         }
@@ -1052,7 +1022,7 @@ mod tests {
             let expected = puzzle
                 .constrain_grid(state.solution.as_ref().unwrap())
                 .unwrap();
-            assert_eq!(state.current.as_ref().unwrap(), &expected);
+            assert_eq!(st.current().unwrap(), expected);
             assert!(state.dirty);
             assert!(st.solution.is_some());
         }
@@ -1062,11 +1032,11 @@ mod tests {
             let mut state = AppState::default();
             let _ = new_empty(&mut state, 4).unwrap();
             let region = cells(&[(0, 0), (0, 1)]);
-            let _ = insert_cage(&mut state, &region, mathdoku::Operator::Add, Some(3)).unwrap();
+            let st = insert_cage(&mut state, &region, mathdoku::Operator::Add, Some(3)).unwrap();
             let puzzle = state.puzzle.as_ref().unwrap();
             assert!(puzzle.cages().any(|c| c.cells() == region));
             let expected = puzzle.grid();
-            assert_eq!(state.current.as_ref().unwrap(), &expected);
+            assert_eq!(st.current().unwrap(), expected);
             assert!(state.dirty);
         }
 
@@ -1084,12 +1054,12 @@ mod tests {
             )
             .unwrap();
             let poly = mathdoku::Polyomino::from_cells(&region).unwrap();
-            let _ = remove_cage_at(&mut state, &poly).unwrap();
+            let st = remove_cage_at(&mut state, &poly).unwrap();
             let puzzle = state.puzzle.as_ref().unwrap();
             assert!(!puzzle.cages().any(|c| c.cells() == region));
             assert!(puzzle.cages().any(|c| c.cells() == cells(&[(1, 0)])));
             let expected = puzzle.grid();
-            assert_eq!(state.current.as_ref().unwrap(), &expected);
+            assert_eq!(st.current().unwrap(), expected);
             assert!(state.dirty);
         }
 
@@ -1097,11 +1067,9 @@ mod tests {
         fn fix_sets_solution_leaves_puzzle_and_current() {
             let mut state = unique_3x3_app_state();
             let puzzle_before = state.puzzle.clone();
-            let current_before = state.current.clone();
             let _ = fix(&mut state).unwrap();
             assert!(state.solution.is_some());
             assert_eq!(state.puzzle, puzzle_before);
-            assert_eq!(state.current, current_before);
             assert!(state.dirty);
             let sol = state.solution.as_ref().unwrap();
             assert_eq!(
@@ -1125,11 +1093,9 @@ mod tests {
             let mut rng = StdRng::seed_from_u64(5);
             let _ = new_latin_square(&mut state, 4, &mut rng).unwrap();
             let puzzle_before = state.puzzle.clone();
-            let current_before = state.current.clone();
             let _ = unfix(&mut state).unwrap();
             assert!(state.solution.is_none());
             assert_eq!(state.puzzle, puzzle_before);
-            assert_eq!(state.current, current_before);
             assert!(state.dirty);
         }
 
@@ -1139,7 +1105,6 @@ mod tests {
             use mathdoku::Puzzle;
             let source = AppState {
                 puzzle: Some(Puzzle::new(5).unwrap()),
-                current: Some(Grid::new(5).unwrap()),
                 ..AppState::default()
             };
             let json = serialize_save(&source).unwrap();
@@ -1338,7 +1303,7 @@ mod tests {
             AppState, SAVE_VERSION, apply_loaded, insert_cage, new_empty, new_latin_square,
             serialize_save,
         };
-        use mathdoku::{Cell, Grid, Operator, Puzzle};
+        use mathdoku::{Cell, Operator, Puzzle};
         use rand::{SeedableRng, rngs::StdRng};
 
         #[test]
@@ -1350,7 +1315,6 @@ mod tests {
         fn serialize_save_apply_loaded_round_trips() {
             let state = AppState {
                 puzzle: Some(Puzzle::new(5).unwrap()),
-                current: Some(Grid::new(5).unwrap()),
                 ..AppState::default()
             };
             let json = serialize_save(&state).unwrap();
@@ -1401,7 +1365,6 @@ mod tests {
             let loaded = save_round_trip(&source);
             assert_eq!(loaded.puzzle, source.puzzle);
             assert_eq!(loaded.solution, source.solution);
-            assert_eq!(loaded.current, source.current);
             assert_eq!(
                 serialize_save(&loaded).unwrap(),
                 serialize_save(&source).unwrap()
@@ -1416,7 +1379,6 @@ mod tests {
             let loaded = save_round_trip(&source);
             assert_eq!(loaded.puzzle, source.puzzle);
             assert_eq!(loaded.solution, source.solution);
-            assert_eq!(loaded.current, source.current);
             assert_eq!(
                 serialize_save(&loaded).unwrap(),
                 serialize_save(&source).unwrap()
@@ -1445,7 +1407,8 @@ mod tests {
             assert_eq!(designer.puzzle.cages().count(), 1);
             assert_eq!(
                 designer
-                    .current
+                    .current()
+                    .unwrap()
                     .cell_values(Cell::new(0, 0))
                     .unwrap()
                     .values(),
@@ -1531,7 +1494,7 @@ mod tests {
             AppState, apply_loaded, get_doc_state, get_puzzle, insert_cage, new_empty,
             serialize_save, set_active_cell,
         };
-        use mathdoku::{Cell, Grid, Operator, Puzzle};
+        use mathdoku::{Cell, Operator, Puzzle};
 
         #[test]
         fn get_doc_state_returns_current_values() {
@@ -1571,7 +1534,6 @@ mod tests {
         fn get_puzzle_some_after_apply_loaded() {
             let source = AppState {
                 puzzle: Some(Puzzle::new(3).unwrap()),
-                current: Some(Grid::new(3).unwrap()),
                 ..AppState::default()
             };
             let json = serialize_save(&source).unwrap();
@@ -1591,25 +1553,17 @@ mod tests {
         }
 
         #[test]
-        fn to_designer_state_none_until_puzzle_and_current() {
-            let only_puzzle = AppState {
+        fn to_designer_state_none_iff_no_puzzle() {
+            // Without a puzzle, to_designer_state returns None.
+            let no_puzzle = AppState::default();
+            assert!(no_puzzle.to_designer_state().is_none());
+
+            // With a puzzle (no solution), to_designer_state returns Some.
+            let with_puzzle = AppState {
                 puzzle: Some(Puzzle::new(4).unwrap()),
                 ..AppState::default()
             };
-            assert!(only_puzzle.to_designer_state().is_none());
-
-            let only_current = AppState {
-                current: Some(Grid::new(4).unwrap()),
-                ..AppState::default()
-            };
-            assert!(only_current.to_designer_state().is_none());
-
-            let both = AppState {
-                puzzle: Some(Puzzle::new(4).unwrap()),
-                current: Some(Grid::new(4).unwrap()),
-                ..AppState::default()
-            };
-            assert!(both.to_designer_state().is_some());
+            assert!(with_puzzle.to_designer_state().is_some());
         }
 
         #[test]
@@ -1641,7 +1595,13 @@ mod tests {
             let region = cells(&[(0, 0)]);
             let st = insert_cage(&mut state, &region, Operator::Given, Some(3)).unwrap();
             assert!(st.puzzle.cages().any(|c| c.cells() == region));
-            assert!(!st.current.cell_values(Cell::new(0, 0)).unwrap().is_empty());
+            assert!(
+                !st.current()
+                    .unwrap()
+                    .cell_values(Cell::new(0, 0))
+                    .unwrap()
+                    .is_empty()
+            );
         }
 
         #[test]
@@ -1656,7 +1616,13 @@ mod tests {
                 let st =
                     insert_cage(&mut state, &cells(&[(0, 0), (0, 1)]), op, Some(target)).unwrap();
                 assert_eq!(st.puzzle.cages().count(), 1);
-                assert!(!st.current.cell_values(Cell::new(0, 0)).unwrap().is_empty());
+                assert!(
+                    !st.current()
+                        .unwrap()
+                        .cell_values(Cell::new(0, 0))
+                        .unwrap()
+                        .is_empty()
+                );
             }
         }
 
@@ -1672,7 +1638,13 @@ mod tests {
                 let st =
                     insert_cage(&mut state, &cells(&[(0, 0), (1, 0)]), op, Some(target)).unwrap();
                 assert_eq!(st.puzzle.cages().count(), 1);
-                assert!(!st.current.cell_values(Cell::new(0, 0)).unwrap().is_empty());
+                assert!(
+                    !st.current()
+                        .unwrap()
+                        .cell_values(Cell::new(0, 0))
+                        .unwrap()
+                        .is_empty()
+                );
             }
         }
 
@@ -1682,7 +1654,13 @@ mod tests {
                 let mut state = without_solution(4);
                 let region = cells(&[(0, 0), (0, 1), (0, 2)]);
                 let st = insert_cage(&mut state, &region, op, Some(target)).unwrap();
-                assert!(!st.current.cell_values(Cell::new(0, 0)).unwrap().is_empty());
+                assert!(
+                    !st.current()
+                        .unwrap()
+                        .cell_values(Cell::new(0, 0))
+                        .unwrap()
+                        .is_empty()
+                );
             }
         }
 
@@ -1691,7 +1669,13 @@ mod tests {
             let mut state = without_solution(4);
             let region = cells(&[(0, 0), (1, 0), (1, 1)]);
             let st = insert_cage(&mut state, &region, Operator::Add, Some(6)).unwrap();
-            assert!(!st.current.cell_values(Cell::new(0, 0)).unwrap().is_empty());
+            assert!(
+                !st.current()
+                    .unwrap()
+                    .cell_values(Cell::new(0, 0))
+                    .unwrap()
+                    .is_empty()
+            );
         }
 
         #[test]
@@ -1701,7 +1685,13 @@ mod tests {
             let region = cells(&[(0, 0), (0, 1), (0, 2), (1, 1)]);
             let st = insert_cage(&mut state, &region, Operator::Multiply, Some(24)).unwrap();
             assert!(st.puzzle.cages().any(|c| c.cells() == region));
-            assert!(!st.current.cell_values(Cell::new(0, 0)).unwrap().is_empty());
+            assert!(
+                !st.current()
+                    .unwrap()
+                    .cell_values(Cell::new(0, 0))
+                    .unwrap()
+                    .is_empty()
+            );
         }
 
         #[test]
@@ -1711,7 +1701,13 @@ mod tests {
             let region = cells(&[(0, 0), (0, 1), (1, 0), (1, 1)]);
             let st = insert_cage(&mut state, &region, Operator::Add, Some(10)).unwrap();
             assert!(st.puzzle.cages().any(|c| c.cells() == region));
-            assert!(!st.current.cell_values(Cell::new(0, 0)).unwrap().is_empty());
+            assert!(
+                !st.current()
+                    .unwrap()
+                    .cell_values(Cell::new(0, 0))
+                    .unwrap()
+                    .is_empty()
+            );
         }
 
         #[test]
@@ -1841,16 +1837,17 @@ mod tests {
             }
         }
 
-        // The core state invariant: `current` always equals the puzzle re-applied
+        // The core state invariant: `current()` always equals the puzzle re-applied
         // to either the fixed solution (With-Solution) or a fresh grid (Without).
         fn assert_consistent(state: &AppState) {
+            let designer = state.to_designer_state().unwrap();
+            let current = designer.current().unwrap();
             let puzzle = state.puzzle.as_ref().unwrap();
-            let current = state.current.as_ref().unwrap();
             let expected = state
                 .solution
                 .as_ref()
                 .map_or_else(|| puzzle.grid(), |sol| puzzle.constrain_grid(sol).unwrap());
-            assert_eq!(current, &expected);
+            assert_eq!(current, expected);
         }
 
         // `fix`/`unfix` are deliberately excluded from the consistency generator:
@@ -1910,7 +1907,6 @@ mod tests {
                 let _ = apply_loaded(&mut loaded, &json).unwrap();
                 prop_assert_eq!(&loaded.puzzle, &state.puzzle);
                 prop_assert_eq!(&loaded.solution, &state.solution);
-                prop_assert_eq!(&loaded.current, &state.current);
             }
 
             #[test]

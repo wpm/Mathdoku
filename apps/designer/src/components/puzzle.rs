@@ -78,7 +78,10 @@ pub fn Puzzle(
         }
     }
 
-    let partial_solution = PartialSolution::new(state.puzzle.clone(), state.current);
+    let partial_solution = PartialSolution::new(
+        state.puzzle.clone(),
+        state.current().unwrap_or_else(|_| state.puzzle.grid()),
+    );
 
     let grid_size = cell * n as f64;
     let total = 2.0f64.mul_add(MARGIN, grid_size);
