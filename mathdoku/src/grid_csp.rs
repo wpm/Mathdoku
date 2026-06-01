@@ -252,7 +252,7 @@ pub fn grid_fixpoint(grid: &Grid, puzzle: &Puzzle) -> Result<Grid, Error> {
         .cloned()
         .map(|cage| PuzzleConstraint::Cage(cage, Arc::clone(&puzzle)));
     let constraints: Vec<_> = rows.chain(cols).chain(cage_constraints).collect();
-    generalized_arc_consistency(*grid, &constraints)
+    generalized_arc_consistency(*grid, constraints)
 }
 
 /// An iterator over all solutions for a [`Grid`] under a [`Puzzle`]'s constraints.
