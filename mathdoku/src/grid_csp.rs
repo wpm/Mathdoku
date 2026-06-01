@@ -331,6 +331,101 @@ mod tests {
         );
     }
 
+    // --- propagate_cage: Subtract and Divide (Trie path) ---
+
+    #[test]
+    fn cage_propagate_subtract_prunes_impossible_values() {
+        // Subtract 1 in a 4×4: valid pairs are (1,2),(2,1),(2,3),(3,2),(3,4),(4,3).
+        // So both cells should retain {1,2,3,4} — all values appear in some valid tuple.
+        let g = Grid::new(4).unwrap();
+        let c = cage_fixture(&[(0, 0), (0, 1)], crate::Operator::Subtract, 1);
+        let (new_g, changed) = propagate_cage(&c, &puzzle_with(4, &c), &g).unwrap();
+        assert_eq!(
+            new_g.cell_values(Cell::new(0, 0)).unwrap(),
+            Values::new(&[1, 2, 3, 4]).unwrap()
+        );
+        assert_eq!(
+            new_g.cell_values(Cell::new(0, 1)).unwrap(),
+            Values::new(&[1, 2, 3, 4]).unwrap()
+        );
+        assert!(changed.is_empty());
+    }
+
+    #[test]
+    fn cage_propagate_subtract_respects_domain_constraints() {
+        // Subtract 1, pin pos0 to {4}: only (4,3) survives → pos1={3}.
+        let g = Grid::new(4)
+            .unwrap()
+            .set_values(Cell::new(0, 0), Values::new(&[4]).unwrap())
+            .unwrap();
+        let c = cage_fixture(&[(0, 0), (0, 1)], crate::Operator::Subtract, 1);
+        let (new_g, changed) = propagate_cage(&c, &puzzle_with(4, &c), &g).unwrap();
+        assert_eq!(
+            new_g.cell_values(Cell::new(0, 1)).unwrap(),
+            Values::new(&[3]).unwrap()
+        );
+        assert_eq!(changed, vec![Cell::new(0, 1)]);
+    }
+
+    #[test]
+    fn cage_propagate_subtract_infeasible_empties_values() {
+        // Subtract 1, both cells pinned to {1}: |1-1|=0 ≠ 1 → no valid tuple.
+        let g = grid_with_values(&[(&(0, 0), &[1]), (&(0, 1), &[1])]);
+        let c = cage_fixture(&[(0, 0), (0, 1)], crate::Operator::Subtract, 1);
+        let (new_g, _) = propagate_cage(&c, &puzzle_with(4, &c), &g).unwrap();
+        assert!(new_g.cell_values(Cell::new(0, 0)).unwrap().is_empty());
+        assert!(new_g.cell_values(Cell::new(0, 1)).unwrap().is_empty());
+    }
+
+    #[test]
+    fn cage_propagate_divide_prunes_impossible_values() {
+        // Divide 2 in a 4×4: valid pairs are (1,2),(2,1),(2,4),(4,2).
+        // pos0 can be {1,2,4}, pos1 can be {1,2,4} — value 3 is never in any valid tuple.
+        let g = Grid::new(4).unwrap();
+        let c = cage_fixture(&[(0, 0), (0, 1)], crate::Operator::Divide, 2);
+        let (new_g, _) = propagate_cage(&c, &puzzle_with(4, &c), &g).unwrap();
+        assert_eq!(
+            new_g.cell_values(Cell::new(0, 0)).unwrap(),
+            Values::new(&[1, 2, 4]).unwrap()
+        );
+        assert_eq!(
+            new_g.cell_values(Cell::new(0, 1)).unwrap(),
+            Values::new(&[1, 2, 4]).unwrap()
+        );
+    }
+
+    #[test]
+    fn cage_propagate_divide_respects_domain_constraints() {
+        // Divide 2, pin pos0 to {4}: only (4,2) survives → pos1={2}.
+        let g = Grid::new(4)
+            .unwrap()
+            .set_values(Cell::new(0, 0), Values::new(&[4]).unwrap())
+            .unwrap();
+        let c = cage_fixture(&[(0, 0), (0, 1)], crate::Operator::Divide, 2);
+        let (new_g, changed) = propagate_cage(&c, &puzzle_with(4, &c), &g).unwrap();
+        assert_eq!(
+            new_g.cell_values(Cell::new(0, 1)).unwrap(),
+            Values::new(&[2]).unwrap()
+        );
+        assert_eq!(changed, vec![Cell::new(0, 1)]);
+    }
+
+    #[test]
+    fn cage_propagate_multiply_prunes_impossible_values() {
+        // Multiply 6 in a 4×4: valid pairs are (2,3),(3,2). So both cells → {2,3}.
+        let g = Grid::new(4).unwrap();
+        let c = cage_fixture(&[(0, 0), (0, 1)], crate::Operator::Multiply, 6);
+        let (new_g, _) = propagate_cage(&c, &puzzle_with(4, &c), &g).unwrap();
+        assert_eq!(
+            new_g.cell_values(Cell::new(0, 0)).unwrap(),
+            Values::new(&[2, 3]).unwrap()
+        );
+        assert_eq!(
+            new_g.cell_values(Cell::new(0, 1)).unwrap(),
+            Values::new(&[2, 3]).unwrap()
+        );
+    }
+
     // --- new_valid_cell / new_out_of_bounds (formerly PuzzleCell tests) ---
 
     #[test]

@@ -119,6 +119,7 @@ impl PartialOrd for Cage {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cage_fill::CageFill as _;
     use crate::test_utils::{col_pair, l_shape, pair, singleton};
     use crate::{Operator, Target};
 
@@ -205,6 +206,65 @@ mod tests {
         let json = serde_json::to_string(&original).unwrap();
         let restored: Cage = serde_json::from_str(&json).unwrap();
         assert_eq!(original, restored);
+    }
+
+    // --- Cage::build_fill / fill ---
+
+    #[test]
+    fn fill_is_none_before_build_fill() {
+        let c = cage(pair(), Operator::Add, 3);
+        assert!(c.fill().is_none());
+    }
+
+    #[test]
+    fn build_fill_add_returns_non_empty_fill() {
+        let mut c = cage(pair(), Operator::Add, 3);
+        assert!(!c.build_fill(4).is_empty());
+    }
+
+    #[test]
+    fn build_fill_subtract_returns_non_empty_fill() {
+        let mut c = cage(pair(), Operator::Subtract, 1);
+        assert!(!c.build_fill(4).is_empty());
+    }
+
+    #[test]
+    fn build_fill_divide_returns_non_empty_fill() {
+        let mut c = cage(pair(), Operator::Divide, 2);
+        assert!(!c.build_fill(4).is_empty());
+    }
+
+    #[test]
+    fn build_fill_multiply_returns_non_empty_fill() {
+        let mut c = cage(pair(), Operator::Multiply, 6);
+        assert!(!c.build_fill(4).is_empty());
+    }
+
+    #[test]
+    fn build_fill_given_returns_non_empty_fill() {
+        let mut c = cage(singleton(), Operator::Given, 3);
+        assert!(!c.build_fill(4).is_empty());
+    }
+
+    #[test]
+    fn fill_is_some_after_build_fill() {
+        let mut c = cage(pair(), Operator::Add, 3);
+        let _ = c.build_fill(4);
+        assert!(c.fill().is_some());
+    }
+
+    #[test]
+    fn build_fill_infeasible_add_is_empty() {
+        // Sum 99 is impossible for any two cells in a 4×4.
+        let mut c = cage(pair(), Operator::Add, 99);
+        assert!(c.build_fill(4).is_empty());
+    }
+
+    #[test]
+    fn build_fill_infeasible_subtract_is_empty() {
+        // Difference 9 is impossible in a 4×4 (max is 3).
+        let mut c = cage(pair(), Operator::Subtract, 9);
+        assert!(c.build_fill(4).is_empty());
     }
 
     #[test]

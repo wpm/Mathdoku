@@ -282,7 +282,7 @@ mod tests {
 
     use super::*;
     use crate::Cell;
-    use crate::operation::Operator::{Add, Given};
+    use crate::operation::Operator::{self, Add, Given};
     use crate::polyomino::Polyomino;
     use crate::test_utils::cage_at;
 
@@ -367,6 +367,72 @@ mod tests {
         let c2 = cage_at(&[(0, 1)], Given, 2);
         let p3 = p.insert_cage(c1).unwrap().insert_cage(c2).unwrap();
         assert_eq!(p3.cages().count(), 2);
+    }
+
+    #[test]
+    fn insert_cage_subtract_succeeds() {
+        let p = Puzzle::new(4).unwrap();
+        let cage = cage_at(&[(0, 0), (0, 1)], Operator::Subtract, 1);
+        assert!(p.insert_cage(cage).is_ok());
+    }
+
+    #[test]
+    fn insert_cage_divide_succeeds() {
+        let p = Puzzle::new(4).unwrap();
+        let cage = cage_at(&[(0, 0), (0, 1)], Operator::Divide, 2);
+        assert!(p.insert_cage(cage).is_ok());
+    }
+
+    #[test]
+    fn insert_cage_multiply_succeeds() {
+        let p = Puzzle::new(4).unwrap();
+        let cage = cage_at(&[(0, 0), (0, 1)], Operator::Multiply, 6);
+        assert!(p.insert_cage(cage).is_ok());
+    }
+
+    #[test]
+    fn insert_cage_subtract_infeasible_returns_err() {
+        // In a 4×4 the max difference is 3; target=9 is impossible.
+        let p = Puzzle::new(4).unwrap();
+        let cage = cage_at(&[(0, 0), (0, 1)], Operator::Subtract, 9);
+        assert!(matches!(p.insert_cage(cage), Err(InfeasibleCage(_, _))));
+    }
+
+    #[test]
+    fn insert_cage_divide_infeasible_returns_err() {
+        // In a 3×3, no pair of distinct values has ratio 9.
+        let p = Puzzle::new(3).unwrap();
+        let cage = cage_at(&[(0, 0), (0, 1)], Operator::Divide, 9);
+        assert!(matches!(p.insert_cage(cage), Err(InfeasibleCage(_, _))));
+    }
+
+    #[test]
+    fn insert_cage_subtract_propagates_constraints() {
+        // Subtract 3 in a 4×4: only (4,1) and (1,4) are valid.
+        // After insert, (0,0) and (0,1) should be pruned to {1,4}.
+        let p = Puzzle::new(4).unwrap();
+        let cage = cage_at(&[(0, 0), (0, 1)], Operator::Subtract, 3);
+        let p2 = p.insert_cage(cage).unwrap();
+        assert_eq!(
+            p2.grid().cell_values(Cell::new(0, 0)).unwrap(),
+            crate::Values::new(&[1, 4]).unwrap()
+        );
+        assert_eq!(
+            p2.grid().cell_values(Cell::new(0, 1)).unwrap(),
+            crate::Values::new(&[1, 4]).unwrap()
+        );
+    }
+
+    #[test]
+    fn insert_cage_divide_propagates_constraints() {
+        // Divide 3 in a 3×3: only (3,1) and (1,3) are valid.
+        let p = Puzzle::new(3).unwrap();
+        let cage = cage_at(&[(0, 0), (0, 1)], Operator::Divide, 3);
+        let p2 = p.insert_cage(cage).unwrap();
+        assert_eq!(
+            p2.grid().cell_values(Cell::new(0, 0)).unwrap(),
+            crate::Values::new(&[1, 3]).unwrap()
+        );
     }
 
     // --- Puzzle::remove_cage ---

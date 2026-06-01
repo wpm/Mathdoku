@@ -186,8 +186,23 @@ impl Trie {
     }
 
     /// Walks the trie collecting per-position support for the given domains.
-    fn walk(&self, node_idx: usize, depth: usize, values: &[Values], support: &mut Vec<Values>) {
+    ///
+    /// Support is accumulated only for complete paths (tuples that satisfy
+    /// every position's domain constraint), so a value at position `i` only
+    /// contributes to support if the rest of the tuple can also be satisfied.
+    fn walk(
+        &self,
+        node_idx: usize,
+        depth: usize,
+        values: &[Values],
+        path: &mut Vec<u8>,
+        support: &mut Vec<Values>,
+    ) {
         if depth == self.arity {
+            // Complete path — add all collected values to support.
+            for (i, &v) in path.iter().enumerate() {
+                support[i] = support[i] | Values::singleton(v);
+            }
             return;
         }
         let node = &self.nodes[node_idx];
@@ -199,8 +214,9 @@ impl Trie {
             if !values[depth].contains(v) {
                 continue;
             }
-            support[depth] = support[depth] | Values::singleton(v);
-            self.walk(child, depth + 1, values, support);
+            path.push(v);
+            self.walk(child, depth + 1, values, path, support);
+            let _ = path.pop();
         }
     }
 }
@@ -208,7 +224,13 @@ impl Trie {
 impl CageFill for Trie {
     fn support(&self, values: &[Values]) -> Vec<Values> {
         let mut support = vec![Values::default(); self.arity];
-        self.walk(0, 0, values, &mut support);
+        self.walk(
+            0,
+            0,
+            values,
+            &mut Vec::with_capacity(self.arity),
+            &mut support,
+        );
         support
     }
 
@@ -404,5 +426,42 @@ mod tests {
         }
         assert_eq!(trie_result[0], oracle[0]);
         assert_eq!(trie_result[1], oracle[1]);
+    }
+
+    #[test]
+    fn trie_divide_matches_brute_force() {
+        // Cross-check Trie::support against independent enumeration for n=4, target=2.
+        let n = 4u8;
+        let trie = Trie::new(u32::from(n), NonMonotonicOp::Divide, 2, 2);
+        let domains = [full_domain(n), full_domain(n)];
+        let trie_result = trie.support(&domains);
+
+        // Brute-force oracle.
+        let mut oracle = [Values::default(); 2];
+        for a in 1..=n {
+            for b in 1..=n {
+                let (va, vb) = (u64::from(a), u64::from(b));
+                if va == vb * 2 || vb == va * 2 {
+                    oracle[0] = oracle[0] | Values::singleton(a);
+                    oracle[1] = oracle[1] | Values::singleton(b);
+                }
+            }
+        }
+        assert_eq!(trie_result[0], oracle[0]);
+        assert_eq!(trie_result[1], oracle[1]);
+    }
+
+    #[test]
+    fn build_fill_multiply_returns_mdd() {
+        let fill = build_fill(4, Operator::Multiply, 6, 2);
+        assert!(matches!(fill, CageFillKind::Mdd(_)));
+        assert!(!fill.is_empty());
+    }
+
+    #[test]
+    fn build_fill_divide_returns_trie() {
+        let fill = build_fill(4, Operator::Divide, 2, 2);
+        assert!(matches!(fill, CageFillKind::Trie(_)));
+        assert!(!fill.is_empty());
     }
 }
