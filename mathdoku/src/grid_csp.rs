@@ -64,8 +64,8 @@ impl Constraint<Grid, Cell, Values, Error> for AllDifferent {
 /// The arithmetic constraint imposed on a portion of the [`Grid`] by a [`Cage`].
 #[derive(Clone)]
 pub(crate) struct CageConstraint {
-    cage: Cage,
-    puzzle: Arc<Puzzle>,
+    pub(crate) cage: Cage,
+    pub(crate) puzzle: Arc<Puzzle>,
 }
 
 impl Constraint<Grid, Cell, Values, Error> for CageConstraint {
@@ -101,25 +101,6 @@ impl Constraint<Grid, Cell, Values, Error> for PuzzleConstraint {
             Self::Cage(c) => c.in_scope(cell),
         }
     }
-}
-
-// ---- Constraint assembly ----
-
-/// Builds the full constraint list for `puzzle`: one [`AllDifferent`] per row and column,
-/// plus one cage constraint per cage. Called by [`Puzzle::constraints`].
-pub(crate) fn puzzle_constraints(puzzle: &Arc<Puzzle>) -> Vec<PuzzleConstraint> {
-    let n = puzzle.n();
-    let rows =
-        (0..n).map(|r| PuzzleConstraint::AllDifferent(AllDifferent::row(n, r, Arc::clone(puzzle))));
-    let cols = (0..n)
-        .map(|c| PuzzleConstraint::AllDifferent(AllDifferent::column(n, c, Arc::clone(puzzle))));
-    let cages = puzzle.cages().cloned().map(|cage| {
-        PuzzleConstraint::Cage(CageConstraint {
-            cage,
-            puzzle: Arc::clone(puzzle),
-        })
-    });
-    rows.chain(cols).chain(cages).collect()
 }
 
 // ---- Helpers ----

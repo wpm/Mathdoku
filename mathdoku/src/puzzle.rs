@@ -193,7 +193,20 @@ impl Puzzle {
     /// Builds the full constraint list: one `AllDifferent` per row and column,
     /// plus one cage constraint per cage.
     fn constraints(puzzle: &Arc<Self>) -> Vec<crate::grid_csp::PuzzleConstraint> {
-        crate::grid_csp::puzzle_constraints(puzzle)
+        use crate::grid_csp::{AllDifferent, CageConstraint, PuzzleConstraint};
+        let n = puzzle.n();
+        let rows = (0..n)
+            .map(|r| PuzzleConstraint::AllDifferent(AllDifferent::row(n, r, Arc::clone(puzzle))));
+        let cols = (0..n).map(|c| {
+            PuzzleConstraint::AllDifferent(AllDifferent::column(n, c, Arc::clone(puzzle)))
+        });
+        let cages = puzzle.cages().cloned().map(|cage| {
+            PuzzleConstraint::Cage(CageConstraint {
+                cage,
+                puzzle: Arc::clone(puzzle),
+            })
+        });
+        rows.chain(cols).chain(cages).collect()
     }
 
     /// Runs all row, column, and cage constraints to a GAC fixpoint on `grid`.
