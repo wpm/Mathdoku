@@ -227,35 +227,6 @@ fn brute_force_support(cage: &Cage, n: usize, values: &[Values]) -> Vec<Values> 
     support
 }
 
-/// Enforces GAC on all row, column, and cage constraints, returning the fixpoint state.
-///
-/// Builds the full constraint list — one [`AllDifferent`] per row and column, plus one
-/// [`Cage`] constraint per cage — then runs [`generalized_arc_consistency`] to a fixpoint.
-///
-/// # Errors
-/// Returns an error if any cell is out of bounds during propagation or the grid and puzzle
-/// are not the same size.
-pub fn grid_fixpoint(grid: &Grid, puzzle: &Puzzle) -> Result<Grid, Error> {
-    if grid.n() != puzzle.n() {
-        return Err(GridPuzzleMismatch(
-            Box::new(*grid),
-            Box::new(puzzle.clone()),
-        ));
-    }
-    let n = grid.n();
-    let puzzle: Arc<Puzzle> = Arc::new(puzzle.clone());
-    let rows = (0..n)
-        .map(|r| PuzzleConstraint::AllDifferent(AllDifferent::row(n, r, Arc::clone(&puzzle))));
-    let cols = (0..n)
-        .map(|c| PuzzleConstraint::AllDifferent(AllDifferent::column(n, c, Arc::clone(&puzzle))));
-    let cage_constraints = puzzle
-        .cages()
-        .cloned()
-        .map(|cage| PuzzleConstraint::Cage(cage, Arc::clone(&puzzle)));
-    let constraints: Vec<_> = rows.chain(cols).chain(cage_constraints).collect();
-    generalized_arc_consistency(*grid, constraints)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
