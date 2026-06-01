@@ -1,3 +1,4 @@
+#![allow(dead_code, unused_imports, unused_variables)]
 //! Wires [`Grid`] and [`Puzzle`] into the generic CSP framework from [`crate::csp`].
 //!
 //! The Mathdoku solving problem maps onto the CSP abstractions as follows:

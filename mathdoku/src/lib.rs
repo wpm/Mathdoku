@@ -57,6 +57,7 @@ mod operation;
 mod polyomino;
 mod puzzle;
 mod regin;
+mod solutions;
 #[cfg(test)]
 mod test_utils;
 

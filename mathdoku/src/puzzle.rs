@@ -3,6 +3,7 @@
 use std::collections::BTreeSet;
 use std::fmt::{Display, Formatter};
 use std::hash::{Hash, Hasher};
+use std::sync::Arc;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
@@ -191,9 +192,30 @@ impl Puzzle {
         grid.constrain(self)
     }
 
+    /// Runs all row, column, and cage constraints to a GAC fixpoint on `grid`.
+    ///
+    /// Assembles the constraint list via [`crate::grid_csp::puzzle_constraints`] and
+    /// delegates to [`crate::grid_csp::run_to_fixpoint`].
+    ///
+    /// # Errors
+    /// Returns an error if propagation fails (e.g. a cell is out of bounds).
+    pub(crate) fn fixpoint(&self, grid: &Grid) -> Result<Grid, Error> {
+        let puzzle = Arc::new(self.clone());
+        let constraints = crate::grid_csp::puzzle_constraints(&puzzle);
+        crate::grid_csp::run_to_fixpoint(*grid, &constraints)
+    }
+
+    /// Returns an iterator over all solutions for this puzzle.
+    ///
+    /// Uses the puzzle's propagated grid as the starting state. Each item is a
+    /// solved [`Grid`] where every cell's values are a singleton.
+    pub fn solutions(&self) -> impl Iterator<Item = Result<Grid, Error>> + '_ {
+        crate::solutions::Solutions::new(&self.grid, self)
+    }
+
     /// Propagate all constraints to a fixpoint and return the updated puzzle.
     fn constrain(&self) -> Result<Self, Error> {
-        let grid = crate::grid_csp::grid_fixpoint(&self.grid, self)?;
+        let grid = self.fixpoint(&self.grid)?;
         Ok(Self {
             grid,
             ..self.clone()
