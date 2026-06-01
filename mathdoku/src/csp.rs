@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Generic constraint satisfaction problem (CSP) abstractions.
 //!
 //! This module defines the core traits of a CSP — [`Variable`] and [`Constraint`] —
