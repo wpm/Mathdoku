@@ -20,7 +20,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::collections::{BTreeSet, HashMap};
 use std::hash::{Hash, Hasher};
 
-use mathdoku::{Cage, Cell, Error, Operation, Operator, Polyomino, Puzzle, Target, operators_for};
+use mathdoku::{Cage, Error, Operation, Operator, Polyomino, Puzzle, Target, operators_for};
 
 /// Products above this ceiling are never offered as `Multiply` targets. No
 /// realistic cage in an `n ≤ 9` grid has a larger product, and the bound keeps
@@ -130,8 +130,8 @@ fn reachable(
 // therefore the key, so there is no "forgot to bump the counter" staleness bug.
 // WASM is single-threaded, so a `thread_local` is sound and needs no locking.
 
-/// Cache key: a content hash of the committed cages, plus the candidate cage's cells.
-type CacheKey = (u64, Vec<Cell>);
+/// Cache key: a content hash of the committed cages, plus the candidate polyomino.
+type CacheKey = (u64, Polyomino);
 type FeasibleCache = HashMap<CacheKey, Vec<(Operator, Target)>>;
 
 thread_local! {
@@ -153,7 +153,7 @@ pub fn cached_feasible_op_targets(
     puzzle: &Puzzle,
     polyomino: &Polyomino,
 ) -> Result<Vec<(Operator, Target)>, Error> {
-    let key = (puzzle_key(puzzle), polyomino.cells());
+    let key = (puzzle_key(puzzle), polyomino.clone());
     if let Some(hit) = CACHE.with_borrow(|c| c.get(&key).cloned()) {
         return Ok(hit);
     }
