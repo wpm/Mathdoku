@@ -4,10 +4,9 @@ use serde::de::Error as DeError;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt::{Display, Formatter};
 
-use crate::Error::InvalidGridSize;
-use crate::cage::Cage;
 use crate::puzzle::Puzzle;
-use crate::{Cell, Error, Tuple, Value, Values};
+use crate::Error::InvalidGridSize;
+use crate::{Cell, Error, Value, Values};
 
 // Serde wire format: flat struct with an n×n `values` array of cell value sets.
 // `values` is optional on deserialization; absent means full value sets for all cells.
@@ -21,8 +20,8 @@ struct GridWire {
 /// An `n×n` grid of cell values.
 ///
 /// Each cell has a [`Values`] set — the candidate values `1..=n` still
-/// consistent with the constraints applied so far. Use [`Puzzle::constrain_grid`]
-/// or [`Puzzle::grid`] to get a propagated grid from a [`Puzzle`].
+/// consistent with the constraints applied so far. Use [`Puzzle::grid`]
+/// or [`Puzzle::constrain_grid`] to get a propagated grid from a [`Puzzle`].
 ///
 /// `values` is a flat `[Values; 81]` array stored inline (no heap allocation).
 /// Only the first `n*n` entries are used; the rest are `Values::default()`.
@@ -110,152 +109,11 @@ impl Grid {
     }
 
     /// Propagates all constraints from `puzzle` to a fixpoint.
-    ///
-    /// Runs Régin's GAC on every row and column (all-different) and every cage,
-    /// re-propagating any constraint adjacent to a cell whose values shrink, until
-    /// no further pruning is possible.
-    ///
-    /// # Errors
-    /// Returns [`InvalidGridSize`] if `puzzle.n() != self.n`, or an error
-    /// if any cell is out of bounds during propagation.
     pub(crate) fn constrain(&self, puzzle: &Puzzle) -> Result<Self, Error> {
         if puzzle.n() != self.n {
             return Err(InvalidGridSize(puzzle.n()));
         }
         puzzle.propagate_grid(self)
-    }
-
-    /// Returns an iterator over all solutions for this grid under `puzzle`'s constraints.
-    ///
-    /// Each item is a solved [`Grid`] where every cell's values are a singleton.
-    /// Uses MAC (Maintaining Arc Consistency): each branch is followed immediately by
-    /// constraint propagation before the next branch is chosen.
-    ///
-    /// The iterator yields [`Err`] and stops if a propagation error occurs. Well-formed
-    /// puzzle/grid pairs will never error.
-    ///
-    /// # Errors
-    /// Returns [`InvalidGridSize`] if `puzzle.n() != self.n`.
-    pub fn solutions<'a>(
-        &'a self,
-        puzzle: &'a Puzzle,
-    ) -> impl Iterator<Item = Result<Self, Error>> + 'a {
-        crate::solutions::Solutions::new(self, puzzle)
-    }
-
-    /// Returns `true` if every cell's values are a singleton.
-    #[must_use]
-    pub fn is_solution(&self) -> bool {
-        (0..self.n)
-            .flat_map(|r| (0..self.n).map(move |c| Cell::new(r, c)))
-            .all(|cell| self.cell_values(cell).is_ok_and(Values::is_singleton))
-    }
-
-    /// Returns all valid ordered value assignments for `cage` given the current cell values.
-    ///
-    /// Each tuple assigns one value from `1..=n` to each cell in the cage, in
-    /// the cage's cell order, filtered by the current values of each cell.
-    /// Tuples are in lexicographic order.
-    ///
-    /// # Errors
-    /// Returns [`Error::InvalidCage`] if `cage` is not present in `puzzle`.
-    pub fn cage_tuples(&self, puzzle: &Puzzle, cage: &Cage) -> Result<Vec<Tuple>, Error> {
-        use crate::operation::Operator;
-        if !puzzle.cages().any(|c| c == cage) {
-            return Err(Error::InvalidCage(cage.clone()));
-        }
-        let cells = cage.cells();
-        let n = puzzle.n();
-
-        // Predicate shared by both paths: tuple must fit current cell domains
-        // and respect all-different within collinear cells.
-        let valid = |tuple: &Tuple| {
-            let fits_domain = tuple
-                .iter()
-                .zip(&cells)
-                .all(|(&v, &cell)| self.cell_values(cell).is_ok_and(|d| d.contains(v)));
-            let collinear_ok = (0..cells.len()).all(|i| {
-                (0..i).all(|j| {
-                    (cells[i].row != cells[j].row && cells[i].column != cells[j].column)
-                        || tuple[i] != tuple[j]
-                })
-            });
-            fits_domain && collinear_ok
-        };
-
-        if let Some(crate::cage_fill::CageFillKind::Mdd(mdd)) = puzzle.fill(cage) {
-            // Add / Multiply: iterate the MDD (fast path).
-            return Ok(mdd.tuples().into_iter().filter(|t| valid(t)).collect());
-        }
-
-        // Given / Subtract / Divide: enumerate all k-tuples over 1..=n.
-        let arity = cells.len();
-        let op = cage.operation();
-        let target = op.target;
-        let n_u8 = u8::try_from(n).unwrap_or(u8::MAX);
-        let mut result = Vec::new();
-        let mut tuple = vec![1u8; arity];
-        loop {
-            // Check the arithmetic constraint.
-            let satisfies = match op.operator() {
-                Operator::Given => arity == 1 && u64::from(tuple[0]) == target,
-                Operator::Subtract => {
-                    arity == 2 && u64::from(tuple[0]).abs_diff(u64::from(tuple[1])) == target
-                }
-                Operator::Divide => {
-                    arity == 2 && {
-                        let (a, b) = (u64::from(tuple[0]), u64::from(tuple[1]));
-                        a == b * target || b == a * target
-                    }
-                }
-                _ => false,
-            };
-            if satisfies && valid(&tuple) {
-                result.push(tuple.clone());
-            }
-            // Advance the odometer.
-            let mut pos = arity - 1;
-            loop {
-                tuple[pos] += 1;
-                if tuple[pos] <= n_u8 {
-                    break;
-                }
-                tuple[pos] = 1;
-                if pos == 0 {
-                    return Ok(result);
-                }
-                pos -= 1;
-            }
-        }
-    }
-
-    /// Returns a new grid with the cells of `cage` set to the values in the
-    /// tuple at `index` (tuples in the same lexicographic order as [`cage_tuples`]),
-    /// then propagated to a new constraint fixpoint.
-    ///
-    /// [`cage_tuples`]: Self::cage_tuples
-    ///
-    /// # Errors
-    /// Returns [`Error::InvalidCage`] if `cage` is not present in `puzzle`, or
-    /// [`Error::InvalidTupleIndex`] if `index` is out of range.
-    pub fn set_cage_tuple(
-        &self,
-        puzzle: &Puzzle,
-        cage: &Cage,
-        index: usize,
-    ) -> Result<Self, Error> {
-        if !puzzle.cages().any(|c| c == cage) {
-            return Err(Error::InvalidCage(cage.clone()));
-        }
-        let tuples: Vec<_> = self.cage_tuples(puzzle, cage)?;
-        let tuple = tuples
-            .get(index)
-            .ok_or(Error::InvalidTupleIndex(index, tuples.len()))?;
-        let mut grid = *self;
-        for (cell, &value) in cage.cells().iter().zip(tuple) {
-            grid = grid.set_cell_value(*cell, value)?;
-        }
-        grid.constrain(puzzle)
     }
 
     pub(crate) const fn index(&self, cell: Cell) -> Result<usize, Error> {
@@ -323,13 +181,14 @@ impl Display for Grid {
 
 #[cfg(test)]
 mod tests {
-    use serde_json::{Value, from_str, json, to_string};
+    use serde_json::{from_str, json, to_string, Value};
 
     use super::*;
-    use crate::Target;
+    use crate::cage::Cage;
     use crate::operation::Operator;
     use crate::operation::Operator::{Add, Divide, Given};
     use crate::test_utils::cage_at;
+    use crate::Target;
 
     fn puzzle_with_cage(
         n: usize,
@@ -766,34 +625,40 @@ mod tests {
         }
     }
 
-    // --- Grid::cage_tuples ---
-
-    #[test]
-    fn cage_tuples_returns_valid_tuples() {
-        let cage = cage_at(&[(0, 0), (0, 1)], Add, 3);
-        let puzzle = Puzzle::new(4).unwrap().insert_cage(cage.clone()).unwrap();
-        let g = Grid::new(4).unwrap();
-        let tuples = g.cage_tuples(&puzzle, &cage).unwrap();
-        assert!(!tuples.is_empty());
-        for t in &tuples {
-            let sum: Target = t.iter().map(|&v| Target::from(v)).sum();
-            assert_eq!(sum, 3);
-        }
-    }
-
     #[test]
     fn display_shows_dimensions() {
         assert_eq!(Grid::new(4).unwrap().to_string(), "4×4 grid");
     }
 
-    #[test]
-    fn cage_tuples_invalid_cage_returns_err() {
-        let puzzle = Puzzle::new(4).unwrap();
-        let cage = cage_at(&[(0, 0)], Given, 1);
-        let g = Grid::new(4).unwrap();
-        assert!(matches!(
-            g.cage_tuples(&puzzle, &cage),
-            Err(Error::InvalidCage(_))
-        ));
+    impl Grid {
+        pub(crate) fn solutions<'a>(
+            &'a self,
+            puzzle: &'a Puzzle,
+        ) -> impl Iterator<Item = Result<Self, Error>> + 'a {
+            crate::solutions::Solutions::new(self, puzzle)
+        }
+
+        pub(crate) fn is_solution(&self) -> bool {
+            (0..self.n)
+                .flat_map(|r| (0..self.n).map(move |c| Cell::new(r, c)))
+                .all(|cell| self.cell_values(cell).is_ok_and(Values::is_singleton))
+        }
+
+        pub(crate) fn set_cage_tuple(
+            &self,
+            puzzle: &Puzzle,
+            cage: &Cage,
+            index: usize,
+        ) -> Result<Self, Error> {
+            let tuples = puzzle.cage_tuples(cage)?;
+            let tuple = tuples
+                .get(index)
+                .ok_or(Error::InvalidTupleIndex(index, tuples.len()))?;
+            let mut grid = *self;
+            for (cell, &value) in cage.cells().iter().zip(tuple) {
+                grid = grid.set_cell_value(*cell, value)?;
+            }
+            grid.constrain(puzzle)
+        }
     }
 }

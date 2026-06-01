@@ -15,13 +15,13 @@
 //!
 //! - **Generate** a random puzzle with [`generate()`].
 //! - **Construct** a puzzle programmatically with [`Puzzle::new`] and [`Puzzle::insert_cage`].
-//! - **Inspect** cell values with [`Grid::cell_values`].
-//! - **Solve** with [`Grid::solutions`].
+//! - **Inspect** cell values with [`Puzzle::cell_values`].
+//! - **Solve** with [`Puzzle::solutions`].
 //! - **Query valid operators** for a polyomino with [`operators_for`].
 //!
 //! ## Architecture
 //!
-//! Solving uses MAC (Maintaining Arc Consistency): [`Grid::solutions`] alternates between
+//! Solving uses MAC (Maintaining Arc Consistency): [`Puzzle::solutions`] alternates between
 //! branching on the most-constrained cell and propagating all constraints to a fixpoint.
 //! Two propagators run on each fixpoint step:
 //!
@@ -62,7 +62,6 @@ mod solutions;
 #[cfg(test)]
 mod test_utils;
 
-/// Experimental scratch module.
 pub use cage::Cage;
 pub use cell::{Cell, Target, Tuple, Value, Values};
 pub use error::Error;

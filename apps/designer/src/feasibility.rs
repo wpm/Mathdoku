@@ -39,7 +39,7 @@ pub fn is_globally_feasible(puzzle: &Puzzle, candidate: &Cage) -> bool {
     let Ok(extended) = puzzle.insert_cage(candidate.clone()) else {
         return false;
     };
-    matches!(extended.grid().solutions(&extended).next(), Some(Ok(_)))
+    matches!(extended.solutions().next(), Some(Ok(_)))
 }
 
 /// Enumerates all globally-feasible `(operator, target)` pairs for `polyomino`

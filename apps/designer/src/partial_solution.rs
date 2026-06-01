@@ -48,7 +48,7 @@ impl PartialSolution {
         if covered.len() < n * n {
             return None;
         }
-        Some(puzzle.grid().solutions(&puzzle).count())
+        Some(puzzle.solutions().count())
     }
 
     /// Returns the singleton solution value for `cell`, or `None` if not a singleton.
@@ -68,7 +68,7 @@ impl PartialSolution {
     pub fn viable_counts(&self, cage_idx: usize) -> Option<(usize, usize)> {
         let puzzle = self.lock_puzzle();
         let cage = puzzle.cages().nth(cage_idx)?;
-        let tuples = puzzle.grid().cage_tuples(&puzzle, cage).ok()?;
+        let tuples = puzzle.cage_tuples(cage).ok()?;
         drop(puzzle);
         let multisets: HashSet<Vec<u8>> = tuples
             .iter()

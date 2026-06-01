@@ -99,9 +99,90 @@ impl Puzzle {
         self.cages.get(cage)?.fill()
     }
 
-    /// Returns the current grid state for this puzzle.
-    pub const fn grid(&self) -> Grid {
+    /// Returns the propagated grid that reflects all cage and all-different constraints
+    /// applied so far. Each cell holds the set of values still consistent with all constraints.
+    pub fn grid(&self) -> Grid {
         self.grid
+    }
+
+    /// Returns the current values of `cell` in this puzzle's propagated grid.
+    ///
+    /// # Errors
+    /// Returns [`Error::InvalidCell`] if `cell` is outside the grid.
+    pub fn cell_values(&self, cell: crate::Cell) -> Result<Values, Error> {
+        self.grid.cell_values(cell)
+    }
+
+    /// Returns all valid ordered value assignments for `cage`.
+    ///
+    /// Each tuple assigns one value from `1..=n` to each cell in the cage, in
+    /// the cage's cell order, filtered by the current values of each cell.
+    /// Tuples are in lexicographic order.
+    ///
+    /// # Errors
+    /// Returns [`Error::InvalidCage`] if `cage` is not in this puzzle.
+    pub fn cage_tuples(&self, cage: &Cage) -> Result<Vec<crate::Tuple>, Error> {
+        use crate::operation::Operator;
+        if !self.cages().any(|c| c == cage) {
+            return Err(Error::InvalidCage(cage.clone()));
+        }
+        let cells = cage.cells();
+        let n = self.n();
+
+        let valid = |tuple: &crate::Tuple| {
+            let fits_domain = tuple
+                .iter()
+                .zip(&cells)
+                .all(|(&v, &cell)| self.grid.cell_values(cell).is_ok_and(|d| d.contains(v)));
+            let collinear_ok = (0..cells.len()).all(|i| {
+                (0..i).all(|j| {
+                    (cells[i].row != cells[j].row && cells[i].column != cells[j].column)
+                        || tuple[i] != tuple[j]
+                })
+            });
+            fits_domain && collinear_ok
+        };
+
+        if let Some(crate::cage_fill::CageFillKind::Mdd(mdd)) = self.fill(cage) {
+            return Ok(mdd.tuples().into_iter().filter(|t| valid(t)).collect());
+        }
+
+        let arity = cells.len();
+        let op = cage.operation();
+        let target = op.target;
+        let n_u8 = u8::try_from(n).unwrap_or(u8::MAX);
+        let mut result = Vec::new();
+        let mut tuple = vec![1u8; arity];
+        loop {
+            let satisfies = match op.operator() {
+                Operator::Given => arity == 1 && u64::from(tuple[0]) == target,
+                Operator::Subtract => {
+                    arity == 2 && u64::from(tuple[0]).abs_diff(u64::from(tuple[1])) == target
+                }
+                Operator::Divide => {
+                    arity == 2 && {
+                        let (a, b) = (u64::from(tuple[0]), u64::from(tuple[1]));
+                        a == b * target || b == a * target
+                    }
+                }
+                _ => false,
+            };
+            if satisfies && valid(&tuple) {
+                result.push(tuple.clone());
+            }
+            let mut pos = arity - 1;
+            loop {
+                tuple[pos] += 1;
+                if tuple[pos] <= n_u8 {
+                    break;
+                }
+                tuple[pos] = 1;
+                if pos == 0 {
+                    return Ok(result);
+                }
+                pos -= 1;
+            }
+        }
     }
 
     /// Returns a new puzzle with `cage` added and all constraints propagated
@@ -130,16 +211,16 @@ impl Puzzle {
             grid: self.grid,
             cages,
         };
-        let constrained = candidate.constrain()?;
+        let fixpoint_puzzle = candidate.fixpoint()?;
         if cage.cells().iter().any(|&cell| {
-            constrained
+            fixpoint_puzzle
                 .grid
                 .cell_values(cell)
                 .is_ok_and(Values::is_empty)
         }) {
             return Err(InfeasibleCage(cage.polyomino().clone(), cage.operation()));
         }
-        Ok(constrained)
+        Ok(fixpoint_puzzle)
     }
 
     /// Returns a new puzzle with `cage` removed and all constraints propagated
@@ -162,7 +243,7 @@ impl Puzzle {
             grid = grid.set_values(cell, Values::all(n))?;
         }
         let candidate = Self { grid, cages };
-        candidate.constrain()
+        candidate.fixpoint()
     }
 
     /// Returns the cage covering exactly the cells of `polyomino`, or `None`.
@@ -239,11 +320,6 @@ impl Puzzle {
             })
         });
         rows.chain(cols).chain(cages).collect()
-    }
-
-    /// Propagate all constraints to a fixpoint and return the updated puzzle.
-    fn constrain(&self) -> Result<Self, Error> {
-        self.fixpoint()
     }
 }
 
@@ -440,12 +516,12 @@ mod tests {
         let cage = cage_at(&[(0, 0), (0, 1)], Operator::Subtract, 3);
         let p2 = p.insert_cage(cage).unwrap();
         assert_eq!(
-            p2.grid().cell_values(Cell::new(0, 0)).unwrap(),
-            crate::Values::new(&[1, 4]).unwrap()
+            p2.cell_values(Cell::new(0, 0)).unwrap(),
+            Values::new(&[1, 4]).unwrap()
         );
         assert_eq!(
-            p2.grid().cell_values(Cell::new(0, 1)).unwrap(),
-            crate::Values::new(&[1, 4]).unwrap()
+            p2.cell_values(Cell::new(0, 1)).unwrap(),
+            Values::new(&[1, 4]).unwrap()
         );
     }
 
@@ -456,8 +532,8 @@ mod tests {
         let cage = cage_at(&[(0, 0), (0, 1)], Operator::Divide, 3);
         let p2 = p.insert_cage(cage).unwrap();
         assert_eq!(
-            p2.grid().cell_values(Cell::new(0, 0)).unwrap(),
-            crate::Values::new(&[1, 3]).unwrap()
+            p2.cell_values(Cell::new(0, 0)).unwrap(),
+            Values::new(&[1, 3]).unwrap()
         );
     }
 
@@ -551,5 +627,29 @@ mod tests {
         assert!(from_str::<Puzzle>(json).is_err());
         let json = r#"{"n":10,"cages":[]}"#;
         assert!(from_str::<Puzzle>(json).is_err());
+    }
+
+    // --- Puzzle::cage_tuples ---
+
+    #[test]
+    fn cage_tuples_returns_valid_tuples() {
+        let cage = cage_at(&[(0, 0), (0, 1)], Add, 3);
+        let puzzle = Puzzle::new(4).unwrap().insert_cage(cage.clone()).unwrap();
+        let tuples = puzzle.cage_tuples(&cage).unwrap();
+        assert!(!tuples.is_empty());
+        for t in &tuples {
+            let sum: crate::Target = t.iter().map(|&v| crate::Target::from(v)).sum();
+            assert_eq!(sum, 3);
+        }
+    }
+
+    #[test]
+    fn cage_tuples_invalid_cage_returns_err() {
+        let puzzle = Puzzle::new(4).unwrap();
+        let cage = cage_at(&[(0, 0)], Given, 1);
+        assert!(matches!(
+            puzzle.cage_tuples(&cage),
+            Err(Error::InvalidCage(_))
+        ));
     }
 }

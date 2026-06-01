@@ -11,7 +11,7 @@ use crate::{Cell, Error, Values};
 /// after each branch, [`Puzzle::fixpoint`] is called to prune as far as possible before
 /// the next branch.
 ///
-/// Obtained via [`Grid::solutions`] or [`Puzzle::solutions`].
+/// Obtained via [`Puzzle::solutions`].
 // Explicit `pub(crate)` marks the crate-internal API surface.
 #[must_use]
 #[allow(clippy::redundant_pub_crate)]

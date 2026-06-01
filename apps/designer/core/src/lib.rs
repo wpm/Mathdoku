@@ -124,7 +124,7 @@ impl State {
     }
 
     /// Returns the working grid: cages propagated onto `solution` in
-    /// With-Solution mode, or `puzzle.grid()` in Without-Solution mode.
+    /// With-Solution mode, or `puzzle.propagated_grid()` in Without-Solution mode.
     ///
     /// # Errors
     /// Returns an error if constraint propagation fails.
@@ -141,8 +141,7 @@ impl State {
     /// Returns [`Error::NotUnique`] if the puzzle does not have exactly one
     /// global completion, or [`Error::Mathdoku`] if propagation fails.
     pub fn fix(&mut self) -> Result<(), Error> {
-        let grid = self.puzzle.grid();
-        let mut solutions = grid.solutions(&self.puzzle);
+        let mut solutions = self.puzzle.solutions();
         let first = match solutions.next() {
             Some(Ok(g)) => g,
             Some(Err(e)) => return Err(e.into()),

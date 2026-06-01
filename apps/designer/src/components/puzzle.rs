@@ -60,13 +60,13 @@ pub fn Puzzle(
 
     // Propagate cage constraints from an unconstrained grid so each cell's
     // values show all candidates still possible given the cages, not just the solution.
-    let propagated = state.puzzle.grid();
+    let grid = state.puzzle.grid();
     let mut cell_values = vec![vec![vec![]; n]; n];
     let mut solution_values = vec![vec![None::<u8>; n]; n];
     for (r, row) in cell_values.iter_mut().enumerate() {
         for (c, slot) in row.iter_mut().enumerate() {
             let cell_ref = Cell::new(r, c);
-            if let Ok(vals) = propagated.cell_values(cell_ref) {
+            if let Ok(vals) = grid.cell_values(cell_ref) {
                 *slot = vals.values();
             }
             // Without-Solution mode has no solution values to overlay.
