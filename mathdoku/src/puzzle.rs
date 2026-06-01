@@ -1,21 +1,20 @@
 //! The [`Puzzle`] type: an `n×n` grid with cage constraints (no cell values).
 
-// `Cage` caches its MDD behind a `OnceLock`, giving it interior mutability, but
-// its `Ord`/`Eq`/`Hash` impls depend only on the polyomino and operation — never
-// the cache — so using it as a `BTreeSet` key is sound.
-#![allow(clippy::mutable_key_type)]
+use std::collections::{BTreeSet, HashMap};
+use std::fmt::{Display, Formatter};
+use std::hash::{Hash, Hasher};
+
+use serde::de::Error as DeError;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::Error::CageConflict;
 use crate::Error::InfeasibleOperation;
 use crate::Error::InvalidGridSize;
 use crate::cage::Cage;
+use crate::mdd::{MonotonicMDD, build_mdd};
 use crate::{Error, Polyomino};
-use serde::de::Error as DeError;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::collections::BTreeSet;
-use std::fmt::{Display, Formatter};
 
-// Serde wire format.
+// Serde wire format — only n and cages cross the wire; the MDD is rebuilt on load.
 #[derive(Serialize, Deserialize)]
 struct PuzzleWire {
     n: usize,
@@ -25,14 +24,35 @@ struct PuzzleWire {
 
 /// An `n×n` Mathdoku puzzle defined by its cage constraints.
 ///
-/// A `Puzzle` stores only the structural information — the grid size and the set
-/// of cages — without any cell value information. Cell values live in [`Grid`].
+/// A `Puzzle` stores the grid size, the set of cages, and a pre-built MDD for
+/// each cage. The MDD map participates in neither equality, ordering, hashing,
+/// nor serialization: two puzzles are equal when their `n` and `cages` match.
+/// The MDD is rebuilt from the cages on deserialization.
+///
+/// Cell values live in [`Grid`].
 ///
 /// [`Grid`]: crate::Grid
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone)]
 pub struct Puzzle {
     n: usize,
     cages: BTreeSet<Cage>,
+    /// Per-cage MDD, keyed by cage. Not serialized; rebuilt from `cages` on load.
+    mdd: HashMap<Cage, MonotonicMDD>,
+}
+
+impl PartialEq for Puzzle {
+    fn eq(&self, other: &Self) -> bool {
+        self.n == other.n && self.cages == other.cages
+    }
+}
+
+impl Eq for Puzzle {}
+
+impl Hash for Puzzle {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.n.hash(state);
+        self.cages.hash(state);
+    }
 }
 
 impl Puzzle {
@@ -47,6 +67,7 @@ impl Puzzle {
         Ok(Self {
             n,
             cages: BTreeSet::new(),
+            mdd: HashMap::new(),
         })
     }
 
@@ -61,6 +82,12 @@ impl Puzzle {
         self.cages.iter()
     }
 
+    /// Returns the MDD for `cage`, or `None` if `cage` is not in this puzzle.
+    #[must_use]
+    pub fn mdd(&self, cage: &Cage) -> Option<&MonotonicMDD> {
+        self.mdd.get(cage)
+    }
+
     /// Returns a new puzzle with `cage` added.
     ///
     /// Returns `Ok(self.clone())` if `cage` is already present. Does not
@@ -70,48 +97,53 @@ impl Puzzle {
     /// [`Grid::constrain`]: crate::Grid::constrain
     ///
     /// # Errors
-    /// Returns [`CageConflict`] if `cage`'s polyomino overlaps an
-    /// existing cage's polyomino (but not if the cage is already present).
-    /// Returns [`InfeasibleOperation`] if `cage`'s target is unreachable for
-    /// this grid size (its constraint admits no value assignment), which would
-    /// otherwise collapse the covered cells to empty domains.
+    /// Returns [`CageConflict`] if `cage`'s polyomino overlaps an existing cage's
+    /// polyomino (but not if the cage is already present).
+    /// Returns [`InfeasibleOperation`] if the cage's constraint admits no valid
+    /// assignment at this grid size, which would collapse its cells to empty domains.
     pub fn insert_cage(&self, cage: Cage) -> Result<Self, Error> {
-        // If the cage is already present, return a clone without error.
         if self.cages.contains(&cage) {
             return Ok(self.clone());
         }
         if self.intersects_cage(cage.polyomino()) {
             return Err(CageConflict(cage));
         }
-        // A cage whose constraint admits no satisfying tuple at this grid size
-        // is infeasible: committing it would silently prune its cells to empty
-        // domains. Building the MDD here also populates the cage's cache for the
-        // grid re-constrain that follows a successful insert.
-        if cage.mdd(self.n).tuples().next().is_none() {
-            return Err(InfeasibleOperation(
-                cage.polyomino().clone(),
-                cage.operation(),
-            ));
-        }
         let mut cages = self.cages.clone();
+        let mut mdd_map = self.mdd.clone();
+        if let Some(mdd) = build_mdd(self.n, &cage) {
+            if mdd.is_empty() {
+                return Err(InfeasibleOperation(
+                    cage.polyomino().clone(),
+                    cage.operation(),
+                ));
+            }
+            let _ = mdd_map.insert(cage.clone(), mdd);
+        }
         let _ = cages.insert(cage);
-        Ok(Self { n: self.n, cages })
+        Ok(Self {
+            n: self.n,
+            cages,
+            mdd: mdd_map,
+        })
     }
 
     /// Returns a new puzzle with `cage` removed.
     ///
-    /// Returns `self` unchanged if `cage` is not present. Does not re-propagate
-    /// constraints — call [`Grid::loosen`] separately to widen the affected cells.
-    ///
-    /// [`Grid::loosen`]: crate::Grid::loosen
+    /// Returns `self` unchanged if `cage` is not present.
     #[must_use]
     pub fn remove_cage(&self, cage: &Cage) -> Self {
         let mut cages = self.cages.clone();
+        let mut mdd_map = self.mdd.clone();
         let _ = cages.remove(cage);
-        Self { n: self.n, cages }
+        let _ = mdd_map.remove(cage);
+        Self {
+            n: self.n,
+            cages,
+            mdd: mdd_map,
+        }
     }
 
-    /// Returns the cage covering exactly the cells of `polyomino`, or `None` if no such cage exists.
+    /// Returns the cage covering exactly the cells of `polyomino`, or `None`.
     #[must_use]
     pub fn get_cage_at(&self, polyomino: &Polyomino) -> Option<&Cage> {
         self.cages.iter().find(|cage| cage.polyomino() == polyomino)
@@ -121,6 +153,14 @@ impl Puzzle {
         self.cages
             .iter()
             .any(|cage| cage.polyomino().intersects(polyomino))
+    }
+
+    /// Build the MDD map for a set of cages at grid size `n`.
+    fn build_mdd_map(n: usize, cages: &BTreeSet<Cage>) -> HashMap<Cage, MonotonicMDD> {
+        cages
+            .iter()
+            .filter_map(|cage| build_mdd(n, cage).map(|mdd| (cage.clone(), mdd)))
+            .collect()
     }
 }
 
@@ -141,9 +181,11 @@ impl<'de> Deserialize<'de> for Puzzle {
         if !(1..=9).contains(&n) {
             return Err(DeError::custom(format!("invalid grid size {n}")));
         }
+        let mdd = Self::build_mdd_map(n, &wire.cages);
         Ok(Self {
             n,
             cages: wire.cages,
+            mdd,
         })
     }
 }
@@ -165,20 +207,10 @@ mod tests {
     use serde_json::{from_str, to_string};
 
     use super::*;
-    use crate::cage::Cage;
+    use crate::Cell;
     use crate::operation::Operator::{Add, Given};
-    use crate::operation::{Operation, Operator};
     use crate::polyomino::Polyomino;
-    use crate::{Cell, Target};
-
-    fn cage_at(positions: &[(usize, usize)], operator: Operator, target: Target) -> Cage {
-        let cells: Vec<crate::Cell> = positions
-            .iter()
-            .map(|&(r, c)| crate::Cell::new(r, c))
-            .collect();
-        let poly = Polyomino::from_cells(&cells).unwrap();
-        Cage::new(poly, Operation::new(operator, target)).unwrap()
-    }
+    use crate::test_utils::cage_at;
 
     // --- Puzzle::new ---
 
@@ -248,13 +280,12 @@ mod tests {
 
     #[test]
     fn insert_cage_infeasible_target_returns_infeasible_operation() {
-        // On a 3×3 grid, two distinct cells in the same row cannot sum to 2
-        // (the smallest distinct pair is 1+2=3), so the cage admits no tuple.
+        // On a 3×3 grid, two cells cannot sum to 7 (max is 3+3=6).
         let p = Puzzle::new(3).unwrap();
-        let cage = cage_at(&[(0, 0), (0, 1)], Add, 2);
+        let cage = cage_at(&[(0, 0), (0, 1)], Add, 7);
         assert!(matches!(
             p.insert_cage(cage),
-            Err(Error::InfeasibleOperation(_, _))
+            Err(InfeasibleOperation(_, _))
         ));
     }
 

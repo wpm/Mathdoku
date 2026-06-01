@@ -20,8 +20,8 @@ use std::sync::Arc;
 
 use crate::Error::GridPuzzleMismatch;
 use crate::cage::Cage;
-use crate::grid::Grid;
 use crate::csp::{Constraint, Variable, generalized_arc_consistency};
+use crate::grid::Grid;
 use crate::puzzle::Puzzle;
 use crate::regin::regin_gac;
 use crate::{Cell, Error, Values};
@@ -35,7 +35,7 @@ use crate::{Cell, Error, Values};
 struct PuzzleCell {
     cell: Cell,
     n: usize,
-    cages: Arc<Vec<Cage>>,
+    puzzle: Arc<Puzzle>,
 }
 
 impl PuzzleCell {
@@ -43,12 +43,12 @@ impl PuzzleCell {
     ///
     /// # Errors
     /// Returns [`Error::InvalidCell`] if `cell` is outside the grid.
-    fn new(cell: Cell, grid: &Grid, cages: Arc<Vec<Cage>>) -> Result<Self, Error> {
+    fn new(cell: Cell, grid: &Grid, puzzle: Arc<Puzzle>) -> Result<Self, Error> {
         let _ = grid.cell_values(cell)?;
         Ok(Self {
             cell,
             n: grid.n(),
-            cages,
+            puzzle,
         })
     }
 }
@@ -60,23 +60,23 @@ impl PuzzleCell {
 #[derive(Clone)]
 struct AllDifferent {
     cells: Vec<Cell>,
-    cages: Arc<Vec<Cage>>,
+    puzzle: Arc<Puzzle>,
 }
 
 impl AllDifferent {
     /// Returns an `AllDifferent` constraint for row `row` of an `n×n` grid.
-    fn row(n: usize, row: usize, cages: Arc<Vec<Cage>>) -> Self {
+    fn row(n: usize, row: usize, puzzle: Arc<Puzzle>) -> Self {
         Self {
             cells: (0..n).map(|column| Cell::new(row, column)).collect(),
-            cages,
+            puzzle,
         }
     }
 
     /// Returns an `AllDifferent` constraint for column `column` of an `n×n` grid.
-    fn column(n: usize, column: usize, cages: Arc<Vec<Cage>>) -> Self {
+    fn column(n: usize, column: usize, puzzle: Arc<Puzzle>) -> Self {
         Self {
             cells: (0..n).map(|row| Cell::new(row, column)).collect(),
-            cages,
+            puzzle,
         }
     }
 }
@@ -86,23 +86,23 @@ impl AllDifferent {
 impl Variable<PuzzleConstraint> for PuzzleCell {
     fn constraints(&self) -> Vec<PuzzleConstraint> {
         let n = self.n;
-        let cages = Arc::clone(&self.cages);
+        let puzzle = Arc::clone(&self.puzzle);
         let all_different = [
-            |n, i, c: Arc<Vec<Cage>>| AllDifferent::row(n, i, c),
-            |n, i, c: Arc<Vec<Cage>>| AllDifferent::column(n, i, c),
+            |n, i, p: Arc<Puzzle>| AllDifferent::row(n, i, p),
+            |n, i, p: Arc<Puzzle>| AllDifferent::column(n, i, p),
         ]
         .iter()
         .flat_map(|f| {
-            let cages = Arc::clone(&cages);
-            (0..n).map(move |i| f(n, i, Arc::clone(&cages)))
+            let puzzle = Arc::clone(&puzzle);
+            (0..n).map(move |i| f(n, i, Arc::clone(&puzzle)))
         })
         .map(PuzzleConstraint::AllDifferent);
-        let cage_cages = Arc::clone(&self.cages);
+        let cage_puzzle = Arc::clone(&self.puzzle);
         let cage = self
-            .cages
-            .iter()
+            .puzzle
+            .cages()
             .filter(|c| c.cells().contains(&self.cell))
-            .map(move |c| PuzzleConstraint::Cage(c.clone(), Arc::clone(&cage_cages)));
+            .map(move |c| PuzzleConstraint::Cage(c.clone(), Arc::clone(&cage_puzzle)));
         all_different.chain(cage).collect()
     }
 }
@@ -111,7 +111,7 @@ impl Variable<PuzzleConstraint> for PuzzleCell {
 #[derive(Clone)]
 enum PuzzleConstraint {
     AllDifferent(AllDifferent),
-    Cage(Cage, Arc<Vec<Cage>>),
+    Cage(Cage, Arc<Puzzle>),
 }
 
 /// Dispatches propagation to the inner [`AllDifferent`] or [`Cage`] constraint.
@@ -119,7 +119,7 @@ impl Constraint<Grid, PuzzleCell, Error> for PuzzleConstraint {
     fn propagate(&self, state: &Grid) -> Result<(Grid, Vec<PuzzleCell>), Error> {
         match self {
             Self::AllDifferent(c) => c.propagate(state),
-            Self::Cage(c, cages) => propagate_cage(c, cages, state),
+            Self::Cage(c, puzzle) => propagate_cage(c, puzzle, state),
         }
     }
 }
@@ -128,7 +128,7 @@ impl Constraint<Grid, PuzzleCell, Error> for PuzzleConstraint {
 /// changed.
 fn apply_values(
     state: &Grid,
-    cages: &Arc<Vec<Cage>>,
+    puzzle: &Arc<Puzzle>,
     cells: &[Cell],
     old_values: &[Values],
     new_values: &[Values],
@@ -138,7 +138,7 @@ fn apply_values(
     for ((&cell, old), new) in cells.iter().zip(old_values).zip(new_values) {
         if new != old {
             new_state = new_state.set_values(cell, *new)?;
-            changed.push(PuzzleCell::new(cell, &new_state, Arc::clone(cages))?);
+            changed.push(PuzzleCell::new(cell, &new_state, Arc::clone(puzzle))?);
         }
     }
     Ok((new_state, changed))
@@ -153,15 +153,16 @@ impl Constraint<Grid, PuzzleCell, Error> for AllDifferent {
             .map(|&c| state.cell_values(c))
             .collect::<Result<_, _>>()?;
         let new_values = regin_gac(&old_values);
-        apply_values(state, &self.cages, cells, &old_values, &new_values)
+        apply_values(state, &self.puzzle, cells, &old_values, &new_values)
     }
 }
 
 /// Prunes cell values to those that appear in at least one valid tuple for this cage's arithmetic
-/// operation, computed as the GAC support of the cage's [`Mdd`](crate::Mdd).
+/// operation. Uses the MDD for Add/Multiply cages; falls back to brute-force enumeration for
+/// Given, Subtract, and Divide.
 fn propagate_cage(
     cage: &Cage,
-    cages: &Arc<Vec<Cage>>,
+    puzzle: &Arc<Puzzle>,
     state: &Grid,
 ) -> Result<(Grid, Vec<PuzzleCell>), Error> {
     let cells = cage.cells();
@@ -169,8 +170,61 @@ fn propagate_cage(
         .iter()
         .map(|&c| state.cell_values(c))
         .collect::<Result<_, _>>()?;
-    let new_values = cage.mdd(state.n()).support(&old_values);
-    apply_values(state, cages, &cells, &old_values, &new_values)
+    let new_values = puzzle.mdd(cage).map_or_else(
+        || brute_force_support(cage, puzzle.n(), &old_values),
+        |mdd| mdd.support(&old_values),
+    );
+    apply_values(state, puzzle, &cells, &old_values, &new_values)
+}
+
+/// Computes GAC support for non-monotonic cages (Given, Subtract, Divide) by enumerating
+/// all valid tuples over the domain `1..=n` and intersecting with the current cell values.
+fn brute_force_support(cage: &Cage, n: usize, values: &[Values]) -> Vec<Values> {
+    use crate::Target;
+    use crate::operation::Operator;
+
+    let cells = cage.cells();
+    let arity = cells.len();
+    let op = cage.operation();
+    let target = op.target;
+    let n_val = u8::try_from(n).unwrap_or(u8::MAX);
+    let mut support = vec![Values::default(); arity];
+
+    // Enumerate all arity-tuples over 1..=n via an odometer.
+    let mut tuple = vec![1u8; arity];
+    loop {
+        // Check arithmetic constraint.
+        let satisfies = match op.operator() {
+            Operator::Given => arity == 1 && Target::from(tuple[0]) == target,
+            Operator::Subtract => {
+                arity == 2 && Target::from(tuple[0]).abs_diff(Target::from(tuple[1])) == target
+            }
+            Operator::Divide => {
+                arity == 2 && {
+                    let (va, vb) = (Target::from(tuple[0]), Target::from(tuple[1]));
+                    va == vb * target || vb == va * target
+                }
+            }
+            // Monotonic operators handled by MDD; shouldn't reach here.
+            _ => false,
+        };
+        if satisfies && tuple.iter().zip(values).all(|(&v, d)| d.contains(v)) {
+            for (pos, &v) in tuple.iter().enumerate() {
+                support[pos] = support[pos] | Values::singleton(v);
+            }
+        }
+        // Advance odometer.
+        let mut pos = 0;
+        while pos < arity && tuple[pos] == n_val {
+            tuple[pos] = 1;
+            pos += 1;
+        }
+        if pos == arity {
+            break;
+        }
+        tuple[pos] += 1;
+    }
+    support
 }
 
 /// Enforces GAC on all row, column, and cage constraints, returning the fixpoint state.
@@ -189,15 +243,15 @@ pub fn grid_fixpoint(grid: &Grid, puzzle: &Puzzle) -> Result<Grid, Error> {
         ));
     }
     let n = grid.n();
-    let cages: Arc<Vec<_>> = Arc::new(puzzle.cages().cloned().collect());
-    let rows =
-        (0..n).map(|r| PuzzleConstraint::AllDifferent(AllDifferent::row(n, r, Arc::clone(&cages))));
+    let puzzle: Arc<Puzzle> = Arc::new(puzzle.clone());
+    let rows = (0..n)
+        .map(|r| PuzzleConstraint::AllDifferent(AllDifferent::row(n, r, Arc::clone(&puzzle))));
     let cols = (0..n)
-        .map(|c| PuzzleConstraint::AllDifferent(AllDifferent::column(n, c, Arc::clone(&cages))));
+        .map(|c| PuzzleConstraint::AllDifferent(AllDifferent::column(n, c, Arc::clone(&puzzle))));
     let cage_constraints = puzzle
         .cages()
         .cloned()
-        .map(|cage| PuzzleConstraint::Cage(cage, Arc::clone(&cages)));
+        .map(|cage| PuzzleConstraint::Cage(cage, Arc::clone(&puzzle)));
     let constraints: Vec<_> = rows.chain(cols).chain(cage_constraints).collect();
     generalized_arc_consistency(grid.clone(), &constraints)
 }
@@ -313,16 +367,16 @@ mod tests {
         grid_with_values(&[(&(0, 0), &[1, 2]), (&(0, 1), &[2]), (&(0, 2), &[1, 3])])
     }
 
-    fn empty_cages() -> Arc<Vec<Cage>> {
-        Arc::new(vec![])
+    fn empty_puzzle(n: usize) -> Arc<Puzzle> {
+        Arc::new(Puzzle::new(n).unwrap())
     }
 
     fn all_different_row(n: usize, row: usize) -> AllDifferent {
-        AllDifferent::row(n, row, empty_cages())
+        AllDifferent::row(n, row, empty_puzzle(n))
     }
 
     fn all_different_column(n: usize, col: usize) -> AllDifferent {
-        AllDifferent::column(n, col, empty_cages())
+        AllDifferent::column(n, col, empty_puzzle(n))
     }
 
     // --- PuzzleCell::new ---
@@ -330,14 +384,14 @@ mod tests {
     #[test]
     fn new_valid_cell_succeeds() {
         let g = Grid::new(3).unwrap();
-        assert!(PuzzleCell::new(Cell::new(2, 2), &g, empty_cages()).is_ok());
+        assert!(PuzzleCell::new(Cell::new(2, 2), &g, empty_puzzle(3)).is_ok());
     }
 
     #[test]
     fn new_out_of_bounds_returns_invalid_cell() {
         let g = Grid::new(3).unwrap();
         assert!(matches!(
-            PuzzleCell::new(Cell::new(3, 0), &g, empty_cages()),
+            PuzzleCell::new(Cell::new(3, 0), &g, empty_puzzle(3)),
             Err(Error::InvalidCell(_))
         ));
     }
@@ -424,13 +478,17 @@ mod tests {
         .unwrap()
     }
 
+    fn puzzle_with(n: usize, c: &Cage) -> Arc<Puzzle> {
+        Arc::new(Puzzle::new(n).unwrap().insert_cage(c.clone()).unwrap())
+    }
+
     #[test]
     fn cage_propagate_given_pins_cell() {
         // A Given cage at (0,0) with target 3 in a 4×4 grid:
         // (0,0) should be pruned to {3} regardless of its initial values.
         let g = Grid::new(4).unwrap();
         let c = cage(&[(0, 0)], crate::Operator::Given, 3);
-        let (new_g, changed) = propagate_cage(&c, &empty_cages(), &g).unwrap();
+        let (new_g, changed) = propagate_cage(&c, &puzzle_with(4, &c), &g).unwrap();
         assert_eq!(
             new_g.cell_values(Cell::new(0, 0)).unwrap(),
             Values::new(&[3]).unwrap()
@@ -444,7 +502,7 @@ mod tests {
         // Valid tuples: (1,2) and (2,1). So (0,0) and (0,1) are both pruned to {1,2}.
         let g = Grid::new(4).unwrap();
         let c = cage(&[(0, 0), (0, 1)], crate::Operator::Add, 3);
-        let (new_g, _) = propagate_cage(&c, &empty_cages(), &g).unwrap();
+        let (new_g, _) = propagate_cage(&c, &puzzle_with(4, &c), &g).unwrap();
         assert_eq!(
             new_g.cell_values(Cell::new(0, 0)).unwrap(),
             Values::new(&[1, 2]).unwrap()
@@ -461,7 +519,7 @@ mod tests {
         // No valid tuple exists, so both cells' values should become empty.
         let g = grid_with_values(&[(&(0, 0), &[4]), (&(0, 1), &[4])]);
         let c = cage(&[(0, 0), (0, 1)], crate::Operator::Add, 3);
-        let (new_g, changed) = propagate_cage(&c, &empty_cages(), &g).unwrap();
+        let (new_g, changed) = propagate_cage(&c, &puzzle_with(4, &c), &g).unwrap();
         assert!(new_g.cell_values(Cell::new(0, 0)).unwrap().is_empty());
         assert!(new_g.cell_values(Cell::new(0, 1)).unwrap().is_empty());
         assert_eq!(changed.len(), 2);
@@ -478,7 +536,7 @@ mod tests {
             .set_values(Cell::new(0, 1), Values::new(&[1, 2]).unwrap())
             .unwrap();
         let c = cage(&[(0, 0), (0, 1)], crate::Operator::Add, 5);
-        let (new_g, _) = propagate_cage(&c, &empty_cages(), &g).unwrap();
+        let (new_g, _) = propagate_cage(&c, &puzzle_with(4, &c), &g).unwrap();
         assert_eq!(
             new_g.cell_values(Cell::new(0, 0)).unwrap(),
             Values::new(&[3, 4]).unwrap()

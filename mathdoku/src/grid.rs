@@ -184,14 +184,25 @@ impl Grid {
         if !puzzle.cages().any(|c| c == cage) {
             return Err(Error::InvalidCage(cage.clone()));
         }
-        Ok(cage
-            .mdd(self.n)
-            .tuples()
+        let cells = cage.cells();
+        let mdd = puzzle.mdd(cage);
+        Ok(mdd
+            .into_iter()
+            .flat_map(super::mdd::MonotonicMDD::tuples)
             .filter(|tuple| {
-                tuple
+                // Filter by current cell values.
+                let fits_domain = tuple
                     .iter()
-                    .zip(cage.cells())
-                    .all(|(&v, cell)| self.cell_values(cell).is_ok_and(|d| d.contains(v)))
+                    .zip(&cells)
+                    .all(|(&v, &cell)| self.cell_values(cell).is_ok_and(|d| d.contains(v)));
+                // Filter by collinearity: values must differ within any shared row or column.
+                let collinear_ok = (0..cells.len()).all(|i| {
+                    (0..i).all(|j| {
+                        (cells[i].row != cells[j].row && cells[i].column != cells[j].column)
+                            || tuple[i] != tuple[j]
+                    })
+                });
+                fits_domain && collinear_ok
             })
             .collect())
     }
@@ -214,7 +225,11 @@ impl Grid {
         if !puzzle.cages().any(|c| c == cage) {
             return Err(Error::InvalidCage(cage.clone()));
         }
-        let tuples: Vec<_> = cage.mdd(self.n).tuples().collect();
+        let tuples: Vec<_> = puzzle
+            .mdd(cage)
+            .into_iter()
+            .flat_map(super::mdd::MonotonicMDD::tuples)
+            .collect();
         let tuple = tuples
             .get(index)
             .ok_or(Error::InvalidTupleIndex(index, tuples.len()))?;
@@ -294,16 +309,9 @@ mod tests {
 
     use super::*;
     use crate::Target;
-    use crate::cage::Cage;
+    use crate::operation::Operator;
     use crate::operation::Operator::{Add, Divide, Given};
-    use crate::operation::{Operation, Operator};
-    use crate::polyomino::Polyomino;
-
-    fn cage_at(positions: &[(usize, usize)], operator: Operator, target: Target) -> Cage {
-        let cells: Vec<Cell> = positions.iter().map(|&(r, c)| Cell::new(r, c)).collect();
-        let poly = Polyomino::from_cells(&cells).unwrap();
-        Cage::new(poly, Operation::new(operator, target)).unwrap()
-    }
+    use crate::test_utils::cage_at;
 
     fn puzzle_with_cage(
         n: usize,

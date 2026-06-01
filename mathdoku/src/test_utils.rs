@@ -2,8 +2,10 @@
 
 #![allow(clippy::missing_panics_doc)]
 
-use crate::Cell;
+use crate::cage::Cage;
+use crate::operation::Operation;
 use crate::polyomino::Polyomino;
+use crate::{Cell, Operator, Target};
 
 /// Builds [`Cell`]s from `(row, column)` pairs.
 pub fn cells(positions: &[(usize, usize)]) -> Vec<Cell> {
@@ -44,4 +46,10 @@ pub fn row3() -> Polyomino {
 
 pub fn l_shape() -> Polyomino {
     Polyomino::from_cells(&cells(&[(0, 0), (1, 0), (1, 1)])).unwrap()
+}
+
+/// Builds a [`Cage`] from `(row, column)` positions, an operator, and a target.
+pub fn cage_at(positions: &[(usize, usize)], operator: Operator, target: Target) -> Cage {
+    let poly = Polyomino::from_cells(&cells(positions)).unwrap();
+    Cage::new(poly, Operation::new(operator, target)).unwrap()
 }
