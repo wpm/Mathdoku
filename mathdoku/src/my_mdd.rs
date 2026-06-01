@@ -41,6 +41,34 @@ impl MonotonicMDD {
         mmd
     }
 
+    /// Recursively insert all edges reachable from `head`.
+    ///
+    /// Stops when the accumulated value reaches the constraint target or when
+    /// the node is at the last level (depth == arity).
+    fn subtree(&mut self, head: Node) {
+        if self.edges.contains_key(&head) {
+            return;
+        }
+        debug!("{self}");
+        let remaining = self.constraint.arity() - head.depth - 1;
+        for i in 1..=self.n {
+            if self.constraint.pruned(head.value, i, remaining) {
+                break;
+            }
+            if self.constraint.skipped(head.value, i, remaining, self.n) {
+                continue;
+            }
+            let tail = Node {
+                depth: head.depth + 1,
+                value: self.constraint.operation(head.value, i),
+            };
+            self.insert_edge(head, i, tail);
+            if !self.at_target(tail) && !self.at_arity(tail) {
+                self.subtree(tail);
+            }
+        }
+    }
+
     /// Return a copy of this MDD with `values` removed from support.
     ///
     /// `values` maps a variable index (0-based depth) to the set of domain values to
@@ -227,34 +255,6 @@ impl MonotonicMDD {
                         }
                     }
                 }
-            }
-        }
-    }
-
-    /// Recursively insert all edges reachable from `head`.
-    ///
-    /// Stops when the accumulated value reaches the constraint target or when
-    /// the node is at the last level (depth == arity).
-    fn subtree(&mut self, head: Node) {
-        if self.edges.contains_key(&head) {
-            return;
-        }
-        debug!("{self}");
-        let remaining = self.constraint.arity() - head.depth - 1;
-        for i in 1..=self.n {
-            if self.constraint.pruned(head.value, i, remaining) {
-                break;
-            }
-            if self.constraint.skipped(head.value, i, remaining, self.n) {
-                continue;
-            }
-            let tail = Node {
-                depth: head.depth + 1,
-                value: self.constraint.operation(head.value, i),
-            };
-            self.insert_edge(head, i, tail);
-            if !self.at_target(tail) && !self.at_arity(tail) {
-                self.subtree(tail);
             }
         }
     }
