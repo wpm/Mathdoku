@@ -138,6 +138,12 @@ thread_local! {
     static CACHE: RefCell<FeasibleCache> = RefCell::new(FeasibleCache::new());
 }
 
+/// Produces a compact cache key for `puzzle`.
+///
+/// `Puzzle` is too large to store as a `HashMap` key directly, and its
+/// `PartialEq` only covers `n` and `cages` while its `Hash` also covers the
+/// internal grid — making it unsuitable as a key type. A `u64` content hash
+/// is cheap to compute and small to store.
 fn puzzle_key(puzzle: &Puzzle) -> u64 {
     let mut hasher = DefaultHasher::new();
     puzzle.hash(&mut hasher);
