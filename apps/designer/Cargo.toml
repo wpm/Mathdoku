@@ -7,6 +7,15 @@ repository.workspace = true
 license.workspace = true
 publish = false
 
+# Default features are empty: the Tauri build is the implicit default, and the
+# in-browser preview backend (ADR-0002) is opt-in via `--features web`. The
+# feature stays namespaced to this frontend crate and never leaks into native
+# build graphs. Its one dependency edge — `rand`, used to seed the in-browser
+# `new_latin_square` — is gated behind `dep:rand`, so the default build never
+# pulls it in directly.
+[features]
+web = ["dep:rand"]
+
 [dependencies]
 mathdoku-designer-core = { path = "core" }
 leptos = { version = "0.8", features = ["csr"] }
@@ -22,6 +31,9 @@ mathdoku = { path = "../../mathdoku" }
 # `mathdoku`'s `rand` dep). Without this feature `getrandom` refuses to
 # compile on wasm32-unknown-unknown.
 getrandom = { version = "0.4", features = ["wasm_js"] }
+# Only the web backend seeds `new_latin_square` directly; the Tauri build does
+# it in the backend process. Gated behind the `web` feature via `dep:rand`.
+rand = { version = "0.10", optional = true }
 
 [lints]
 workspace = true
