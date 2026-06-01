@@ -195,14 +195,14 @@ impl Puzzle {
     /// Runs all row, column, and cage constraints to a GAC fixpoint on `grid`.
     ///
     /// Assembles the constraint list via [`crate::grid_csp::puzzle_constraints`] and
-    /// delegates to [`crate::grid_csp::run_to_fixpoint`].
+    /// runs [`crate::csp::generalized_arc_consistency`].
     ///
     /// # Errors
     /// Returns an error if propagation fails (e.g. a cell is out of bounds).
     pub(crate) fn fixpoint(&self, grid: &Grid) -> Result<Grid, Error> {
         let puzzle = Arc::new(self.clone());
         let constraints = crate::grid_csp::puzzle_constraints(&puzzle);
-        crate::grid_csp::run_to_fixpoint(*grid, &constraints)
+        crate::csp::generalized_arc_consistency(*grid, &constraints)
     }
 
     /// Returns an iterator over all solutions for this puzzle.

@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use crate::cage::Cage;
-use crate::csp::{Constraint, State, generalized_arc_consistency};
+use crate::csp::{Constraint, State};
 use crate::grid::Grid;
 use crate::puzzle::Puzzle;
 use crate::regin::regin_gac;
@@ -122,15 +122,6 @@ pub(crate) fn puzzle_constraints(puzzle: &Arc<Puzzle>) -> Vec<PuzzleConstraint> 
     rows.chain(cols).chain(cages).collect()
 }
 
-/// Runs `generalized_arc_consistency` over all puzzle constraints, returning the fixpoint grid.
-///
-/// Called by [`Puzzle::fixpoint`].
-///
-/// # Errors
-/// Returns an error if propagation fails.
-pub(crate) fn run_to_fixpoint(grid: Grid, constraints: &[PuzzleConstraint]) -> Result<Grid, Error> {
-    generalized_arc_consistency(grid, constraints)
-}
 
 // ---- Helpers ----
 
