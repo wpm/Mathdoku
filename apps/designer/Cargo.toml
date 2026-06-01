@@ -7,6 +7,15 @@ repository.workspace = true
 license.workspace = true
 publish = false
 
+[features]
+# WASM-everything web/preview build. With this feature the puzzle-state IPC
+# wrappers in `src/ipc.rs` run in-process against `mathdoku-designer-core`
+# (state parked in a thread-local — see `src/web_state.rs`) instead of crossing
+# the Tauri command bus, so the editor works on a plain browser preview with no
+# Tauri runtime. The Trunk build for previews passes `--features web`; the Tauri
+# build omits it and keeps going through `raw_invoke`.
+web = ["dep:rand"]
+
 [dependencies]
 mathdoku-designer-core = { path = "core" }
 leptos = { version = "0.8", features = ["csr"] }
@@ -22,6 +31,14 @@ mathdoku = { path = "../../mathdoku" }
 # `mathdoku`'s `rand` dep). Without this feature `getrandom` refuses to
 # compile on wasm32-unknown-unknown.
 getrandom = { version = "0.4", features = ["wasm_js"] }
+# Only the `web` build needs an RNG of its own: `new_latin_square` runs core
+# directly and feeds it `rand::rng()`. The Tauri build leaves RNG to the backend.
+rand = { version = "0.10.1", optional = true }
+
+[dev-dependencies]
+# Drives the `#[cfg(feature = "web")]` AppState-store tests in `src/web_state.rs`
+# under a wasm test runner.
+wasm-bindgen-test = "0.3"
 
 [lints]
 workspace = true

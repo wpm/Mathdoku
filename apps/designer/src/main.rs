@@ -7,6 +7,9 @@ pub mod ipc;
 pub mod keys;
 pub mod partial_solution;
 mod theme;
+// WASM-only in-process AppState store backing the `web` IPC bodies in `ipc`.
+#[cfg(feature = "web")]
+pub mod web_state;
 
 use app::App;
 use leptos::prelude::*;

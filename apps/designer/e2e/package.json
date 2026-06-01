@@ -6,8 +6,9 @@
     "tw:watch": "tailwindcss -i tailwind.css -o tailwind-out.css --watch",
     "lint": "eslint",
     "lint:fix": "eslint --fix",
-    "format": "prettier --write \"tests/**/*.ts\" playwright.config.ts",
-    "format:check": "prettier --check \"tests/**/*.ts\" playwright.config.ts"
+    "test:web": "playwright test --config playwright.web.config.ts",
+    "format": "prettier --write \"tests/**/*.ts\" \"tests-web/**/*.ts\" playwright.config.ts playwright.web.config.ts",
+    "format:check": "prettier --check \"tests/**/*.ts\" \"tests-web/**/*.ts\" playwright.config.ts playwright.web.config.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
