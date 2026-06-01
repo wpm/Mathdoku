@@ -14,11 +14,34 @@ use crate::polyomino::Polyomino;
 use crate::{Cell, Error, operators_for};
 
 /// A polyomino with an [`Operation`] constraining its cell values.
+///
+/// The `mdd` field caches the pre-built [`MonotonicMDD`] for Add/Multiply cages
+/// once the grid size `n` is known. It is skipped during serialization and
+/// deserialization; callers that need it must call [`Cage::build_mdd`] first.
 #[must_use]
-#[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Cage {
     polyomino: Polyomino,
     operation: Operation,
+    /// Pre-built MDD for Add/Multiply cages. Skipped by serde; does not
+    /// contribute to equality, ordering, or hashing.
+    #[serde(skip)]
+    mdd: Option<MonotonicMDD>,
+}
+
+impl PartialEq for Cage {
+    fn eq(&self, other: &Self) -> bool {
+        self.polyomino == other.polyomino && self.operation == other.operation
+    }
+}
+
+impl Eq for Cage {}
+
+impl Hash for Cage {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.polyomino.hash(state);
+        self.operation.hash(state);
+    }
 }
 
 impl Cage {
@@ -34,7 +57,35 @@ impl Cage {
         Ok(Self {
             polyomino,
             operation,
+            mdd: None,
         })
+    }
+
+    /// Populates the cached MDD for this cage given grid size `n`, and returns
+    /// a reference to it. Returns `None` for non-monotonic operators (Given,
+    /// Subtract, Divide), which use brute-force enumeration instead.
+    #[allow(clippy::cast_possible_truncation)]
+    pub fn build_mdd(&mut self, n: usize) -> Option<&MonotonicMDD> {
+        use crate::mdd::{Constraint, MonotonicConstraint};
+        let op = self.operation();
+        let arity = self.cells().len() as u32;
+        let target = op.target as u32;
+        let constraint = match op.operator() {
+            Operator::Add => MonotonicConstraint::Sum(Constraint { target, arity }),
+            Operator::Multiply => MonotonicConstraint::Product(Constraint { target, arity }),
+            _ => return None,
+        };
+        self.mdd = Some(MonotonicMDD::new(n as u32, constraint));
+        self.mdd.as_ref()
+    }
+
+    /// Returns the cached MDD, or `None` if [`build_mdd`] has not been called
+    /// or this cage uses a non-monotonic operator.
+    ///
+    /// [`build_mdd`]: Cage::build_mdd
+    #[must_use]
+    pub fn mdd(&self) -> Option<&MonotonicMDD> {
+        self.mdd.as_ref()
     }
 
     /// Returns the cells covered by this cage.
@@ -57,25 +108,6 @@ impl Cage {
     #[must_use]
     pub fn contains(&self, cell: Cell) -> bool {
         self.polyomino.contains(cell)
-    }
-
-    /// Builds the [`MonotonicMDD`] for this cage over the domain `1..=n`.
-    ///
-    /// Returns `None` for operators that are not monotonic (Given, Subtract, Divide);
-    /// those cages require brute-force tuple enumeration instead.
-    #[must_use]
-    #[allow(clippy::cast_possible_truncation)]
-    pub fn mdd(&self, n: usize) -> Option<MonotonicMDD> {
-        use crate::mdd::{Constraint, MonotonicConstraint};
-        let op = self.operation();
-        let arity = self.cells().len() as u32;
-        let target = op.target as u32;
-        let constraint = match op.operator() {
-            Operator::Add => MonotonicConstraint::Sum(Constraint { target, arity }),
-            Operator::Multiply => MonotonicConstraint::Product(Constraint { target, arity }),
-            _ => return None,
-        };
-        Some(MonotonicMDD::new(n as u32, constraint))
     }
 }
 

@@ -1,6 +1,6 @@
 //! The [`Puzzle`] type: an `n×n` grid with cage constraints (no cell values).
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::BTreeSet;
 use std::fmt::{Display, Formatter};
 use std::hash::{Hash, Hasher};
 
@@ -10,7 +10,6 @@ use crate::Error::CageConflict;
 use crate::Error::InfeasibleCage;
 use crate::Error::InvalidGridSize;
 use crate::cage::Cage;
-use crate::mdd::MonotonicMDD;
 use crate::{Error, Grid, Polyomino, Values};
 
 // Serde wire format. Two variants are accepted on deserialization:
@@ -40,10 +39,8 @@ enum PuzzleWireIn {
 
 /// An `n×n` Mathdoku puzzle defined by its cage constraints.
 ///
-/// A `Puzzle` stores the grid size, the set of cages, and a pre-built MDD for
-/// each cage. The MDD map participates in neither equality, ordering, hashing,
-/// nor serialization: two puzzles are equal when their `n` and `cages` match.
-/// The MDD is rebuilt from the cages on deserialization.
+/// Each [`Cage`] carries its own pre-built MDD (skipped by serde). Two puzzles
+/// are equal when their `n` and `cages` match.
 ///
 /// Cell values live in [`Grid`].
 #[must_use]
@@ -51,8 +48,6 @@ enum PuzzleWireIn {
 pub struct Puzzle {
     grid: Grid,
     cages: BTreeSet<Cage>,
-    /// Per-cage MDD, keyed by cage. Not serialized; rebuilt from `cages` on load.
-    mdd: HashMap<Cage, MonotonicMDD>,
 }
 
 impl PartialEq for Puzzle {
@@ -82,7 +77,6 @@ impl Puzzle {
         Ok(Self {
             grid: Grid::new(n)?,
             cages: BTreeSet::new(),
-            mdd: HashMap::new(),
         })
     }
 
@@ -97,10 +91,11 @@ impl Puzzle {
         self.cages.iter()
     }
 
-    /// Returns the MDD for `cage`, or `None` if `cage` is not in this puzzle.
+    /// Returns the cached MDD for `cage`, or `None` if `cage` is not in this
+    /// puzzle or uses a non-monotonic operator.
     #[must_use]
-    pub fn mdd(&self, cage: &Cage) -> Option<&MonotonicMDD> {
-        self.mdd.get(cage)
+    pub fn mdd(&self, cage: &Cage) -> Option<&crate::mdd::MonotonicMDD> {
+        self.cages.get(cage)?.mdd()
     }
 
     /// Returns the current grid state for this puzzle.
@@ -124,19 +119,17 @@ impl Puzzle {
         if self.intersects_cage(cage.polyomino()) {
             return Err(CageConflict(cage));
         }
-        let mut cages = self.cages.clone();
-        let mut mdd_map = self.mdd.clone();
-        if let Some(mdd) = cage.mdd(self.n()) {
+        let mut cage = cage;
+        if let Some(mdd) = cage.build_mdd(self.n()) {
             if mdd.is_empty() {
                 return Err(InfeasibleCage(cage.polyomino().clone(), cage.operation()));
             }
-            let _ = mdd_map.insert(cage.clone(), mdd);
         }
+        let mut cages = self.cages.clone();
         let _ = cages.insert(cage.clone());
         let candidate = Self {
             grid: self.grid,
             cages,
-            mdd: mdd_map,
         };
         let constrained = candidate.constrain()?;
         if cage.cells().iter().any(|&cell| {
@@ -162,20 +155,14 @@ impl Puzzle {
             return Ok(self.clone());
         }
         let mut cages = self.cages.clone();
-        let mut mdd_map = self.mdd.clone();
         let _ = cages.remove(cage);
-        let _ = mdd_map.remove(cage);
         // Widen the removed cage's cells back to full domain before propagating.
         let n = self.n();
         let mut grid = self.grid;
         for cell in cage.cells() {
             grid = grid.set_values(cell, Values::all(n))?;
         }
-        let candidate = Self {
-            grid,
-            cages,
-            mdd: mdd_map,
-        };
+        let candidate = Self { grid, cages };
         candidate.constrain()
     }
 
@@ -255,7 +242,6 @@ impl<'de> Deserialize<'de> for Puzzle {
         let base = Self {
             grid,
             cages: BTreeSet::new(),
-            mdd: HashMap::new(),
         };
         cages.into_iter().try_fold(base, |puzzle, cage| {
             puzzle.insert_cage(cage).map_err(serde::de::Error::custom)
