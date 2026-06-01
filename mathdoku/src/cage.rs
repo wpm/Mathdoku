@@ -18,7 +18,7 @@ use crate::{Cell, Error, operators_for};
 /// The `fill` field caches a pre-built constraint data structure for all
 /// operators once the grid size `n` is known. It is skipped during
 /// serialization and deserialization; callers that need it must call
-/// [`Cage::build_fill`] first.
+/// `Cage::build_fill` first.
 #[must_use]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Cage {
@@ -73,9 +73,7 @@ impl Cage {
         self.fill.as_ref().unwrap_or_else(|| unreachable!())
     }
 
-    /// Returns the cached fill, or `None` if [`build_fill`] has not been called.
-    ///
-    /// [`build_fill`]: Cage::build_fill
+    /// Returns the cached fill, or `None` if `build_fill` has not been called.
     #[must_use]
     pub(crate) const fn fill(&self) -> Option<&CageFillKind> {
         self.fill.as_ref()

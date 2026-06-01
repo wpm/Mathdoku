@@ -1,5 +1,5 @@
-//! Concrete CSP constraint types for Mathdoku: [`AllDifferent`] and [`Cage`] propagators,
-//! wired to the generic [`crate::csp`] framework.
+//! Concrete CSP constraint types for Mathdoku: `AllDifferent` and [`Cage`] propagators,
+//! wired to the generic `crate::csp` framework.
 
 use std::sync::Arc;
 
@@ -106,7 +106,7 @@ impl Constraint<Grid, Cell, Values, Error> for PuzzleConstraint {
 // ---- Constraint assembly ----
 
 /// Builds the full constraint list for `puzzle`: one [`AllDifferent`] per row and column,
-/// plus one cage constraint per cage.
+/// plus one cage constraint per cage. Called by [`Puzzle::constraints`].
 pub(crate) fn puzzle_constraints(puzzle: &Arc<Puzzle>) -> Vec<PuzzleConstraint> {
     let n = puzzle.n();
     let rows =
