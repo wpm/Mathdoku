@@ -56,8 +56,8 @@ impl core::fmt::Display for IpcError {
 // The argument shapes below feed `raw_invoke`, so they exist only on the native
 // (non-`web`) path. The `web` build calls core directly and passes these values
 // as plain function arguments, so the ones used solely by migrated commands are
-// gated out to avoid dead code there. `PathArgs` and `TitleArgs` stay ungated:
-// they back the un-migrated save/load/title commands, which still use Tauri.
+// gated out to avoid dead code there. `PathArgs` stays ungated: it backs the
+// un-migrated save/load commands, which still use Tauri on both builds.
 
 #[cfg(not(feature = "web"))]
 #[derive(Serialize)]
@@ -92,6 +92,7 @@ struct RemoveCageAtArgs {
     polyomino: Polyomino,
 }
 
+#[cfg(not(feature = "web"))]
 #[derive(Serialize)]
 struct TitleArgs {
     title: String,
@@ -125,6 +126,10 @@ where
 
 /// Invokes a command whose Rust signature returns `Result<(), String>`,
 /// surfacing any command error but discarding the (null) success payload.
+///
+/// Only `set_active_cell` / `set_window_title` use this, and both are migrated
+/// to direct calls on web, so it is dead on the `web` path.
+#[cfg(not(feature = "web"))]
 async fn call_unit<A: Serialize>(cmd: &str, args: A) -> Result<(), IpcError> {
     let args = to_value(&args).map_err(|e| IpcError::Serde(e.to_string()))?;
     let result = raw_invoke(cmd, args).await;
@@ -293,14 +298,28 @@ pub async fn unfix() -> Result<State, IpcError> {
         .map_err(|e| IpcError::Command(e.to_string()))
 }
 
+#[cfg(not(feature = "web"))]
 pub async fn set_window_title(title: String) -> Result<(), IpcError> {
     call_unit("set_window_title", TitleArgs { title }).await
 }
 
+/// Sets the browser tab title.
+#[cfg(feature = "web")]
+// WASM-only: no Tauri window to title — write `document.title` directly.
+pub async fn set_window_title(title: String) -> Result<(), IpcError> {
+    crate::web_state::set_window_title(&title);
+    Ok(())
+}
+
 /// Exits the application. Never returns meaningfully (the process is killed).
+#[cfg(not(feature = "web"))]
 pub async fn quit_app() {
     raw_invoke("quit_app", JsValue::NULL).await;
 }
+
+/// Web build: there is no application process to exit, so this is a no-op.
+#[cfg(feature = "web")]
+pub async fn quit_app() {}
 
 // ---- file dialogs ----
 
