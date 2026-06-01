@@ -50,7 +50,7 @@ mod csp;
 mod error;
 mod generate;
 mod grid;
-mod grid_csp;
+pub mod grid_csp;
 mod latin_square;
 pub mod mdd;
 mod operation;
@@ -59,6 +59,7 @@ mod puzzle;
 mod regin;
 #[cfg(test)]
 mod test_utils;
+
 /// Experimental scratch module.
 pub use cage::Cage;
 pub use cell::{Cell, Target, Tuple, Value, Values};
