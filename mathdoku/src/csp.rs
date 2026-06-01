@@ -70,12 +70,14 @@ where
                 let _ = r.insert(v, d);
                 r
             });
-        let v: Vec<_> = constraints
-            .iter()
-            .filter(|constraint| delta.keys().any(|x| constraint.in_scope(x)))
-            .collect();
-        q.extend(v);
+        // Apply the delta before re-queuing so subsequent propagations see the updated state.
+        let changed_vars: Vec<_> = delta.keys().cloned().collect();
         s.extend(delta);
+        let affected: Vec<_> = constraints
+            .iter()
+            .filter(|c| changed_vars.iter().any(|x| c.in_scope(x)))
+            .collect();
+        q.extend(affected);
     }
     s
 }
@@ -83,7 +85,6 @@ where
 #[cfg(test)]
 mod tests {
     use crate::csp::{Constraint, Domain, State, ac3};
-    use itertools::Itertools;
     use std::collections::{HashMap, HashSet};
 
     /// A set of natural numbers backed by a `HashSet<u8>`.
@@ -167,18 +168,17 @@ mod tests {
         }
 
         fn propagate(&self, s: Values) -> impl Iterator<Item = (String, N)> {
-            use std::sync::Arc;
-            let map = Arc::new(s.0);
-            let keys: Vec<String> = map.keys().filter(|x| self.in_scope(x)).cloned().collect();
-            let map2 = Arc::clone(&map);
-            keys.clone()
-                .into_iter()
-                .cartesian_product(keys)
-                .filter(move |(a, b)| a != b && map[a] != map[b])
-                .flat_map(move |(a, b)| {
-                    let i = map2[&a].intersection(&map2[&b]);
-                    [(a, i.clone()), (b, i)]
-                })
+            let da = s.domain(&self.a);
+            let db = s.domain(&self.b);
+            let intersection = da.intersection(&db);
+            let mut out = Vec::new();
+            if intersection != da {
+                out.push((self.a.clone(), intersection.clone()));
+            }
+            if intersection != db {
+                out.push((self.b.clone(), intersection));
+            }
+            out.into_iter()
         }
     }
 
