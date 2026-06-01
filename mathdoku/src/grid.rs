@@ -183,8 +183,8 @@ impl Grid {
             fits_domain && collinear_ok
         };
 
-        if let Some(mdd) = puzzle.mdd(cage) {
-            // Add / Multiply: iterate the MDD.
+        if let Some(crate::cage_fill::CageFillKind::Mdd(mdd)) = puzzle.fill(cage) {
+            // Add / Multiply: iterate the MDD (fast path).
             return Ok(mdd.tuples().into_iter().filter(|t| valid(t)).collect());
         }
 
@@ -247,11 +247,7 @@ impl Grid {
         if !puzzle.cages().any(|c| c == cage) {
             return Err(Error::InvalidCage(cage.clone()));
         }
-        let tuples: Vec<_> = puzzle
-            .mdd(cage)
-            .into_iter()
-            .flat_map(super::mdd::MonotonicMDD::tuples)
-            .collect();
+        let tuples: Vec<_> = self.cage_tuples(puzzle, cage)?;
         let tuple = tuples
             .get(index)
             .ok_or(Error::InvalidTupleIndex(index, tuples.len()))?;

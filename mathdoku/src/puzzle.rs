@@ -11,6 +11,7 @@ use crate::Error::CageConflict;
 use crate::Error::InfeasibleCage;
 use crate::Error::InvalidGridSize;
 use crate::cage::Cage;
+use crate::cage_fill::CageFill as _;
 use crate::{Error, Grid, Polyomino, Values};
 
 // Serde wire format. Two variants are accepted on deserialization:
@@ -92,11 +93,10 @@ impl Puzzle {
         self.cages.iter()
     }
 
-    /// Returns the cached MDD for `cage`, or `None` if `cage` is not in this
-    /// puzzle or uses a non-monotonic operator.
+    /// Returns the cached fill for `cage`, or `None` if `cage` is not in this puzzle.
     #[must_use]
-    pub fn mdd(&self, cage: &Cage) -> Option<&crate::mdd::MonotonicMDD> {
-        self.cages.get(cage)?.mdd()
+    pub(crate) fn fill(&self, cage: &Cage) -> Option<&crate::cage_fill::CageFillKind> {
+        self.cages.get(cage)?.fill()
     }
 
     /// Returns the current grid state for this puzzle.
@@ -121,10 +121,8 @@ impl Puzzle {
             return Err(CageConflict(cage));
         }
         let mut cage = cage;
-        if let Some(mdd) = cage.build_mdd(self.n()) {
-            if mdd.is_empty() {
-                return Err(InfeasibleCage(cage.polyomino().clone(), cage.operation()));
-            }
+        if cage.build_fill(self.n()).is_empty() {
+            return Err(InfeasibleCage(cage.polyomino().clone(), cage.operation()));
         }
         let mut cages = self.cages.clone();
         let _ = cages.insert(cage.clone());

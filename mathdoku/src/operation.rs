@@ -26,7 +26,7 @@ use std::fmt::{Display, Formatter};
 /// Displayed as the operator symbol followed by the target (e.g. `+5`, `×12`).
 /// A [`Given`](Operator::Given) operation displays as just the target with no symbol.
 #[must_use]
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Operation {
     /// The arithmetic operator applied to the cage's cells.
     pub operator: Operator,
@@ -42,8 +42,8 @@ impl Operation {
 
     /// The operator of this operation.
     #[must_use]
-    pub fn operator(&self) -> Operator {
-        self.operator.clone()
+    pub const fn operator(&self) -> Operator {
+        self.operator
     }
 }
 
@@ -54,7 +54,7 @@ impl Display for Operation {
 }
 
 /// The arithmetic operation a cage imposes on its cells.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Operator {
     /// Cells sum to the target.
     Add,

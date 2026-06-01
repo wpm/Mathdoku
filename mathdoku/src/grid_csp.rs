@@ -148,59 +148,17 @@ fn propagate_cage(
     puzzle: &Arc<Puzzle>,
     state: &Grid,
 ) -> Result<(Grid, Vec<Cell>), Error> {
+    use crate::cage_fill::CageFill;
     let cells = cage.cells();
     let old_values: Vec<Values> = cells
         .iter()
         .map(|&c| state.cell_values(c))
         .collect::<Result<_, _>>()?;
-    let new_values = puzzle.mdd(cage).map_or_else(
-        || brute_force_support(cage, puzzle.n(), &old_values),
-        |mdd| mdd.support(&old_values),
+    let new_values = puzzle.fill(cage).map_or_else(
+        || vec![Values::default(); cells.len()],
+        |f| f.support(&old_values),
     );
     apply_values(state, puzzle, &cells, &old_values, &new_values)
-}
-
-fn brute_force_support(cage: &Cage, n: usize, values: &[Values]) -> Vec<Values> {
-    use crate::Target;
-    use crate::operation::Operator;
-
-    let arity = cage.polyomino().len();
-    let op = cage.operation();
-    let target = op.target;
-    let n_val = u8::try_from(n).unwrap_or(u8::MAX);
-    let mut support = vec![Values::default(); arity];
-
-    let mut tuple = vec![1u8; arity];
-    loop {
-        let satisfies = match op.operator() {
-            Operator::Given => arity == 1 && Target::from(tuple[0]) == target,
-            Operator::Subtract => {
-                arity == 2 && Target::from(tuple[0]).abs_diff(Target::from(tuple[1])) == target
-            }
-            Operator::Divide => {
-                arity == 2 && {
-                    let (va, vb) = (Target::from(tuple[0]), Target::from(tuple[1]));
-                    va == vb * target || vb == va * target
-                }
-            }
-            _ => false,
-        };
-        if satisfies && tuple.iter().zip(values).all(|(&v, d)| d.contains(v)) {
-            for (pos, &v) in tuple.iter().enumerate() {
-                support[pos] = support[pos] | Values::singleton(v);
-            }
-        }
-        let mut pos = 0;
-        while pos < arity && tuple[pos] == n_val {
-            tuple[pos] = 1;
-            pos += 1;
-        }
-        if pos == arity {
-            break;
-        }
-        tuple[pos] += 1;
-    }
-    support
 }
 
 #[cfg(test)]
