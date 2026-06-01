@@ -34,7 +34,15 @@
 // that the strict workspace policy denies in production. Allow them under
 // `cfg(test)` so `cargo clippy --all-targets` stays green without scattering
 // per-module `#[allow]`s. See issue #59.
-#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
+#![cfg_attr(
+    test,
+    allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::print_stderr
+    )
+)]
 
 mod cage;
 mod cell;
@@ -45,6 +53,7 @@ mod grid;
 mod grid_csp;
 mod latin_square;
 mod mdd;
+pub mod my_mdd;
 mod old_csp;
 mod old_grid_csp;
 mod operation;
@@ -53,7 +62,7 @@ mod puzzle;
 mod regin;
 #[cfg(test)]
 mod test_utils;
-
+/// Experimental scratch module.
 pub use cage::Cage;
 pub use cell::{Cell, Target, Tuple, Value, Values};
 pub use error::Error;
