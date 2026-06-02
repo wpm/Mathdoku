@@ -189,7 +189,13 @@ mod tests {
     }
 
     fn puzzle_with(n: usize, c: &Cage) -> Arc<Puzzle> {
-        Arc::new(Puzzle::new(n).unwrap().insert_cage(c.clone()).unwrap())
+        Arc::new(
+            Puzzle::new(n)
+                .unwrap()
+                .insert_cage(c.clone())
+                .unwrap()
+                .unwrap(),
+        )
     }
 
     // --- AllDifferent::propagate ---

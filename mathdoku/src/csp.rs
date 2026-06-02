@@ -54,6 +54,14 @@ where
     fn in_scope(&self, variable: V) -> bool;
 }
 
+/// A candidate value set for a CSP variable.
+///
+/// The GAC algorithm uses [`Domain::is_empty`] to detect infeasibility: as soon
+/// as any variable's domain empties, no solution exists and propagation stops.
+pub(crate) trait Domain {
+    fn is_empty(&self) -> bool;
+}
+
 /// Enforces generalized arc consistency (GAC) via the AC-3 worklist algorithm.
 ///
 /// AC-3 operates on the constraint graph, a bipartite graph with variables on one side and
@@ -62,31 +70,38 @@ where
 /// re-added to the queue. The algorithm terminates when the queue is empty, at which point the
 /// state is arc-consistent: no constraint can reduce any variable's domain further.
 ///
-/// # Errors
-/// Returns the first error from any constraint's [`Constraint::propagate`] call.
-pub fn generalized_arc_consistency<S, V, C, D, E>(mut state: S, constraints: &[C]) -> Result<S, E>
+/// Returns `None` if any variable's domain becomes empty (infeasible) during propagation,
+/// or if any constraint signals an error.
+pub fn generalized_arc_consistency<S, V, C, D, E>(mut state: S, constraints: &[C]) -> Option<S>
 where
     S: State<V, D, E>,
     V: Clone,
+    D: Domain,
     C: Constraint<S, V, D, E>,
 {
     let mut q: VecDeque<C> = constraints.iter().cloned().collect();
     while let Some(constraint) = q.pop_front() {
-        let narrowed_variables;
-        (state, narrowed_variables) = constraint.propagate(&state)?;
+        let (new_state, narrowed) = constraint.propagate(&state).ok()?;
+        state = new_state;
+        if narrowed
+            .iter()
+            .any(|v| state.get(v.clone()).ok().is_some_and(|d| d.is_empty()))
+        {
+            return None;
+        }
         q.extend(
             constraints
                 .iter()
-                .filter(|c| narrowed_variables.iter().any(|v| c.in_scope(v.clone())))
+                .filter(|c| narrowed.iter().any(|v| c.in_scope(v.clone())))
                 .cloned(),
         );
     }
-    Ok(state)
+    Some(state)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{generalized_arc_consistency, Constraint, State};
+    use super::{Constraint, State, generalized_arc_consistency};
     use crate::csp::tests::Constraints::{Equal, Sum};
     use std::collections::{HashMap, HashSet};
 
@@ -110,11 +125,9 @@ mod tests {
 
     #[test]
     fn equal_disjoint_domains_empties_both() {
-        // x ∈ {1,2}, y ∈ {3,4}, x=y  →  both empty (infeasible)
+        // x ∈ {1,2}, y ∈ {3,4}, x=y  →  infeasible (no common values)
         let state = IntegerSets::new(&[("x", &[1, 2]), ("y", &[3, 4])]);
-        let result = run(state, &[Constraints::equal("x", "y")]);
-        assert!(result.get("x".to_string()).unwrap().is_empty());
-        assert!(result.get("y".to_string()).unwrap().is_empty());
+        run_infeasible(state, &[Constraints::equal("x", "y")]);
     }
 
     #[test]
@@ -140,9 +153,7 @@ mod tests {
     fn sum_infeasible_target_empties_domains() {
         // x,y ∈ {1,2}, x+y=10 — impossible
         let state = IntegerSets::new(&[("x", &[1, 2]), ("y", &[1, 2])]);
-        let result = run(state, &[Constraints::sum(&["x", "y"], 10)]);
-        assert!(result.get("x".to_string()).unwrap().is_empty());
-        assert!(result.get("y".to_string()).unwrap().is_empty());
+        run_infeasible(state, &[Constraints::sum(&["x", "y"], 10)]);
     }
 
     #[test]
@@ -162,7 +173,14 @@ mod tests {
     }
 
     fn run(state: IntegerSets, constraints: &[Constraints]) -> IntegerSets {
-        generalized_arc_consistency(state, constraints).unwrap()
+        generalized_arc_consistency(state, constraints).expect("expected feasible state")
+    }
+
+    fn run_infeasible(state: IntegerSets, constraints: &[Constraints]) {
+        assert!(
+            generalized_arc_consistency(state, constraints).is_none(),
+            "expected infeasible (None)"
+        );
     }
 
     fn sorted(result: &IntegerSets, var: &str) -> Vec<u8> {
@@ -171,9 +189,15 @@ mod tests {
         v
     }
 
-    type Domain = HashSet<u8>;
+    type TestDomain = HashSet<u8>;
 
-    struct IntegerSets(HashMap<String, Domain>);
+    impl super::Domain for HashSet<u8> {
+        fn is_empty(&self) -> bool {
+            self.is_empty()
+        }
+    }
+
+    struct IntegerSets(HashMap<String, TestDomain>);
 
     impl IntegerSets {
         fn new(init: &[(&str, &[u8])]) -> Self {
@@ -184,8 +208,8 @@ mod tests {
             )
         }
     }
-    impl State<String, Domain, InvalidVariable> for IntegerSets {
-        fn get(&self, variable: String) -> Result<Domain, InvalidVariable> {
+    impl State<String, TestDomain, InvalidVariable> for IntegerSets {
+        fn get(&self, variable: String) -> Result<TestDomain, InvalidVariable> {
             self.0
                 .get(&variable)
                 .cloned()
@@ -210,18 +234,18 @@ mod tests {
         }
     }
 
-    impl Constraint<IntegerSets, String, Domain, InvalidVariable> for Constraints {
+    impl Constraint<IntegerSets, String, TestDomain, InvalidVariable> for Constraints {
         fn propagate(
             &self,
             state: &IntegerSets,
         ) -> Result<(IntegerSets, Vec<String>), InvalidVariable> {
             // Returns updated state and names of variables whose domains shrank.
             let update = |name_a: &str,
-                          old_a: &Domain,
-                          new_a: Domain,
+                          old_a: &TestDomain,
+                          new_a: TestDomain,
                           name_b: &str,
-                          old_b: &Domain,
-                          new_b: Domain|
+                          old_b: &TestDomain,
+                          new_b: TestDomain|
              -> (IntegerSets, Vec<String>) {
                 let mut changed = vec![];
                 if &new_a != old_a {
@@ -241,19 +265,19 @@ mod tests {
                 Equal(a, b) => {
                     let da = state.get(a.clone())?;
                     let db = state.get(b.clone())?;
-                    let common: Domain = da.intersection(&db).copied().collect();
+                    let common: TestDomain = da.intersection(&db).copied().collect();
                     Ok(update(a, &da, common.clone(), b, &db, common))
                 }
                 Sum(vars, target) => {
-                    let domains: Vec<Domain> = vars
+                    let domains: Vec<TestDomain> = vars
                         .iter()
                         .map(|v| state.get(v.clone()))
                         .collect::<Result<_, _>>()?;
-                    let mut supported: Vec<Domain> = vec![HashSet::new(); vars.len()];
+                    let mut supported: Vec<TestDomain> = vec![HashSet::new(); vars.len()];
                     // Enumerate all assignments; prune by partial sums.
                     fn enumerate(
-                        domains: &[Domain],
-                        supported: &mut Vec<Domain>,
+                        domains: &[TestDomain],
+                        supported: &mut Vec<TestDomain>,
                         idx: usize,
                         partial: u8,
                         target: u8,

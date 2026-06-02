@@ -36,7 +36,7 @@ const MAX_PRODUCT: Target = 1_000_000_000;
 /// stream all mean infeasible.
 #[must_use]
 pub fn is_globally_feasible(puzzle: &Puzzle, candidate: &Cage) -> bool {
-    let Ok(extended) = puzzle.insert_cage(candidate.clone()) else {
+    let Ok(Some(extended)) = puzzle.insert_cage(candidate.clone()) else {
         return false;
     };
     matches!(extended.solutions().next(), Some(Ok(_)))
@@ -230,6 +230,7 @@ mod tests {
         let puzzle = Puzzle::new(3)
             .unwrap()
             .insert_cage(cage(&[(0, 0), (0, 1)], Operator::Add, 3))
+            .unwrap()
             .unwrap();
         assert!(!is_globally_feasible(
             &puzzle,

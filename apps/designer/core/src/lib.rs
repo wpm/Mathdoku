@@ -313,8 +313,10 @@ pub fn insert_cage(
     let operation = Operation::new(operator, target);
 
     let cage = Cage::new(poly, operation)?;
-    let new_puzzle = puzzle.insert_cage(cage)?;
-    commit_puzzle(state, new_puzzle)
+    match puzzle.insert_cage(cage)? {
+        Some(new_puzzle) => commit_puzzle(state, new_puzzle),
+        None => state.to_designer_state().ok_or(Error::NoPuzzle),
+    }
 }
 
 /// Removes the cage covering `polyomino` from the current puzzle.
@@ -329,8 +331,10 @@ pub fn remove_cage_at(state: &mut AppState, polyomino: &Polyomino) -> Result<Sta
         .get_cage_at(polyomino)
         .ok_or(Error::CageNotFound)?
         .clone();
-    let new_puzzle = puzzle.remove_cage(&cage)?;
-    commit_puzzle(state, new_puzzle)
+    match puzzle.remove_cage(&cage)? {
+        Some(new_puzzle) => commit_puzzle(state, new_puzzle),
+        None => state.to_designer_state().ok_or(Error::NoPuzzle),
+    }
 }
 
 /// Switches the current puzzle from Without-Solution to With-Solution by
@@ -477,6 +481,7 @@ mod tests {
                     st.puzzle = st
                         .puzzle
                         .insert_cage(cage_at(&[(r, c)], Operator::Given, v))
+                        .unwrap()
                         .unwrap();
                 }
             }
@@ -587,6 +592,7 @@ mod tests {
                 st.puzzle = st
                     .puzzle
                     .insert_cage(cage_at(&[(r, 0), (r, 1), (r, 2)], Operator::Add, 6))
+                    .unwrap()
                     .unwrap();
             }
             assert!(matches!(st.fix(), Err(Error::NotUnique)));
@@ -707,15 +713,17 @@ mod tests {
 
         #[test]
         fn insert_cage_infeasible_target_returns_err() {
-            // Two distinct collinear cells cannot sum to 2, so the cage admits no
-            // satisfying assignment; insert_cage rejects it rather than committing
-            // a cage that prunes its cells to empty domains.
+            // Two distinct collinear cells cannot sum to 2 (min distinct sum is 1+2=3),
+            // so propagation empties cell domains — insert_cage returns Ok(None) and the
+            // designer abandons the operation, returning the unchanged state.
             let mut state = AppState::default();
             let _ = new_empty(&mut state, 3).unwrap();
             assert!(matches!(
                 insert_cage(&mut state, poly(&[(0, 0), (0, 1)]), Operator::Add, Some(2)),
-                Err(Error::Mathdoku(mathdoku::Error::InfeasibleCage(_, _)))
+                Ok(_)
             ));
+            // The state is unchanged (no cage was committed).
+            assert_eq!(state.puzzle.as_ref().unwrap().cages().count(), 0);
         }
 
         // --- remove_cage_at ---
@@ -758,13 +766,17 @@ mod tests {
 
         #[test]
         fn insert_cage_conflicting_givens_returns_infeasible() {
-            // Two Given cells in the same row both fixed to 1 is caught during
-            // propagation in insert_cage, so the second insert returns an error
-            // rather than producing an infeasible puzzle.
+            // Two Given cells in the same row both fixed to 1 — propagation detects the
+            // conflict and insert_cage returns Ok(None); the designer abandons the operation.
             let mut state = AppState::default();
             let _ = new_empty(&mut state, 3).unwrap();
             let _ = insert_cage(&mut state, poly(&[(0, 0)]), Operator::Given, Some(1)).unwrap();
-            assert!(insert_cage(&mut state, poly(&[(0, 1)]), Operator::Given, Some(1)).is_err());
+            assert!(matches!(
+                insert_cage(&mut state, poly(&[(0, 1)]), Operator::Given, Some(1)),
+                Ok(_)
+            ));
+            // Only the first cage was committed.
+            assert_eq!(state.puzzle.as_ref().unwrap().cages().count(), 1);
         }
 
         #[test]

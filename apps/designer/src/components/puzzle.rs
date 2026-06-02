@@ -836,7 +836,7 @@ mod tests {
     #[test]
     fn digit_rejected_on_cell_in_committed_cage() {
         let mut st = State::new(4).unwrap();
-        st.puzzle = st.puzzle.insert_cage(given_cage(0, 0, 2)).unwrap();
+        st.puzzle = st.puzzle.insert_cage(given_cage(0, 0, 2)).unwrap().unwrap();
         st.active = Cell::new(0, 0);
         assert!(singleton_digit_commit(&st, "3").unwrap().is_none());
     }

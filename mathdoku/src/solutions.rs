@@ -50,16 +50,9 @@ impl Iterator for Solutions {
     fn next(&mut self) -> Option<Self::Item> {
         while let Some(puzzle) = self.stack.pop() {
             // Every Puzzle on the stack is already at a fixpoint (maintained by set_value).
+            // set_value returns None for infeasible branches, so they never enter the stack.
             let grid = puzzle.grid();
             let n = grid.n();
-
-            // Check for failure: any empty value set means this branch is dead.
-            let failed = (0..n)
-                .flat_map(|r| (0..n).map(move |c| Cell::new(r, c)))
-                .any(|cell| grid.get_values(cell).is_ok_and(Values::is_empty));
-            if failed {
-                continue;
-            }
 
             // Check for success: all cells' values are singletons.
             let solved = (0..n)
@@ -72,7 +65,7 @@ impl Iterator for Solutions {
             // Branch on the most constrained unassigned cell.
             if let Some((cell, values)) = Self::branch_cell(&grid) {
                 for v in values.values() {
-                    if let Ok(child) = puzzle.set_value(cell, v) {
+                    if let Some(child) = puzzle.set_value(cell, v) {
                         self.stack.push(child);
                     }
                 }

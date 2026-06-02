@@ -146,7 +146,9 @@ where
             .collect();
         let operation = op(&values, n)?;
         let cage = Cage::new(polyomino, operation)?;
-        puzzle = puzzle.insert_cage(cage)?;
+        puzzle = puzzle
+            .insert_cage(cage.clone())?
+            .ok_or_else(|| Error::InfeasibleCage(cage.polyomino().clone(), cage.operation()))?;
     }
     Ok(puzzle)
 }

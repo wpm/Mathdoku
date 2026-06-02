@@ -172,14 +172,14 @@ impl Display for Grid {
 
 #[cfg(test)]
 mod tests {
-    use serde_json::{from_str, json, to_string, Value};
+    use serde_json::{Value, from_str, json, to_string};
 
     use super::*;
+    use crate::Target;
     use crate::operation::Operator;
     use crate::operation::Operator::{Add, Given};
     use crate::puzzle::Puzzle;
     use crate::test_utils::cage_at;
-    use crate::Target;
 
     fn puzzle_with_cage(
         n: usize,
@@ -188,7 +188,7 @@ mod tests {
         target: Target,
     ) -> Puzzle {
         let cage = cage_at(positions, operator, target);
-        Puzzle::new(n).unwrap().insert_cage(cage).unwrap()
+        Puzzle::new(n).unwrap().insert_cage(cage).unwrap().unwrap()
     }
 
     // --- Grid::new ---
@@ -280,11 +280,15 @@ mod tests {
             .unwrap()
             .insert_cage(cage_at(&[(0, 0)], Given, 1))
             .unwrap()
+            .unwrap()
             .insert_cage(cage_at(&[(0, 1)], Given, 2))
+            .unwrap()
             .unwrap()
             .insert_cage(cage_at(&[(1, 0)], Given, 2))
             .unwrap()
+            .unwrap()
             .insert_cage(cage_at(&[(1, 1)], Given, 1))
+            .unwrap()
             .unwrap()
     }
 
@@ -332,10 +336,16 @@ mod tests {
     fn solutions_infeasible_yields_none() {
         // Two Given cages that force conflicting values in the same row: (0,0)=1
         // and (0,1)=1 violate all-different. The second insert_cage detects this
-        // via propagation and returns Err, so no solutions are ever produced.
+        // via propagation and returns Ok(None) (infeasible), so no solutions are produced.
         let p = Puzzle::new(2).unwrap();
-        let p = p.insert_cage(cage_at(&[(0, 0)], Given, 1)).unwrap();
-        assert!(p.insert_cage(cage_at(&[(0, 1)], Given, 1)).is_err());
+        let p = p
+            .insert_cage(cage_at(&[(0, 0)], Given, 1))
+            .unwrap()
+            .unwrap();
+        assert!(matches!(
+            p.insert_cage(cage_at(&[(0, 1)], Given, 1)),
+            Ok(None)
+        ));
     }
 
     #[test]
@@ -344,9 +354,12 @@ mod tests {
             .unwrap()
             .insert_cage(cage_at(&[(0, 0), (0, 1)], Add, 3))
             .unwrap()
+            .unwrap()
             .insert_cage(cage_at(&[(1, 0)], Given, 2))
             .unwrap()
+            .unwrap()
             .insert_cage(cage_at(&[(1, 1)], Given, 1))
+            .unwrap()
             .unwrap();
         let solutions: Vec<Grid> = puzzle.solutions().map(Result::unwrap).collect();
         assert_eq!(solutions.len(), 1);
@@ -375,9 +388,12 @@ mod tests {
             .unwrap()
             .insert_cage(cage_at(&[(0, 0), (0, 1), (0, 2)], Add, 6))
             .unwrap()
+            .unwrap()
             .insert_cage(cage_at(&[(1, 0), (1, 1), (1, 2)], Add, 6))
             .unwrap()
+            .unwrap()
             .insert_cage(cage_at(&[(2, 0), (2, 1), (2, 2)], Add, 6))
+            .unwrap()
             .unwrap();
         let solutions: Vec<Grid> = puzzle.solutions().map(Result::unwrap).collect();
         assert!(!solutions.is_empty(), "should have at least one solution");
@@ -404,19 +420,27 @@ mod tests {
             .unwrap()
             .insert_cage(cage_at(&[(0, 0)], Given, 1))
             .unwrap()
+            .unwrap()
             .insert_cage(cage_at(&[(0, 1), (0, 2)], Add, 5))
+            .unwrap()
             .unwrap()
             .insert_cage(cage_at(&[(0, 3), (1, 3)], Add, 6))
             .unwrap()
+            .unwrap()
             .insert_cage(cage_at(&[(1, 0), (1, 1)], Operator::Multiply, 12))
+            .unwrap()
             .unwrap()
             .insert_cage(cage_at(&[(1, 2)], Given, 1))
             .unwrap()
+            .unwrap()
             .insert_cage(cage_at(&[(2, 0), (3, 0)], Operator::Subtract, 2))
+            .unwrap()
             .unwrap()
             .insert_cage(cage_at(&[(2, 1), (2, 2), (2, 3)], Operator::Multiply, 12))
             .unwrap()
+            .unwrap()
             .insert_cage(cage_at(&[(3, 1), (3, 2), (3, 3)], Operator::Multiply, 6))
+            .unwrap()
             .unwrap();
 
         let mut actual: Vec<[[u8; 4]; 4]> = puzzle
@@ -464,7 +488,7 @@ mod tests {
         // valid tuple is [1, 2], so index 0 pins (0,0)=1 and (0,1)=2.
         let puzzle = puzzle_with_cage(4, &[(0, 0), (0, 1)], Add, 3);
         let cage = puzzle.cages().next().unwrap().clone();
-        let set = puzzle.set_cage_tuple(&cage, 0).unwrap().grid();
+        let set = puzzle.set_cage_tuple(&cage, 0).unwrap().unwrap().grid();
         assert_eq!(
             set.get_values(Cell::new(0, 0)).unwrap(),
             Values::new(&[1]).unwrap()

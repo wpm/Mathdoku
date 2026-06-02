@@ -188,15 +188,15 @@ impl Puzzle {
     /// Returns a new puzzle with `cage` added and all constraints propagated
     /// to a fixpoint.
     ///
-    /// Returns `Ok(self.clone())` if `cage` is already present.
+    /// Returns `Ok(Some(self.clone()))` if `cage` is already present.
+    /// Returns `Ok(None)` if the cage makes the puzzle infeasible.
     ///
     /// # Errors
     /// Returns [`CageConflict`] if `cage`'s polyomino overlaps an existing cage.
-    /// Returns [`InfeasibleCage`] if the cage's constraint admits no valid
-    /// assignment, or if propagation empties any cage cell's domain.
-    pub fn insert_cage(&self, cage: Cage) -> Result<Self, Error> {
+    /// Returns [`InfeasibleCage`] if the cage's constraint admits no valid assignment.
+    pub fn insert_cage(&self, cage: Cage) -> Result<Option<Self>, Error> {
         if self.cages.contains(&cage) {
-            return Ok(self.clone());
+            return Ok(Some(self.clone()));
         }
         if self.intersects_cage(cage.polyomino()) {
             return Err(CageConflict(cage));
@@ -207,32 +207,25 @@ impl Puzzle {
         }
         let mut cages = self.cages.clone();
         let _ = cages.insert(cage.clone());
-        let candidate = Self {
+        Ok(Self {
             grid: self.grid,
             cages,
-        };
-        let fixpoint_puzzle = candidate.fixpoint()?;
-        if cage.cells().iter().any(|&cell| {
-            fixpoint_puzzle
-                .grid
-                .get_values(cell)
-                .is_ok_and(Values::is_empty)
-        }) {
-            return Err(InfeasibleCage(cage.polyomino().clone(), cage.operation()));
         }
-        Ok(fixpoint_puzzle)
+        .fixpoint())
     }
 
     /// Returns a new puzzle with `cage` removed and all constraints propagated
     /// to a fixpoint.
     ///
-    /// Returns `self` unchanged if `cage` is not present.
+    /// Returns `Ok(Some(self.clone()))` if `cage` is not present.
+    /// Returns `Ok(None)` if removal makes the puzzle infeasible (should not
+    /// occur in practice).
     ///
     /// # Errors
-    /// Returns an error if propagation fails (e.g. the puzzle is ill-formed).
-    pub fn remove_cage(&self, cage: &Cage) -> Result<Self, Error> {
+    /// Returns an error if a cell is out of bounds.
+    pub fn remove_cage(&self, cage: &Cage) -> Result<Option<Self>, Error> {
         if !self.cages.contains(cage) {
-            return Ok(self.clone());
+            return Ok(Some(self.clone()));
         }
         let mut cages = self.cages.clone();
         let _ = cages.remove(cage);
@@ -242,8 +235,7 @@ impl Puzzle {
         for cell in cage.cells() {
             grid = grid.set_values(cell, Values::all(n))?;
         }
-        let candidate = Self { grid, cages };
-        candidate.fixpoint()
+        Ok(Self { grid, cages }.fixpoint())
     }
 
     /// Returns the cage covering exactly the cells of `polyomino`, or `None`.
@@ -265,16 +257,14 @@ impl Puzzle {
         crate::solutions::Solutions::new(self)
     }
 
-    /// Propagates all cage and all-different constraints to a GAC fixpoint and
-    /// returns the updated puzzle.
+    /// Propagates all cage and all-different constraints to a GAC fixpoint.
     ///
-    /// # Errors
-    /// Returns an error if propagation fails (e.g. a cell is out of bounds).
-    pub fn fixpoint(&self) -> Result<Self, Error> {
+    /// Returns `None` if any cell's domain becomes empty (infeasible).
+    pub fn fixpoint(&self) -> Option<Self> {
         let puzzle = Arc::new(self.clone());
         let constraints = Self::constraints(&puzzle);
         let grid = crate::csp::generalized_arc_consistency(self.grid, &constraints)?;
-        Ok(Self {
+        Some(Self {
             grid,
             ..self.clone()
         })
@@ -283,13 +273,10 @@ impl Puzzle {
     /// Returns a new puzzle with `cell` narrowed to the singleton `{value}` and
     /// all constraints propagated to a fixpoint.
     ///
-    /// Used by the MAC solver to create child branches.
-    ///
-    /// # Errors
-    /// Returns [`Error::InvalidCell`] if `cell` is outside the grid, or an error
-    /// if propagation fails.
-    pub(crate) fn set_value(&self, cell: crate::Cell, value: crate::Value) -> Result<Self, Error> {
-        let grid = self.grid.set_value(cell, value)?;
+    /// Returns `None` if the assignment makes the puzzle infeasible, or if `cell`
+    /// is outside the grid.
+    pub(crate) fn set_value(&self, cell: crate::Cell, value: crate::Value) -> Option<Self> {
+        let grid = self.grid.set_value(cell, value).ok()?;
         Self {
             grid,
             cages: self.cages.clone(),
@@ -303,7 +290,8 @@ impl Puzzle {
     /// # Errors
     /// Returns [`Error::InvalidCage`] if `cage` is not in this puzzle, or
     /// [`Error::InvalidTupleIndex`] if `index` is out of range.
-    pub fn set_cage_tuple(&self, cage: &Cage, index: usize) -> Result<Self, Error> {
+    /// Returns `Ok(None)` if the assignment makes the puzzle infeasible.
+    pub fn set_cage_tuple(&self, cage: &Cage, index: usize) -> Result<Option<Self>, Error> {
         let tuples = self.cage_tuples(cage)?;
         let tuple = tuples
             .get(index)
@@ -312,11 +300,11 @@ impl Puzzle {
         for (cell, &value) in cage.cells().iter().zip(tuple) {
             grid = grid.set_value(*cell, value)?;
         }
-        Self {
+        Ok(Self {
             grid,
             cages: self.cages.clone(),
         }
-        .fixpoint()
+        .fixpoint())
     }
 
     /// Builds the full constraint list: one `AllDifferent` per row and column,
@@ -381,9 +369,13 @@ impl<'de> Deserialize<'de> for Puzzle {
             grid,
             cages: BTreeSet::new(),
         };
-        cages.into_iter().try_fold(base, |puzzle, cage| {
-            puzzle.insert_cage(cage).map_err(serde::de::Error::custom)
-        })
+        cages
+            .into_iter()
+            .try_fold(base, |puzzle, cage| match puzzle.insert_cage(cage) {
+                Ok(Some(p)) => Ok(p),
+                Ok(None) => Err(serde::de::Error::custom("infeasible cage")),
+                Err(e) => Err(serde::de::Error::custom(e)),
+            })
     }
 }
 
@@ -435,7 +427,7 @@ mod tests {
     fn insert_cage_returns_puzzle() {
         let p = Puzzle::new(4).unwrap();
         let cage = cage_at(&[(0, 0)], Given, 3);
-        let p2 = p.insert_cage(cage).unwrap();
+        let p2 = p.insert_cage(cage).unwrap().unwrap();
         assert_eq!(p2.n(), 4);
     }
 
@@ -452,8 +444,8 @@ mod tests {
     fn insert_cage_duplicate_returns_self() {
         let p = Puzzle::new(4).unwrap();
         let cage = cage_at(&[(0, 0)], Given, 3);
-        let p2 = p.insert_cage(cage.clone()).unwrap();
-        let p3 = p2.insert_cage(cage).unwrap();
+        let p2 = p.insert_cage(cage.clone()).unwrap().unwrap();
+        let p3 = p2.insert_cage(cage).unwrap().unwrap();
         assert_eq!(p2, p3);
     }
 
@@ -464,6 +456,7 @@ mod tests {
         let p = Puzzle::new(4)
             .unwrap()
             .insert_cage(cage_at(&[(0, 0), (0, 1)], Add, 3))
+            .unwrap()
             .unwrap();
         // This cage shares cell (0,0) with the existing cage but has a different polyomino.
         let overlapping = cage_at(&[(0, 0)], Given, 1);
@@ -483,7 +476,13 @@ mod tests {
         let p = Puzzle::new(4).unwrap();
         let c1 = cage_at(&[(0, 0)], Given, 1);
         let c2 = cage_at(&[(0, 1)], Given, 2);
-        let p3 = p.insert_cage(c1).unwrap().insert_cage(c2).unwrap();
+        let p3 = p
+            .insert_cage(c1)
+            .unwrap()
+            .unwrap()
+            .insert_cage(c2)
+            .unwrap()
+            .unwrap();
         assert_eq!(p3.cages().count(), 2);
     }
 
@@ -530,7 +529,7 @@ mod tests {
         // After insert, (0,0) and (0,1) should be pruned to {1,4}.
         let p = Puzzle::new(4).unwrap();
         let cage = cage_at(&[(0, 0), (0, 1)], Operator::Subtract, 3);
-        let p2 = p.insert_cage(cage).unwrap();
+        let p2 = p.insert_cage(cage).unwrap().unwrap();
         assert_eq!(
             p2.get_values(Cell::new(0, 0)).unwrap(),
             Values::new(&[1, 4]).unwrap()
@@ -546,7 +545,7 @@ mod tests {
         // Divide 3 in a 3×3: only (3,1) and (1,3) are valid.
         let p = Puzzle::new(3).unwrap();
         let cage = cage_at(&[(0, 0), (0, 1)], Operator::Divide, 3);
-        let p2 = p.insert_cage(cage).unwrap();
+        let p2 = p.insert_cage(cage).unwrap().unwrap();
         assert_eq!(
             p2.get_values(Cell::new(0, 0)).unwrap(),
             Values::new(&[1, 3]).unwrap()
@@ -558,8 +557,12 @@ mod tests {
     #[test]
     fn remove_cage_removes_present_cage() {
         let cage = cage_at(&[(0, 0)], Given, 1);
-        let p = Puzzle::new(4).unwrap().insert_cage(cage.clone()).unwrap();
-        let p2 = p.remove_cage(&cage).unwrap();
+        let p = Puzzle::new(4)
+            .unwrap()
+            .insert_cage(cage.clone())
+            .unwrap()
+            .unwrap();
+        let p2 = p.remove_cage(&cage).unwrap().unwrap();
         assert_eq!(p2.cages().count(), 0);
     }
 
@@ -567,14 +570,18 @@ mod tests {
     fn remove_cage_absent_returns_self() {
         let cage = cage_at(&[(0, 0)], Given, 1);
         let p = Puzzle::new(4).unwrap();
-        let p2 = p.remove_cage(&cage).unwrap();
+        let p2 = p.remove_cage(&cage).unwrap().unwrap();
         assert_eq!(p, p2);
     }
 
     #[test]
     fn remove_cage_is_non_destructive() {
         let cage = cage_at(&[(0, 0)], Given, 1);
-        let p = Puzzle::new(4).unwrap().insert_cage(cage.clone()).unwrap();
+        let p = Puzzle::new(4)
+            .unwrap()
+            .insert_cage(cage.clone())
+            .unwrap()
+            .unwrap();
         let _ = p.remove_cage(&cage);
         assert_eq!(p.cages().count(), 1);
     }
@@ -584,7 +591,11 @@ mod tests {
     #[test]
     fn get_cage_at_returns_cage_for_present_polyomino() {
         let cage = cage_at(&[(0, 0), (0, 1)], Add, 3);
-        let p = Puzzle::new(4).unwrap().insert_cage(cage.clone()).unwrap();
+        let p = Puzzle::new(4)
+            .unwrap()
+            .insert_cage(cage.clone())
+            .unwrap()
+            .unwrap();
         let poly = Polyomino::from_cells(&[Cell::new(0, 0), Cell::new(0, 1)]).unwrap();
         assert_eq!(p.get_cage_at(&poly), Some(&cage));
     }
@@ -606,7 +617,9 @@ mod tests {
             .unwrap()
             .insert_cage(c1.clone())
             .unwrap()
+            .unwrap()
             .insert_cage(c2.clone())
+            .unwrap()
             .unwrap();
         let cages: Vec<_> = p.cages().cloned().collect();
         assert!(cages.contains(&c1));
@@ -621,7 +634,9 @@ mod tests {
             .unwrap()
             .insert_cage(cage_at(&[(0, 0), (0, 1)], Add, 3))
             .unwrap()
+            .unwrap()
             .insert_cage(cage_at(&[(0, 2)], Given, 3))
+            .unwrap()
             .unwrap();
         let json = to_string(&p).unwrap();
         let restored: Puzzle = from_str(&json).unwrap();
@@ -633,7 +648,7 @@ mod tests {
         let p = Puzzle::new(4).unwrap();
         assert_eq!(p.to_string(), "4×4 puzzle, 0 cages");
         let cage = cage_at(&[(0, 0)], Given, 1);
-        let p = p.insert_cage(cage).unwrap();
+        let p = p.insert_cage(cage).unwrap().unwrap();
         assert_eq!(p.to_string(), "4×4 puzzle, 1 cages");
     }
 
@@ -650,7 +665,11 @@ mod tests {
     #[test]
     fn cage_tuples_returns_valid_tuples() {
         let cage = cage_at(&[(0, 0), (0, 1)], Add, 3);
-        let puzzle = Puzzle::new(4).unwrap().insert_cage(cage.clone()).unwrap();
+        let puzzle = Puzzle::new(4)
+            .unwrap()
+            .insert_cage(cage.clone())
+            .unwrap()
+            .unwrap();
         let tuples = puzzle.cage_tuples(&cage).unwrap();
         assert!(!tuples.is_empty());
         for t in &tuples {
@@ -678,11 +697,15 @@ mod tests {
             .unwrap()
             .insert_cage(cage_at(&[(0, 0)], Given, 1))
             .unwrap()
+            .unwrap()
             .insert_cage(cage_at(&[(0, 1)], Given, 2))
+            .unwrap()
             .unwrap()
             .insert_cage(cage_at(&[(1, 0)], Given, 2))
             .unwrap()
+            .unwrap()
             .insert_cage(cage_at(&[(1, 1)], Given, 1))
+            .unwrap()
             .unwrap();
         let p = puzzle.fixpoint().unwrap();
         assert_eq!(
@@ -708,6 +731,7 @@ mod tests {
         let puzzle = Puzzle::new(2)
             .unwrap()
             .insert_cage(cage_at(&[(0, 0)], Given, 1))
+            .unwrap()
             .unwrap();
         let p1 = puzzle.fixpoint().unwrap();
         let p2 = p1.fixpoint().unwrap();
@@ -732,7 +756,9 @@ mod tests {
             .unwrap()
             .insert_cage(cage_at(&[(0, 0), (0, 1)], Add, 3))
             .unwrap()
+            .unwrap()
             .insert_cage(cage_at(&[(1, 0), (1, 1)], Operator::Divide, 2))
+            .unwrap()
             .unwrap();
         let p = puzzle.fixpoint().unwrap();
         let expected = Values::new(&[1, 2]).unwrap();

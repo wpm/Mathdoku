@@ -120,6 +120,7 @@ mod tests {
             for (c, &v) in row.iter().enumerate() {
                 puzzle = puzzle
                     .insert_cage(cage_at(&[(r, c)], Operator::Given, v))
+                    .unwrap()
                     .unwrap();
             }
         }
@@ -134,6 +135,7 @@ mod tests {
         for r in 0..3 {
             puzzle = puzzle
                 .insert_cage(cage_at(&[(r, 0), (r, 1), (r, 2)], Operator::Add, 6))
+                .unwrap()
                 .unwrap();
         }
         puzzle
@@ -159,6 +161,7 @@ mod tests {
         let puzzle = Puzzle::new(3)
             .unwrap()
             .insert_cage(cage_at(&[(0, 0)], Operator::Given, 1))
+            .unwrap()
             .unwrap();
         let ps = PartialSolution::new(puzzle, Grid::new(3).unwrap());
         assert_eq!(ps.solution_count(), None);
@@ -206,7 +209,9 @@ mod tests {
             .unwrap()
             .insert_cage(cage_at(&[(0, 0), (0, 1)], Operator::Add, 3))
             .unwrap()
+            .unwrap()
             .insert_cage(cage_at(&[(0, 2)], Operator::Given, 3))
+            .unwrap()
             .unwrap();
         let ps = PartialSolution::new(puzzle, Grid::new(3).unwrap());
         assert_eq!(ps.viable_counts(0), Some((1, 2))); // Add(3): (1,2) and (2,1)
@@ -218,6 +223,7 @@ mod tests {
         let puzzle = Puzzle::new(3)
             .unwrap()
             .insert_cage(cage_at(&[(0, 0), (0, 1)], Operator::Add, 3))
+            .unwrap()
             .unwrap();
         let ps = PartialSolution::new(puzzle, Grid::new(3).unwrap());
         assert_eq!(ps.cage_index_at(0, 0), Some(0));
