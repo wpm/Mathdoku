@@ -132,7 +132,7 @@ impl Values {
 
 impl crate::csp::Domain for Values {
     fn is_empty(&self) -> bool {
-        Values::is_empty(*self)
+        Self::is_empty(*self)
     }
 }
 

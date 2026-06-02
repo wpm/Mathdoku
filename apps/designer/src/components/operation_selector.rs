@@ -97,16 +97,14 @@ fn with_solution_view(
     let ops: Vec<(Operator, String)> = pending
         .allowed
         .iter()
-        .filter_map(|op| {
+        .filter_map(|&op| {
             let target = compute_target(&polyomino, op, partial_solution);
             if all_determined && target.is_none() {
                 return None; // structurally invalid for these cell values
             }
-            let label = target.map_or_else(
-                || op.to_string(),
-                |t| Operation::new(op.clone(), t).to_string(),
-            );
-            Some((op.clone(), label))
+            let label =
+                target.map_or_else(|| op.to_string(), |t| Operation::new(op, t).to_string());
+            Some((op, label))
         })
         .collect();
 
@@ -132,7 +130,7 @@ fn with_solution_view(
                 view! {
                     <g
                         style="cursor:pointer;"
-                        on:click=move |_| on_commit.run((op.clone(), None))
+                        on:click=move |_| on_commit.run((op, None))
                     >
                         <rect
                             x={tab_x} y={tab_y}
@@ -181,7 +179,7 @@ fn without_solution_view(
         FeasibilityState::Ready(pairs) if pairs.is_empty() => empty_message_view(x, y),
         FeasibilityState::Ready(pairs) => picked.get().map_or_else(
             || operator_strip_view(&pairs, picked, selected_idx, tab_w, tab_h, pad, gap, x, y),
-            |op| target_select_view(&pairs, &op, on_commit, tab_w, tab_h, pad, x, y),
+            |op| target_select_view(&pairs, op, on_commit, tab_w, tab_h, pad, x, y),
         ),
     }
 }
@@ -256,7 +254,7 @@ fn operator_strip_view(
                 view! {
                     <g
                         style="cursor:pointer;"
-                        on:click=move |_| { selected_idx.set(0); picked.set(Some(op.clone())); }
+                        on:click=move |_| { selected_idx.set(0); picked.set(Some(op)); }
                     >
                         <rect
                             x={tab_x} y={tab_y} width={tab_w} height={tab_h}
@@ -287,7 +285,7 @@ fn operator_strip_view(
 #[allow(clippy::too_many_arguments)]
 fn target_select_view(
     pairs: &[(Operator, Target)],
-    op: &Operator,
+    op: Operator,
     on_commit: Callback<(Operator, Option<Target>)>,
     tab_w: f64,
     tab_h: f64,
@@ -297,7 +295,7 @@ fn target_select_view(
 ) -> AnyView {
     let options: Vec<_> = pairs
         .iter()
-        .filter(|(o, _)| o == op)
+        .filter(|(o, _)| *o == op)
         .map(|(_, t)| {
             let value = t.to_string();
             let label = value.clone();
@@ -309,7 +307,7 @@ fn target_select_view(
     // The operator symbol is the placeholder. `Given` renders with no symbol, so
     // a singleton's value dropdown shows a blank header rather than a `#`.
     let placeholder = op.to_string();
-    let op_for_change = op.clone();
+    let op_for_change = op;
 
     // Move focus to the dropdown as soon as it mounts.
     let select_ref = NodeRef::<leptos::html::Select>::new();
@@ -334,7 +332,7 @@ fn target_select_view(
                 style=select_style
                 on:change=move |ev| {
                     if let Ok(target) = event_target_value(&ev).parse::<Target>() {
-                        on_commit.run((op_for_change.clone(), Some(target)));
+                        on_commit.run((op_for_change, Some(target)));
                     }
                 }
             >
@@ -370,7 +368,7 @@ pub struct PendingCommit {
 /// values read from `partial_solution`. Returns `None` if any cell's values are not a singleton.
 fn compute_target(
     polyomino: &Polyomino,
-    op: &Operator,
+    op: Operator,
     partial_solution: &PartialSolution,
 ) -> Option<u64> {
     let vals: Vec<u64> = polyomino
@@ -486,7 +484,7 @@ fn handle_key_without_solution(
                 TAB | ARROW_RIGHT | ARROW_LEFT => step(shift || key == ARROW_LEFT, ops.len()),
                 ENTER => {
                     if let Some(op) = ops.get(pending.selected_idx.get_untracked()) {
-                        pending.picked_operator.set(Some(op.clone()));
+                        pending.picked_operator.set(Some(*op));
                         pending.selected_idx.set(0);
                     }
                 }
@@ -572,7 +570,7 @@ pub fn handle_key(
             true
         }
         ENTER => {
-            let op = pending.allowed[pending.selected_idx.get_untracked()].clone();
+            let op = pending.allowed[pending.selected_idx.get_untracked()];
             pending.on_commit.run((op, None));
             true
         }
@@ -611,7 +609,7 @@ mod tests {
     fn compute_target_given_is_first_cell_value() {
         let ps = pinned_3x3();
         assert_eq!(
-            compute_target(&poly(&[(0, 1)]), &Operator::Given, &ps),
+            compute_target(&poly(&[(0, 1)]), Operator::Given, &ps),
             Some(2)
         );
     }
@@ -621,7 +619,7 @@ mod tests {
         let ps = pinned_3x3();
         // (0,0)=1, (0,1)=2, (0,2)=3 → 6
         assert_eq!(
-            compute_target(&poly(&[(0, 0), (0, 1), (0, 2)]), &Operator::Add, &ps),
+            compute_target(&poly(&[(0, 0), (0, 1), (0, 2)]), Operator::Add, &ps),
             Some(6)
         );
     }
@@ -631,7 +629,7 @@ mod tests {
         let ps = pinned_3x3();
         // (1,0)=2, (1,1)=3 → 6
         assert_eq!(
-            compute_target(&poly(&[(1, 0), (1, 1)]), &Operator::Multiply, &ps),
+            compute_target(&poly(&[(1, 0), (1, 1)]), Operator::Multiply, &ps),
             Some(6)
         );
     }
@@ -641,7 +639,7 @@ mod tests {
         let ps = pinned_3x3();
         // (0,0)=1, (0,1)=2 → |1-2| = 1
         assert_eq!(
-            compute_target(&poly(&[(0, 0), (0, 1)]), &Operator::Subtract, &ps),
+            compute_target(&poly(&[(0, 0), (0, 1)]), Operator::Subtract, &ps),
             Some(1)
         );
     }
@@ -663,7 +661,7 @@ mod tests {
         let ps = PartialSolution::new(Puzzle::new(6).unwrap(), grid);
         // (0,0)=2, (0,1)=6 → 6/2 = 3
         assert_eq!(
-            compute_target(&poly(&[(0, 0), (0, 1)]), &Operator::Divide, &ps),
+            compute_target(&poly(&[(0, 0), (0, 1)]), Operator::Divide, &ps),
             Some(3)
         );
     }
@@ -673,7 +671,7 @@ mod tests {
         let ps = pinned_3x3();
         // (0,1)=2, (0,2)=3 → 3 not divisible by 2 → None
         assert_eq!(
-            compute_target(&poly(&[(0, 1), (0, 2)]), &Operator::Divide, &ps),
+            compute_target(&poly(&[(0, 1), (0, 2)]), Operator::Divide, &ps),
             None
         );
     }
@@ -682,10 +680,7 @@ mod tests {
     fn compute_target_none_when_values_not_singleton() {
         // Unconstrained grid: every cell's values are {1,2,3}, not a singleton.
         let ps = PartialSolution::new(Puzzle::new(3).unwrap(), Grid::new(3).unwrap());
-        assert_eq!(
-            compute_target(&poly(&[(0, 0)]), &Operator::Given, &ps),
-            None
-        );
+        assert_eq!(compute_target(&poly(&[(0, 0)]), Operator::Given, &ps), None);
     }
 
     #[test]

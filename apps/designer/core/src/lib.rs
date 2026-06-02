@@ -127,7 +127,7 @@ impl State {
     ///
     /// # Errors
     /// Returns an error if constraint propagation fails.
-    pub fn current(&self) -> Result<Grid, mathdoku::Error> {
+    pub const fn current(&self) -> Result<Grid, mathdoku::Error> {
         Ok(self.puzzle.grid())
     }
 

@@ -60,10 +60,10 @@ pub fn feasible_op_targets(
     let k = polyomino.len();
     let mut out = Vec::new();
     for op in operators_for(polyomino) {
-        for target in candidate_targets(&op, k, n) {
-            let cage = Cage::new(polyomino.clone(), Operation::new(op.clone(), target))?;
+        for target in candidate_targets(op, k, n) {
+            let cage = Cage::new(polyomino.clone(), Operation::new(op, target))?;
             if is_globally_feasible(puzzle, &cage) {
-                out.push((op.clone(), target));
+                out.push((op, target));
             }
         }
     }
@@ -75,7 +75,7 @@ pub fn feasible_op_targets(
 /// This is a *superset* of the achievable targets; global feasibility is the
 /// final filter. Sums and products are enumerated by reachability so the ranges
 /// stay tight without iterating all integers up to `n^k`.
-fn candidate_targets(op: &Operator, k: usize, n: usize) -> Vec<Target> {
+fn candidate_targets(op: Operator, k: usize, n: usize) -> Vec<Target> {
     let n = n as Target;
     match op {
         Operator::Given => (1..=n).collect(),
@@ -182,7 +182,7 @@ pub fn group_by_operator(pairs: &[(Operator, Target)]) -> Vec<(Operator, Vec<Tar
         if let Some(entry) = grouped.iter_mut().find(|(o, _)| o == op) {
             entry.1.push(*target);
         } else {
-            grouped.push((op.clone(), vec![*target]));
+            grouped.push((*op, vec![*target]));
         }
     }
     grouped
@@ -278,7 +278,7 @@ mod tests {
 
     #[test]
     fn candidate_targets_add_pair_is_bounded_by_two_n() {
-        let targets = candidate_targets(&Operator::Add, 2, 4);
+        let targets = candidate_targets(Operator::Add, 2, 4);
         // Two cells in 1..=4 sum to between 2 and 8.
         assert_eq!(*targets.first().unwrap(), 2);
         assert_eq!(*targets.last().unwrap(), 8);
@@ -307,5 +307,31 @@ mod tests {
         assert_eq!(grouped[0].1, vec![3, 4]);
         assert_eq!(grouped[1].0, Operator::Subtract);
         assert_eq!(grouped[1].1, vec![1]);
+    }
+
+    /// Perf baseline: `feasible_op_targets` for a 2×2 square polyomino in an
+    /// empty 7×7 Without-Solution puzzle. This mirrors what happens when the
+    /// user draws a 2×2 cage and presses Enter in the designer — the operation
+    /// selector triggers this call to populate its operator/target picker.
+    #[test]
+    fn perf_feasible_op_targets_2x2_in_empty_7x7() {
+        let puzzle = Puzzle::new(7).unwrap();
+        let square = poly(&[(0, 0), (0, 1), (1, 0), (1, 1)]);
+        let pairs = feasible_op_targets(&puzzle, &square).unwrap();
+        assert!(!pairs.is_empty());
+    }
+
+    #[test]
+    fn candidate_count_2x2_in_7x7() {
+        use super::candidate_targets;
+        use mathdoku::operators_for;
+        let puzzle = Puzzle::new(7).unwrap();
+        let square = poly(&[(0, 0), (0, 1), (1, 0), (1, 1)]);
+        let total: usize = operators_for(&square)
+            .iter()
+            .map(|&op| candidate_targets(op, 4, puzzle.n()).len())
+            .sum();
+        let _ = total; // assert below is the actual check
+        assert!(total > 0);
     }
 }

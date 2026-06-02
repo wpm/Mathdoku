@@ -101,7 +101,7 @@ impl Puzzle {
 
     /// Returns the propagated grid that reflects all cage and all-different constraints
     /// applied so far. Each cell holds the set of values still consistent with all constraints.
-    pub fn grid(&self) -> Grid {
+    pub const fn grid(&self) -> Grid {
         self.grid
     }
 
@@ -260,6 +260,7 @@ impl Puzzle {
     /// Propagates all cage and all-different constraints to a GAC fixpoint.
     ///
     /// Returns `None` if any cell's domain becomes empty (infeasible).
+    #[must_use]
     pub fn fixpoint(&self) -> Option<Self> {
         let puzzle = Arc::new(self.clone());
         let constraints = Self::constraints(&puzzle);

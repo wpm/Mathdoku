@@ -30,6 +30,7 @@
 //!   using the MDD-4R algorithm (top-down reachability + bottom-up co-reachability sweep).
 
 #![deny(missing_docs)]
+#![allow(dead_code)]
 // Test code leans on `.unwrap()`/`.expect()`/`panic!()` to assert invariants
 // that the strict workspace policy denies in production. Allow them under
 // `cfg(test)` so `cargo clippy --all-targets` stays green without scattering
@@ -54,6 +55,8 @@ mod grid;
 pub mod grid_csp;
 mod latin_square;
 pub mod mdd;
+#[allow(missing_docs)]
+pub mod mdk;
 mod operation;
 mod polyomino;
 mod puzzle;

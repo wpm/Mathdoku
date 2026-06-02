@@ -58,7 +58,7 @@ where
 ///
 /// The GAC algorithm uses [`Domain::is_empty`] to detect infeasibility: as soon
 /// as any variable's domain empties, no solution exists and propagation stops.
-pub(crate) trait Domain {
+pub trait Domain {
     fn is_empty(&self) -> bool;
 }
 
@@ -269,12 +269,6 @@ mod tests {
                     Ok(update(a, &da, common.clone(), b, &db, common))
                 }
                 Sum(vars, target) => {
-                    let domains: Vec<TestDomain> = vars
-                        .iter()
-                        .map(|v| state.get(v.clone()))
-                        .collect::<Result<_, _>>()?;
-                    let mut supported: Vec<TestDomain> = vec![HashSet::new(); vars.len()];
-                    // Enumerate all assignments; prune by partial sums.
                     fn enumerate(
                         domains: &[TestDomain],
                         supported: &mut Vec<TestDomain>,
@@ -300,6 +294,11 @@ mod tests {
                             }
                         }
                     }
+                    let domains: Vec<TestDomain> = vars
+                        .iter()
+                        .map(|v| state.get(v.clone()))
+                        .collect::<Result<_, _>>()?;
+                    let mut supported: Vec<TestDomain> = vec![HashSet::new(); vars.len()];
                     enumerate(&domains, &mut supported, 0, 0, *target, &mut vec![]);
                     let mut changed = vec![];
                     let mut new_map = state.0.clone();

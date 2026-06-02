@@ -19,8 +19,8 @@ struct GridWire {
 /// An `n×n` grid of cell values.
 ///
 /// Each cell has a [`Values`] set — the candidate values `1..=n` still
-/// consistent with the constraints applied so far. Use [`Puzzle::grid`]
-/// to get the propagated grid from a [`Puzzle`].
+/// consistent with the constraints applied so far. Use [`crate::Puzzle::grid`]
+/// to get the propagated grid from a [`crate::Puzzle`].
 ///
 /// `values` is a flat `[Values; 81]` array stored inline (no heap allocation).
 /// Only the first `n*n` entries are used; the rest are `Values::default()`.
