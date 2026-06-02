@@ -4,27 +4,24 @@ use crate::grid::Grid;
 use crate::puzzle::Puzzle;
 use crate::{Cell, Error, Values};
 
-/// An iterator over all solutions for a [`Grid`] under a [`Puzzle`]'s constraints.
+/// An iterator over all solutions for a [`Puzzle`].
 ///
 /// Each item is a solved [`Grid`] in which every cell's values are a singleton.
 /// Solutions are produced by interleaved propagation and backtracking search (MAC):
-/// after each branch, [`Puzzle::fixpoint`] is called to prune as far as possible before
-/// the next branch.
+/// branching on the most-constrained cell calls [`Puzzle::set_value`], which propagates
+/// all constraints to a fixpoint before the next branch is chosen.
 ///
 /// Obtained via [`Puzzle::solutions`].
-// Explicit `pub(crate)` marks the crate-internal API surface.
 #[must_use]
 #[allow(clippy::redundant_pub_crate)]
-pub(crate) struct Solutions<'a> {
-    stack: Vec<Grid>,
-    puzzle: &'a Puzzle,
+pub(crate) struct Solutions {
+    stack: Vec<Puzzle>,
 }
 
-impl<'a> Solutions<'a> {
-    pub(crate) fn new(grid: &Grid, puzzle: &'a Puzzle) -> Self {
+impl Solutions {
+    pub(crate) fn new(puzzle: &Puzzle) -> Self {
         Self {
-            stack: vec![*grid],
-            puzzle,
+            stack: vec![puzzle.clone()],
         }
     }
 
@@ -35,7 +32,7 @@ impl<'a> Solutions<'a> {
         for r in 0..n {
             for c in 0..n {
                 let cell = Cell::new(r, c);
-                if let Ok(values) = grid.cell_values(cell)
+                if let Ok(values) = grid.get_values(cell)
                     && values.len() >= 2
                     && best.is_none_or(|(_, d)| values.len() < d.len())
                 {
@@ -47,23 +44,19 @@ impl<'a> Solutions<'a> {
     }
 }
 
-impl Iterator for Solutions<'_> {
+impl Iterator for Solutions {
     type Item = Result<Grid, Error>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        while let Some(grid) = self.stack.pop() {
-            // Propagate to fixpoint.
-            let grid = match self.puzzle.propagate_grid(&grid) {
-                Ok(g) => g,
-                Err(e) => return Some(Err(e)),
-            };
-
+        while let Some(puzzle) = self.stack.pop() {
+            // Every Puzzle on the stack is already at a fixpoint (maintained by set_value).
+            let grid = puzzle.grid();
             let n = grid.n();
 
             // Check for failure: any empty value set means this branch is dead.
             let failed = (0..n)
                 .flat_map(|r| (0..n).map(move |c| Cell::new(r, c)))
-                .any(|cell| grid.cell_values(cell).is_ok_and(Values::is_empty));
+                .any(|cell| grid.get_values(cell).is_ok_and(Values::is_empty));
             if failed {
                 continue;
             }
@@ -71,7 +64,7 @@ impl Iterator for Solutions<'_> {
             // Check for success: all cells' values are singletons.
             let solved = (0..n)
                 .flat_map(|r| (0..n).map(move |c| Cell::new(r, c)))
-                .all(|cell| grid.cell_values(cell).is_ok_and(Values::is_singleton));
+                .all(|cell| grid.get_values(cell).is_ok_and(Values::is_singleton));
             if solved {
                 return Some(Ok(grid));
             }
@@ -79,7 +72,7 @@ impl Iterator for Solutions<'_> {
             // Branch on the most constrained unassigned cell.
             if let Some((cell, values)) = Self::branch_cell(&grid) {
                 for v in values.values() {
-                    if let Ok(child) = grid.set_cell_value(cell, v) {
+                    if let Ok(child) = puzzle.set_value(cell, v) {
                         self.stack.push(child);
                     }
                 }

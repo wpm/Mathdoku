@@ -123,15 +123,12 @@ impl State {
         })
     }
 
-    /// Returns the working grid: cages propagated onto `solution` in
-    /// With-Solution mode, or `puzzle.propagated_grid()` in Without-Solution mode.
+    /// Returns the working grid for the puzzle being designed.
     ///
     /// # Errors
     /// Returns an error if constraint propagation fails.
     pub fn current(&self) -> Result<Grid, mathdoku::Error> {
-        self.solution
-            .as_ref()
-            .map_or_else(|| Ok(self.puzzle.grid()), |s| self.puzzle.constrain_grid(s))
+        Ok(self.puzzle.grid())
     }
 
     /// Switches from Without-Solution to With-Solution by snapshotting the
@@ -298,7 +295,7 @@ pub fn insert_cage(
             cells
                 .iter()
                 .map(|&cell| {
-                    let v = grid.cell_values(cell).ok()?;
+                    let v = grid.get_values(cell).ok()?;
                     v.is_singleton()
                         .then(|| v.values().first().copied().map(u64::from))?
                 })
@@ -573,11 +570,11 @@ mod tests {
             assert!(st.fix().is_ok());
             let solution = st.solution.unwrap();
             assert_eq!(
-                solution.cell_values(Cell::new(0, 0)).unwrap().values(),
+                solution.get_values(Cell::new(0, 0)).unwrap().values(),
                 vec![1]
             );
             assert_eq!(
-                solution.cell_values(Cell::new(1, 0)).unwrap().values(),
+                solution.get_values(Cell::new(1, 0)).unwrap().values(),
                 vec![2]
             );
         }
@@ -979,7 +976,7 @@ mod tests {
             // current is unconstrained: every cell holds the full value set.
             let current = st.current().unwrap();
             for cell in all_cells(4) {
-                assert_eq!(current.cell_values(cell).unwrap(), Values::all(4));
+                assert_eq!(current.get_values(cell).unwrap(), Values::all(4));
             }
             assert!(state.path.is_none());
             assert!(state.dirty);
@@ -993,8 +990,7 @@ mod tests {
             let st = new_latin_square(&mut state, 4, &mut rng).unwrap();
             assert!(state.puzzle.is_some());
             assert!(state.solution.is_some());
-            // current == solution initially (no cages, so constrain_grid is identity).
-            assert_eq!(st.current().unwrap(), state.solution.unwrap());
+            assert_eq!(st.current().unwrap(), state.puzzle.unwrap().grid());
             assert!(state.path.is_none());
             assert!(state.dirty);
         }
@@ -1018,9 +1014,7 @@ mod tests {
                 insert_cage(&mut state, region.clone(), mathdoku::Operator::Given, None).unwrap();
             let puzzle = state.puzzle.as_ref().unwrap();
             assert!(puzzle.cages().any(|c| c.polyomino() == &region));
-            let expected = puzzle
-                .constrain_grid(state.solution.as_ref().unwrap())
-                .unwrap();
+            let expected = puzzle.grid();
             assert_eq!(st.current().unwrap(), expected);
             assert!(state.dirty);
             assert!(st.solution.is_some());
@@ -1073,7 +1067,7 @@ mod tests {
             assert!(state.dirty);
             let sol = state.solution.as_ref().unwrap();
             assert_eq!(
-                sol.cell_values(Cell::new(0, 0)).unwrap(),
+                sol.get_values(Cell::new(0, 0)).unwrap(),
                 Values::new(&[1]).unwrap()
             );
         }
@@ -1165,7 +1159,7 @@ mod tests {
             let _ = new_latin_square(&mut state, 3, &mut rng).unwrap();
             let original = state.solution.clone().unwrap();
             for cell in all_cells(3) {
-                let v = u64::from(original.cell_values(cell).unwrap().values()[0]);
+                let v = u64::from(original.get_values(cell).unwrap().values()[0]);
                 let p = Polyomino::from_cells(&[cell]).unwrap();
                 let _ = insert_cage(&mut state, p, Operator::Given, Some(v)).unwrap();
             }
@@ -1197,7 +1191,7 @@ mod tests {
             let _ = new_latin_square(&mut state, 2, &mut rng).unwrap();
             let solution = state.solution.clone().unwrap();
             let value_at = |r: usize, c: usize| {
-                u64::from(solution.cell_values(Cell::new(r, c)).unwrap().values()[0])
+                u64::from(solution.get_values(Cell::new(r, c)).unwrap().values()[0])
             };
 
             // With-Solution: target derived from the solution.
@@ -1396,7 +1390,7 @@ mod tests {
                 designer
                     .current()
                     .unwrap()
-                    .cell_values(Cell::new(0, 0))
+                    .get_values(Cell::new(0, 0))
                     .unwrap()
                     .values(),
                 vec![1]
@@ -1428,13 +1422,13 @@ mod tests {
             (0..n).all(|r| {
                 line_ok(
                     (0..n)
-                        .map(|c| grid.cell_values(Cell::new(r, c)).unwrap().values()[0])
+                        .map(|c| grid.get_values(Cell::new(r, c)).unwrap().values()[0])
                         .collect(),
                 )
             }) && (0..n).all(|c| {
                 line_ok(
                     (0..n)
-                        .map(|r| grid.cell_values(Cell::new(r, c)).unwrap().values()[0])
+                        .map(|r| grid.get_values(Cell::new(r, c)).unwrap().values()[0])
                         .collect(),
                 )
             })
@@ -1580,7 +1574,7 @@ mod tests {
             assert!(
                 !st.current()
                     .unwrap()
-                    .cell_values(Cell::new(0, 0))
+                    .get_values(Cell::new(0, 0))
                     .unwrap()
                     .is_empty()
             );
@@ -1601,7 +1595,7 @@ mod tests {
                 assert!(
                     !st.current()
                         .unwrap()
-                        .cell_values(Cell::new(0, 0))
+                        .get_values(Cell::new(0, 0))
                         .unwrap()
                         .is_empty()
                 );
@@ -1623,7 +1617,7 @@ mod tests {
                 assert!(
                     !st.current()
                         .unwrap()
-                        .cell_values(Cell::new(0, 0))
+                        .get_values(Cell::new(0, 0))
                         .unwrap()
                         .is_empty()
                 );
@@ -1644,7 +1638,7 @@ mod tests {
                 assert!(
                     !st.current()
                         .unwrap()
-                        .cell_values(Cell::new(0, 0))
+                        .get_values(Cell::new(0, 0))
                         .unwrap()
                         .is_empty()
                 );
@@ -1664,7 +1658,7 @@ mod tests {
             assert!(
                 !st.current()
                     .unwrap()
-                    .cell_values(Cell::new(0, 0))
+                    .get_values(Cell::new(0, 0))
                     .unwrap()
                     .is_empty()
             );
@@ -1680,7 +1674,7 @@ mod tests {
             assert!(
                 !st.current()
                     .unwrap()
-                    .cell_values(Cell::new(0, 0))
+                    .get_values(Cell::new(0, 0))
                     .unwrap()
                     .is_empty()
             );
@@ -1696,7 +1690,7 @@ mod tests {
             assert!(
                 !st.current()
                     .unwrap()
-                    .cell_values(Cell::new(0, 0))
+                    .get_values(Cell::new(0, 0))
                     .unwrap()
                     .is_empty()
             );
@@ -1838,10 +1832,7 @@ mod tests {
             let designer = state.to_designer_state().unwrap();
             let current = designer.current().unwrap();
             let puzzle = state.puzzle.as_ref().unwrap();
-            let expected = state
-                .solution
-                .as_ref()
-                .map_or_else(|| puzzle.grid(), |sol| puzzle.constrain_grid(sol).unwrap());
+            let expected = puzzle.grid();
             assert_eq!(current, expected);
         }
 

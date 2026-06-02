@@ -14,7 +14,7 @@ use crate::{Cell, Error, Values};
 
 impl State<Cell, Values, Error> for Grid {
     fn get(&self, cell: Cell) -> Result<Values, Error> {
-        self.cell_values(cell)
+        self.get_values(cell)
     }
 }
 
@@ -48,7 +48,7 @@ impl Constraint<Grid, Cell, Values, Error> for AllDifferent {
         let cells = &self.cells;
         let old_values: Vec<Values> = cells
             .iter()
-            .map(|&c| state.cell_values(c))
+            .map(|&c| state.get_values(c))
             .collect::<Result<_, _>>()?;
         let new_values = regin_gac(&old_values);
         apply_values(state, &self.puzzle, cells, &old_values, &new_values)
@@ -133,7 +133,7 @@ fn propagate_cage(
     let cells = cage.cells();
     let old_values: Vec<Values> = cells
         .iter()
-        .map(|&c| state.cell_values(c))
+        .map(|&c| state.get_values(c))
         .collect::<Result<_, _>>()?;
     let new_values = puzzle.fill(cage).map_or_else(
         || vec![Values::default(); cells.len()],
@@ -208,15 +208,15 @@ mod tests {
             .propagate(&row0_forced_grid())
             .unwrap();
         assert_eq!(
-            new_g.cell_values(Cell::new(0, 0)).unwrap(),
+            new_g.get_values(Cell::new(0, 0)).unwrap(),
             Values::new(&[1]).unwrap()
         );
         assert_eq!(
-            new_g.cell_values(Cell::new(0, 1)).unwrap(),
+            new_g.get_values(Cell::new(0, 1)).unwrap(),
             Values::new(&[2]).unwrap()
         );
         assert_eq!(
-            new_g.cell_values(Cell::new(0, 2)).unwrap(),
+            new_g.get_values(Cell::new(0, 2)).unwrap(),
             Values::new(&[3]).unwrap()
         );
         assert_eq!(changed.len(), 2);
@@ -228,8 +228,8 @@ mod tests {
     fn propagate_infeasible_empties_values() {
         let g = grid_with_values(&[(&(0, 0), &[1]), (&(1, 0), &[1])]);
         let (new_g, changed) = all_different_column(2, 0).propagate(&g).unwrap();
-        assert!(new_g.cell_values(Cell::new(0, 0)).unwrap().is_empty());
-        assert!(new_g.cell_values(Cell::new(1, 0)).unwrap().is_empty());
+        assert!(new_g.get_values(Cell::new(0, 0)).unwrap().is_empty());
+        assert!(new_g.get_values(Cell::new(1, 0)).unwrap().is_empty());
         assert_eq!(changed.len(), 2);
     }
 
@@ -246,11 +246,11 @@ mod tests {
         let g = grid_with_values(&[(&(0, 1), &[1]), (&(1, 1), &[1, 2]), (&(2, 1), &[2, 3])]);
         let (new_g, _) = all_different_column(3, 1).propagate(&g).unwrap();
         assert_eq!(
-            new_g.cell_values(Cell::new(1, 1)).unwrap(),
+            new_g.get_values(Cell::new(1, 1)).unwrap(),
             Values::new(&[2]).unwrap()
         );
         assert_eq!(
-            new_g.cell_values(Cell::new(2, 1)).unwrap(),
+            new_g.get_values(Cell::new(2, 1)).unwrap(),
             Values::new(&[3]).unwrap()
         );
     }
@@ -263,7 +263,7 @@ mod tests {
         let c = cage_fixture(&[(0, 0)], crate::Operator::Given, 3);
         let (new_g, changed) = propagate_cage(&c, &puzzle_with(4, &c), &g).unwrap();
         assert_eq!(
-            new_g.cell_values(Cell::new(0, 0)).unwrap(),
+            new_g.get_values(Cell::new(0, 0)).unwrap(),
             Values::new(&[3]).unwrap()
         );
         assert_eq!(changed, vec![Cell::new(0, 0)]);
@@ -275,11 +275,11 @@ mod tests {
         let c = cage_fixture(&[(0, 0), (0, 1)], crate::Operator::Add, 3);
         let (new_g, _) = propagate_cage(&c, &puzzle_with(4, &c), &g).unwrap();
         assert_eq!(
-            new_g.cell_values(Cell::new(0, 0)).unwrap(),
+            new_g.get_values(Cell::new(0, 0)).unwrap(),
             Values::new(&[1, 2]).unwrap()
         );
         assert_eq!(
-            new_g.cell_values(Cell::new(0, 1)).unwrap(),
+            new_g.get_values(Cell::new(0, 1)).unwrap(),
             Values::new(&[1, 2]).unwrap()
         );
     }
@@ -289,8 +289,8 @@ mod tests {
         let g = grid_with_values(&[(&(0, 0), &[4]), (&(0, 1), &[4])]);
         let c = cage_fixture(&[(0, 0), (0, 1)], crate::Operator::Add, 3);
         let (new_g, changed) = propagate_cage(&c, &puzzle_with(4, &c), &g).unwrap();
-        assert!(new_g.cell_values(Cell::new(0, 0)).unwrap().is_empty());
-        assert!(new_g.cell_values(Cell::new(0, 1)).unwrap().is_empty());
+        assert!(new_g.get_values(Cell::new(0, 0)).unwrap().is_empty());
+        assert!(new_g.get_values(Cell::new(0, 1)).unwrap().is_empty());
         assert_eq!(changed.len(), 2);
     }
 
@@ -303,11 +303,11 @@ mod tests {
         let c = cage_fixture(&[(0, 0), (0, 1)], crate::Operator::Add, 5);
         let (new_g, _) = propagate_cage(&c, &puzzle_with(4, &c), &g).unwrap();
         assert_eq!(
-            new_g.cell_values(Cell::new(0, 0)).unwrap(),
+            new_g.get_values(Cell::new(0, 0)).unwrap(),
             Values::new(&[3, 4]).unwrap()
         );
         assert_eq!(
-            new_g.cell_values(Cell::new(0, 1)).unwrap(),
+            new_g.get_values(Cell::new(0, 1)).unwrap(),
             Values::new(&[1, 2]).unwrap()
         );
     }
@@ -322,11 +322,11 @@ mod tests {
         let c = cage_fixture(&[(0, 0), (0, 1)], crate::Operator::Subtract, 1);
         let (new_g, changed) = propagate_cage(&c, &puzzle_with(4, &c), &g).unwrap();
         assert_eq!(
-            new_g.cell_values(Cell::new(0, 0)).unwrap(),
+            new_g.get_values(Cell::new(0, 0)).unwrap(),
             Values::new(&[1, 2, 3, 4]).unwrap()
         );
         assert_eq!(
-            new_g.cell_values(Cell::new(0, 1)).unwrap(),
+            new_g.get_values(Cell::new(0, 1)).unwrap(),
             Values::new(&[1, 2, 3, 4]).unwrap()
         );
         assert!(changed.is_empty());
@@ -342,7 +342,7 @@ mod tests {
         let c = cage_fixture(&[(0, 0), (0, 1)], crate::Operator::Subtract, 1);
         let (new_g, changed) = propagate_cage(&c, &puzzle_with(4, &c), &g).unwrap();
         assert_eq!(
-            new_g.cell_values(Cell::new(0, 1)).unwrap(),
+            new_g.get_values(Cell::new(0, 1)).unwrap(),
             Values::new(&[3]).unwrap()
         );
         assert_eq!(changed, vec![Cell::new(0, 1)]);
@@ -354,8 +354,8 @@ mod tests {
         let g = grid_with_values(&[(&(0, 0), &[1]), (&(0, 1), &[1])]);
         let c = cage_fixture(&[(0, 0), (0, 1)], crate::Operator::Subtract, 1);
         let (new_g, _) = propagate_cage(&c, &puzzle_with(4, &c), &g).unwrap();
-        assert!(new_g.cell_values(Cell::new(0, 0)).unwrap().is_empty());
-        assert!(new_g.cell_values(Cell::new(0, 1)).unwrap().is_empty());
+        assert!(new_g.get_values(Cell::new(0, 0)).unwrap().is_empty());
+        assert!(new_g.get_values(Cell::new(0, 1)).unwrap().is_empty());
     }
 
     #[test]
@@ -366,11 +366,11 @@ mod tests {
         let c = cage_fixture(&[(0, 0), (0, 1)], crate::Operator::Divide, 2);
         let (new_g, _) = propagate_cage(&c, &puzzle_with(4, &c), &g).unwrap();
         assert_eq!(
-            new_g.cell_values(Cell::new(0, 0)).unwrap(),
+            new_g.get_values(Cell::new(0, 0)).unwrap(),
             Values::new(&[1, 2, 4]).unwrap()
         );
         assert_eq!(
-            new_g.cell_values(Cell::new(0, 1)).unwrap(),
+            new_g.get_values(Cell::new(0, 1)).unwrap(),
             Values::new(&[1, 2, 4]).unwrap()
         );
     }
@@ -385,7 +385,7 @@ mod tests {
         let c = cage_fixture(&[(0, 0), (0, 1)], crate::Operator::Divide, 2);
         let (new_g, changed) = propagate_cage(&c, &puzzle_with(4, &c), &g).unwrap();
         assert_eq!(
-            new_g.cell_values(Cell::new(0, 1)).unwrap(),
+            new_g.get_values(Cell::new(0, 1)).unwrap(),
             Values::new(&[2]).unwrap()
         );
         assert_eq!(changed, vec![Cell::new(0, 1)]);
@@ -398,11 +398,11 @@ mod tests {
         let c = cage_fixture(&[(0, 0), (0, 1)], crate::Operator::Multiply, 6);
         let (new_g, _) = propagate_cage(&c, &puzzle_with(4, &c), &g).unwrap();
         assert_eq!(
-            new_g.cell_values(Cell::new(0, 0)).unwrap(),
+            new_g.get_values(Cell::new(0, 0)).unwrap(),
             Values::new(&[2, 3]).unwrap()
         );
         assert_eq!(
-            new_g.cell_values(Cell::new(0, 1)).unwrap(),
+            new_g.get_values(Cell::new(0, 1)).unwrap(),
             Values::new(&[2, 3]).unwrap()
         );
     }
@@ -411,13 +411,13 @@ mod tests {
 
     #[test]
     fn new_valid_cell_succeeds() {
-        assert!(Grid::new(3).unwrap().cell_values(Cell::new(2, 2)).is_ok());
+        assert!(Grid::new(3).unwrap().get_values(Cell::new(2, 2)).is_ok());
     }
 
     #[test]
     fn new_out_of_bounds_returns_invalid_cell() {
         assert!(matches!(
-            Grid::new(3).unwrap().cell_values(Cell::new(3, 0)),
+            Grid::new(3).unwrap().get_values(Cell::new(3, 0)),
             Err(Error::InvalidCell(_))
         ));
     }

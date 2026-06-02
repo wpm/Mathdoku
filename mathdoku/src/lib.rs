@@ -15,7 +15,7 @@
 //!
 //! - **Generate** a random puzzle with [`generate()`].
 //! - **Construct** a puzzle programmatically with [`Puzzle::new`] and [`Puzzle::insert_cage`].
-//! - **Inspect** cell values with [`Puzzle::cell_values`].
+//! - **Inspect** cell values with [`Puzzle::get_values`].
 //! - **Solve** with [`Puzzle::solutions`].
 //! - **Query valid operators** for a polyomino with [`operators_for`].
 //!

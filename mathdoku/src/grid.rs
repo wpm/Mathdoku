@@ -4,7 +4,6 @@ use serde::de::Error as DeError;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt::{Display, Formatter};
 
-use crate::puzzle::Puzzle;
 use crate::Error::InvalidGridSize;
 use crate::{Cell, Error, Value, Values};
 
@@ -21,7 +20,7 @@ struct GridWire {
 ///
 /// Each cell has a [`Values`] set — the candidate values `1..=n` still
 /// consistent with the constraints applied so far. Use [`Puzzle::grid`]
-/// or [`Puzzle::constrain_grid`] to get a propagated grid from a [`Puzzle`].
+/// to get the propagated grid from a [`Puzzle`].
 ///
 /// `values` is a flat `[Values; 81]` array stored inline (no heap allocation).
 /// Only the first `n*n` entries are used; the rest are `Values::default()`.
@@ -60,7 +59,7 @@ impl Grid {
     ///
     /// # Errors
     /// Returns [`Error::InvalidCell`] if `cell` is outside the grid.
-    pub fn cell_values(&self, cell: Cell) -> Result<Values, Error> {
+    pub fn get_values(&self, cell: Cell) -> Result<Values, Error> {
         Ok(self.values[self.index(cell)?])
     }
 
@@ -68,7 +67,7 @@ impl Grid {
     ///
     /// # Errors
     /// Returns [`Error::InvalidCell`] if `cell` is outside the grid.
-    pub(crate) fn set_cell_value(&self, cell: Cell, n: Value) -> Result<Self, Error> {
+    pub(crate) fn set_value(&self, cell: Cell, n: Value) -> Result<Self, Error> {
         self.set_values(cell, Values::singleton(n))
     }
 
@@ -106,14 +105,6 @@ impl Grid {
 
     fn singleton_values(v: Value) -> Values {
         Values::singleton(v)
-    }
-
-    /// Propagates all constraints from `puzzle` to a fixpoint.
-    pub(crate) fn constrain(&self, puzzle: &Puzzle) -> Result<Self, Error> {
-        if puzzle.n() != self.n {
-            return Err(InvalidGridSize(puzzle.n()));
-        }
-        puzzle.propagate_grid(self)
     }
 
     pub(crate) const fn index(&self, cell: Cell) -> Result<usize, Error> {
@@ -181,14 +172,15 @@ impl Display for Grid {
 
 #[cfg(test)]
 mod tests {
-    use serde_json::{from_str, json, to_string, Value};
+    use serde_json::{Value, from_str, json, to_string};
 
     use super::*;
+    use crate::Target;
     use crate::cage::Cage;
     use crate::operation::Operator;
-    use crate::operation::Operator::{Add, Divide, Given};
+    use crate::operation::Operator::{Add, Given};
+    use crate::puzzle::Puzzle;
     use crate::test_utils::cage_at;
-    use crate::Target;
 
     fn puzzle_with_cage(
         n: usize,
@@ -226,7 +218,7 @@ mod tests {
         for r in 0..4 {
             for c in 0..4 {
                 assert_eq!(
-                    g.cell_values(Cell::new(r, c)).unwrap(),
+                    g.get_values(Cell::new(r, c)).unwrap(),
                     expected,
                     "cell ({r},{c}) should have full values"
                 );
@@ -234,45 +226,45 @@ mod tests {
         }
     }
 
-    // --- Grid::cell_values ---
+    // --- Grid::get_values ---
 
     #[test]
-    fn get_cell_values_out_of_bounds_returns_err() {
+    fn get_values_out_of_bounds_returns_err() {
         let g = Grid::new(3).unwrap();
         assert!(matches!(
-            g.cell_values(Cell::new(3, 0)),
+            g.get_values(Cell::new(3, 0)),
             Err(Error::InvalidCell(_))
         ));
         assert!(matches!(
-            g.cell_values(Cell::new(0, 3)),
+            g.get_values(Cell::new(0, 3)),
             Err(Error::InvalidCell(_))
         ));
     }
 
-    // --- Grid::set_cell_value ---
+    // --- Grid::set_value ---
 
     #[test]
-    fn set_cell_values_narrows_values() {
+    fn set_value_narrows_values() {
         let g = Grid::new(4).unwrap();
         let cell = Cell::new(1, 2);
-        let g2 = g.set_cell_value(cell, 3).unwrap();
-        assert_eq!(g2.cell_values(cell).unwrap(), Values::new(&[3]).unwrap());
+        let g2 = g.set_value(cell, 3).unwrap();
+        assert_eq!(g2.get_values(cell).unwrap(), Values::new(&[3]).unwrap());
     }
 
     #[test]
-    fn set_cell_values_is_non_destructive() {
+    fn set_value_is_non_destructive() {
         let g = Grid::new(4).unwrap();
         let cell = Cell::new(0, 0);
-        let _ = g.set_cell_value(cell, 2).unwrap();
+        let _ = g.set_value(cell, 2).unwrap();
         // Original grid is unchanged.
-        assert_eq!(g.cell_values(cell).unwrap(), Values::all(4));
+        assert_eq!(g.get_values(cell).unwrap(), Values::all(4));
     }
 
     #[test]
-    fn set_cell_values_out_of_bounds_returns_err() {
+    fn set_value_out_of_bounds_returns_err() {
         let g = Grid::new(3).unwrap();
         assert!(matches!(
-            g.set_cell_value(Cell::new(3, 0), 1),
+            g.set_value(Cell::new(3, 0), 1),
             Err(Error::InvalidCell(_))
         ));
     }
@@ -297,85 +289,17 @@ mod tests {
             .unwrap()
     }
 
-    #[test]
-    fn constrain_given_cages_pin_all_cells() {
-        let puzzle = solved_2x2_puzzle();
-        let g = Grid::new(2).unwrap().constrain(&puzzle).unwrap();
-        assert_eq!(
-            g.cell_values(Cell::new(0, 0)).unwrap(),
-            Values::new(&[1]).unwrap()
-        );
-        assert_eq!(
-            g.cell_values(Cell::new(0, 1)).unwrap(),
-            Values::new(&[2]).unwrap()
-        );
-        assert_eq!(
-            g.cell_values(Cell::new(1, 0)).unwrap(),
-            Values::new(&[2]).unwrap()
-        );
-        assert_eq!(
-            g.cell_values(Cell::new(1, 1)).unwrap(),
-            Values::new(&[1]).unwrap()
-        );
-    }
-
-    #[test]
-    fn constrain_is_idempotent() {
-        let puzzle = solved_2x2_puzzle();
-        let g1 = Grid::new(2).unwrap().constrain(&puzzle).unwrap();
-        let g2 = g1.constrain(&puzzle).unwrap();
-        assert_eq!(g1, g2);
-    }
-
-    #[test]
-    fn constrain_no_cages_unchanged() {
-        let puzzle = Puzzle::new(2).unwrap();
-        let g = Grid::new(2).unwrap();
-        let g2 = g.constrain(&puzzle).unwrap();
-        assert_eq!(g2, g);
-    }
-
-    #[test]
-    fn constrain_size_mismatch_returns_err() {
-        let puzzle = Puzzle::new(3).unwrap();
-        let g = Grid::new(2).unwrap();
-        assert!(matches!(g.constrain(&puzzle), Err(InvalidGridSize(_))));
-    }
-
-    // 2×2 with two arithmetic cages.
-    #[test]
-    fn constrain_arithmetic_cages_prune_2x2() {
-        let puzzle = Puzzle::new(2)
-            .unwrap()
-            .insert_cage(cage_at(&[(0, 0), (0, 1)], Add, 3))
-            .unwrap()
-            .insert_cage(cage_at(&[(1, 0), (1, 1)], Divide, 2))
-            .unwrap();
-        let g = Grid::new(2).unwrap().constrain(&puzzle).unwrap();
-        let expected = Values::new(&[1, 2]).unwrap();
-        for r in 0..2 {
-            for c in 0..2 {
-                assert_eq!(
-                    g.cell_values(Cell::new(r, c)).unwrap(),
-                    expected,
-                    "cell ({r},{c}) should be pruned to {{1,2}}"
-                );
-            }
-        }
-    }
-
-    // --- Grid::solutions ---
+    // --- Puzzle::solutions (via Grid tests) ---
 
     #[test]
     fn solutions_no_cages_yields_all_latin_squares() {
         let puzzle = Puzzle::new(2).unwrap();
-        let g = Grid::new(2).unwrap();
-        let solutions: Vec<Grid> = g.solutions(&puzzle).map(Result::unwrap).collect();
+        let solutions: Vec<Grid> = puzzle.solutions().map(Result::unwrap).collect();
         assert_eq!(solutions.len(), 2);
         for sol in &solutions {
             for r in 0..2 {
                 for c in 0..2 {
-                    assert!(sol.cell_values(Cell::new(r, c)).unwrap().is_singleton());
+                    assert!(sol.get_values(Cell::new(r, c)).unwrap().is_singleton());
                 }
             }
         }
@@ -384,24 +308,23 @@ mod tests {
     #[test]
     fn solutions_fully_caged_yields_one_solution() {
         let puzzle = solved_2x2_puzzle();
-        let g = Grid::new(2).unwrap();
-        let solutions: Vec<Grid> = g.solutions(&puzzle).map(Result::unwrap).collect();
+        let solutions: Vec<Grid> = puzzle.solutions().map(Result::unwrap).collect();
         assert_eq!(solutions.len(), 1);
         let sol = &solutions[0];
         assert_eq!(
-            sol.cell_values(Cell::new(0, 0)).unwrap(),
+            sol.get_values(Cell::new(0, 0)).unwrap(),
             Values::new(&[1]).unwrap()
         );
         assert_eq!(
-            sol.cell_values(Cell::new(0, 1)).unwrap(),
+            sol.get_values(Cell::new(0, 1)).unwrap(),
             Values::new(&[2]).unwrap()
         );
         assert_eq!(
-            sol.cell_values(Cell::new(1, 0)).unwrap(),
+            sol.get_values(Cell::new(1, 0)).unwrap(),
             Values::new(&[2]).unwrap()
         );
         assert_eq!(
-            sol.cell_values(Cell::new(1, 1)).unwrap(),
+            sol.get_values(Cell::new(1, 1)).unwrap(),
             Values::new(&[1]).unwrap()
         );
     }
@@ -426,24 +349,23 @@ mod tests {
             .unwrap()
             .insert_cage(cage_at(&[(1, 1)], Given, 1))
             .unwrap();
-        let g = Grid::new(2).unwrap();
-        let solutions: Vec<Grid> = g.solutions(&puzzle).map(Result::unwrap).collect();
+        let solutions: Vec<Grid> = puzzle.solutions().map(Result::unwrap).collect();
         assert_eq!(solutions.len(), 1);
         let sol = &solutions[0];
         assert_eq!(
-            sol.cell_values(Cell::new(0, 0)).unwrap(),
+            sol.get_values(Cell::new(0, 0)).unwrap(),
             Values::new(&[1]).unwrap()
         );
         assert_eq!(
-            sol.cell_values(Cell::new(0, 1)).unwrap(),
+            sol.get_values(Cell::new(0, 1)).unwrap(),
             Values::new(&[2]).unwrap()
         );
         assert_eq!(
-            sol.cell_values(Cell::new(1, 0)).unwrap(),
+            sol.get_values(Cell::new(1, 0)).unwrap(),
             Values::new(&[2]).unwrap()
         );
         assert_eq!(
-            sol.cell_values(Cell::new(1, 1)).unwrap(),
+            sol.get_values(Cell::new(1, 1)).unwrap(),
             Values::new(&[1]).unwrap()
         );
     }
@@ -458,14 +380,13 @@ mod tests {
             .unwrap()
             .insert_cage(cage_at(&[(2, 0), (2, 1), (2, 2)], Add, 6))
             .unwrap();
-        let g = Grid::new(3).unwrap();
-        let solutions: Vec<Grid> = g.solutions(&puzzle).map(Result::unwrap).collect();
+        let solutions: Vec<Grid> = puzzle.solutions().map(Result::unwrap).collect();
         assert!(!solutions.is_empty(), "should have at least one solution");
         for sol in &solutions {
             assert!(sol.is_solution());
             for r in 0..3 {
                 let row_sum: u32 = (0..3)
-                    .map(|c| u32::from(sol.cell_values(Cell::new(r, c)).unwrap().values()[0]))
+                    .map(|c| u32::from(sol.get_values(Cell::new(r, c)).unwrap().values()[0]))
                     .sum();
                 assert_eq!(row_sum, 6, "row {r} should sum to 6");
             }
@@ -499,15 +420,14 @@ mod tests {
             .insert_cage(cage_at(&[(3, 1), (3, 2), (3, 3)], Operator::Multiply, 6))
             .unwrap();
 
-        let grid = Grid::new(4).unwrap();
-        let mut actual: Vec<[[u8; 4]; 4]> = grid
-            .solutions(&puzzle)
+        let mut actual: Vec<[[u8; 4]; 4]> = puzzle
+            .solutions()
             .map(Result::unwrap)
             .map(|g| {
                 let mut m = [[0u8; 4]; 4];
                 for (r, row) in m.iter_mut().enumerate() {
                     for (c, slot) in row.iter_mut().enumerate() {
-                        *slot = g.cell_values(Cell::new(r, c)).unwrap().values()[0];
+                        *slot = g.get_values(Cell::new(r, c)).unwrap().values()[0];
                     }
                 }
                 m
@@ -537,7 +457,7 @@ mod tests {
         assert_eq!(actual, expected);
     }
 
-    // --- Grid::set_cage_tuple ---
+    // --- Puzzle::set_cage_tuple ---
 
     #[test]
     fn set_cage_tuple_pins_cells_in_lexicographic_order() {
@@ -545,14 +465,13 @@ mod tests {
         // valid tuple is [1, 2], so index 0 pins (0,0)=1 and (0,1)=2.
         let puzzle = puzzle_with_cage(4, &[(0, 0), (0, 1)], Add, 3);
         let cage = puzzle.cages().next().unwrap().clone();
-        let grid = Grid::new(4).unwrap();
-        let set = grid.set_cage_tuple(&puzzle, &cage, 0).unwrap();
+        let set = puzzle.set_cage_tuple(&cage, 0).unwrap().grid();
         assert_eq!(
-            set.cell_values(Cell::new(0, 0)).unwrap(),
+            set.get_values(Cell::new(0, 0)).unwrap(),
             Values::new(&[1]).unwrap()
         );
         assert_eq!(
-            set.cell_values(Cell::new(0, 1)).unwrap(),
+            set.get_values(Cell::new(0, 1)).unwrap(),
             Values::new(&[2]).unwrap()
         );
     }
@@ -561,9 +480,8 @@ mod tests {
     fn set_cage_tuple_out_of_range_index_errors() {
         let puzzle = puzzle_with_cage(4, &[(0, 0), (0, 1)], Add, 3);
         let cage = puzzle.cages().next().unwrap().clone();
-        let grid = Grid::new(4).unwrap();
         assert!(matches!(
-            grid.set_cage_tuple(&puzzle, &cage, 999),
+            puzzle.set_cage_tuple(&cage, 999),
             Err(Error::InvalidTupleIndex(999, _))
         ));
     }
@@ -572,10 +490,7 @@ mod tests {
 
     #[test]
     fn grid_round_trips_through_json() {
-        let g = Grid::new(3)
-            .unwrap()
-            .set_cell_value(Cell::new(0, 0), 2)
-            .unwrap();
+        let g = Grid::new(3).unwrap().set_value(Cell::new(0, 0), 2).unwrap();
         let json = to_string(&g).unwrap();
         let restored: Grid = from_str(&json).unwrap();
         assert_eq!(g, restored);
@@ -603,10 +518,7 @@ mod tests {
 
     #[test]
     fn grid_serialize_values_are_row_major() {
-        let g = Grid::new(2)
-            .unwrap()
-            .set_cell_value(Cell::new(0, 0), 1)
-            .unwrap();
+        let g = Grid::new(2).unwrap().set_value(Cell::new(0, 0), 1).unwrap();
         let json = to_string(&g).unwrap();
         let v: Value = from_str(&json).unwrap();
         // values[0][0] should be the singleton [1]
@@ -620,7 +532,7 @@ mod tests {
         assert_eq!(g.n(), 3);
         for r in 0..3 {
             for c in 0..3 {
-                assert_eq!(g.cell_values(Cell::new(r, c)).unwrap(), Values::all(3));
+                assert_eq!(g.get_values(Cell::new(r, c)).unwrap(), Values::all(3));
             }
         }
     }
@@ -631,34 +543,10 @@ mod tests {
     }
 
     impl Grid {
-        pub(crate) fn solutions<'a>(
-            &'a self,
-            puzzle: &'a Puzzle,
-        ) -> impl Iterator<Item = Result<Self, Error>> + 'a {
-            crate::solutions::Solutions::new(self, puzzle)
-        }
-
         pub(crate) fn is_solution(&self) -> bool {
             (0..self.n)
                 .flat_map(|r| (0..self.n).map(move |c| Cell::new(r, c)))
-                .all(|cell| self.cell_values(cell).is_ok_and(Values::is_singleton))
-        }
-
-        pub(crate) fn set_cage_tuple(
-            &self,
-            puzzle: &Puzzle,
-            cage: &Cage,
-            index: usize,
-        ) -> Result<Self, Error> {
-            let tuples = puzzle.cage_tuples(cage)?;
-            let tuple = tuples
-                .get(index)
-                .ok_or(Error::InvalidTupleIndex(index, tuples.len()))?;
-            let mut grid = *self;
-            for (cell, &value) in cage.cells().iter().zip(tuple) {
-                grid = grid.set_cell_value(*cell, value)?;
-            }
-            grid.constrain(puzzle)
+                .all(|cell| self.get_values(cell).is_ok_and(Values::is_singleton))
         }
     }
 }

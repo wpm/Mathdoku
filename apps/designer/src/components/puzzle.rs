@@ -61,17 +61,17 @@ pub fn Puzzle(
     // Propagate cage constraints from an unconstrained grid so each cell's
     // values show all candidates still possible given the cages, not just the solution.
     let grid = state.puzzle.grid();
-    let mut cell_values = vec![vec![vec![]; n]; n];
+    let mut get_values = vec![vec![vec![]; n]; n];
     let mut solution_values = vec![vec![None::<u8>; n]; n];
-    for (r, row) in cell_values.iter_mut().enumerate() {
+    for (r, row) in get_values.iter_mut().enumerate() {
         for (c, slot) in row.iter_mut().enumerate() {
             let cell_ref = Cell::new(r, c);
-            if let Ok(vals) = grid.cell_values(cell_ref) {
+            if let Ok(vals) = grid.get_values(cell_ref) {
                 *slot = vals.values();
             }
             // Without-Solution mode has no solution values to overlay.
             if let Some(solution) = &state.solution
-                && let Ok(sv) = solution.cell_values(cell_ref)
+                && let Ok(sv) = solution.get_values(cell_ref)
             {
                 solution_values[r][c] = sv.values().first().copied();
             }
@@ -513,7 +513,7 @@ pub fn Puzzle(
         .map(|(r, c)| {
             let (x, y) = origin(cell, r, c);
             let fill = cage_index[r][c].map_or(BG, |i| CAGE_PALETTE[colors[i] % CAGE_PALETTE.len()]);
-            let values = cell_values[r][c].clone();
+            let values = get_values[r][c].clone();
             let solution_value = solution_values[r][c];
             view! { <CellComponent x=x y=y cell=cell values=values fill=fill top_margin=top_margin n=n solution_value=solution_value /> }
         })

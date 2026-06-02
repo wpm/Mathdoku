@@ -109,8 +109,8 @@ impl Puzzle {
     ///
     /// # Errors
     /// Returns [`Error::InvalidCell`] if `cell` is outside the grid.
-    pub fn cell_values(&self, cell: crate::Cell) -> Result<Values, Error> {
-        self.grid.cell_values(cell)
+    pub fn get_values(&self, cell: crate::Cell) -> Result<Values, Error> {
+        self.grid.get_values(cell)
     }
 
     /// Returns all valid ordered value assignments for `cage`.
@@ -133,7 +133,7 @@ impl Puzzle {
             let fits_domain = tuple
                 .iter()
                 .zip(&cells)
-                .all(|(&v, &cell)| self.grid.cell_values(cell).is_ok_and(|d| d.contains(v)));
+                .all(|(&v, &cell)| self.grid.get_values(cell).is_ok_and(|d| d.contains(v)));
             let collinear_ok = (0..cells.len()).all(|i| {
                 (0..i).all(|j| {
                     (cells[i].row != cells[j].row && cells[i].column != cells[j].column)
@@ -215,7 +215,7 @@ impl Puzzle {
         if cage.cells().iter().any(|&cell| {
             fixpoint_puzzle
                 .grid
-                .cell_values(cell)
+                .get_values(cell)
                 .is_ok_and(Values::is_empty)
         }) {
             return Err(InfeasibleCage(cage.polyomino().clone(), cage.operation()));
@@ -258,49 +258,65 @@ impl Puzzle {
             .any(|cage| cage.polyomino().intersects(polyomino))
     }
 
-    /// Propagates all cage and all-different constraints from this puzzle
-    /// onto `grid` and returns the constrained result.
-    ///
-    /// Useful when the caller has a starting grid (e.g. a fixed Latin-square
-    /// solution) that should be narrowed by the current cage structure.
-    ///
-    /// # Errors
-    /// Returns [`InvalidGridSize`] if `grid.n() != self.n()`, or an error if
-    /// propagation empties any cell's domain.
-    pub fn constrain_grid(&self, grid: &Grid) -> Result<Grid, Error> {
-        grid.constrain(self)
-    }
-
     /// Returns an iterator over all solutions for this puzzle.
     ///
-    /// Uses the puzzle's propagated grid as the starting state. Each item is a
-    /// solved [`Grid`] where every cell's values are a singleton.
+    /// Each item is a solved [`Grid`] where every cell's values are a singleton.
     pub fn solutions(&self) -> impl Iterator<Item = Result<Grid, Error>> + '_ {
-        crate::solutions::Solutions::new(&self.grid, self)
+        crate::solutions::Solutions::new(self)
     }
 
-    /// Runs all constraints to a GAC fixpoint on `self.grid` and returns the
-    /// updated puzzle.
+    /// Propagates all cage and all-different constraints to a GAC fixpoint and
+    /// returns the updated puzzle.
     ///
     /// # Errors
     /// Returns an error if propagation fails (e.g. a cell is out of bounds).
-    pub(crate) fn fixpoint(&self) -> Result<Self, Error> {
-        let grid = self.propagate_grid(&self.grid)?;
+    pub fn fixpoint(&self) -> Result<Self, Error> {
+        let puzzle = Arc::new(self.clone());
+        let constraints = Self::constraints(&puzzle);
+        let grid = crate::csp::generalized_arc_consistency(self.grid, &constraints)?;
         Ok(Self {
             grid,
             ..self.clone()
         })
     }
 
-    /// Propagates all constraints against an arbitrary `grid` and returns the
-    /// narrowed result. Used by [`Grid::constrain`] and the MAC solver.
+    /// Returns a new puzzle with `cell` narrowed to the singleton `{value}` and
+    /// all constraints propagated to a fixpoint.
+    ///
+    /// Used by the MAC solver to create child branches.
     ///
     /// # Errors
-    /// Returns an error if propagation fails (e.g. a cell is out of bounds).
-    pub(crate) fn propagate_grid(&self, grid: &Grid) -> Result<Grid, Error> {
-        let puzzle = Arc::new(self.clone());
-        let constraints = Self::constraints(&puzzle);
-        crate::csp::generalized_arc_consistency(*grid, &constraints)
+    /// Returns [`Error::InvalidCell`] if `cell` is outside the grid, or an error
+    /// if propagation fails.
+    pub(crate) fn set_value(&self, cell: crate::Cell, value: crate::Value) -> Result<Self, Error> {
+        let grid = self.grid.set_value(cell, value)?;
+        Self {
+            grid,
+            cages: self.cages.clone(),
+        }
+        .fixpoint()
+    }
+
+    /// Returns a new puzzle with the cells of `cage` set to the values in the
+    /// tuple at `index` and all constraints propagated to a fixpoint.
+    ///
+    /// # Errors
+    /// Returns [`Error::InvalidCage`] if `cage` is not in this puzzle, or
+    /// [`Error::InvalidTupleIndex`] if `index` is out of range.
+    pub fn set_cage_tuple(&self, cage: &Cage, index: usize) -> Result<Self, Error> {
+        let tuples = self.cage_tuples(cage)?;
+        let tuple = tuples
+            .get(index)
+            .ok_or(Error::InvalidTupleIndex(index, tuples.len()))?;
+        let mut grid = self.grid;
+        for (cell, &value) in cage.cells().iter().zip(tuple) {
+            grid = grid.set_value(*cell, value)?;
+        }
+        Self {
+            grid,
+            cages: self.cages.clone(),
+        }
+        .fixpoint()
     }
 
     /// Builds the full constraint list: one `AllDifferent` per row and column,
@@ -516,11 +532,11 @@ mod tests {
         let cage = cage_at(&[(0, 0), (0, 1)], Operator::Subtract, 3);
         let p2 = p.insert_cage(cage).unwrap();
         assert_eq!(
-            p2.cell_values(Cell::new(0, 0)).unwrap(),
+            p2.get_values(Cell::new(0, 0)).unwrap(),
             Values::new(&[1, 4]).unwrap()
         );
         assert_eq!(
-            p2.cell_values(Cell::new(0, 1)).unwrap(),
+            p2.get_values(Cell::new(0, 1)).unwrap(),
             Values::new(&[1, 4]).unwrap()
         );
     }
@@ -532,7 +548,7 @@ mod tests {
         let cage = cage_at(&[(0, 0), (0, 1)], Operator::Divide, 3);
         let p2 = p.insert_cage(cage).unwrap();
         assert_eq!(
-            p2.cell_values(Cell::new(0, 0)).unwrap(),
+            p2.get_values(Cell::new(0, 0)).unwrap(),
             Values::new(&[1, 3]).unwrap()
         );
     }
@@ -651,5 +667,83 @@ mod tests {
             puzzle.cage_tuples(&cage),
             Err(Error::InvalidCage(_))
         ));
+    }
+
+    // --- Puzzle::fixpoint ---
+
+    #[test]
+    fn fixpoint_given_cages_pin_cells() {
+        // A 2×2 with Given cages fully determines every cell.
+        let puzzle = Puzzle::new(2)
+            .unwrap()
+            .insert_cage(cage_at(&[(0, 0)], Given, 1))
+            .unwrap()
+            .insert_cage(cage_at(&[(0, 1)], Given, 2))
+            .unwrap()
+            .insert_cage(cage_at(&[(1, 0)], Given, 2))
+            .unwrap()
+            .insert_cage(cage_at(&[(1, 1)], Given, 1))
+            .unwrap();
+        let p = puzzle.fixpoint().unwrap();
+        assert_eq!(
+            p.get_values(Cell::new(0, 0)).unwrap(),
+            Values::new(&[1]).unwrap()
+        );
+        assert_eq!(
+            p.get_values(Cell::new(0, 1)).unwrap(),
+            Values::new(&[2]).unwrap()
+        );
+        assert_eq!(
+            p.get_values(Cell::new(1, 0)).unwrap(),
+            Values::new(&[2]).unwrap()
+        );
+        assert_eq!(
+            p.get_values(Cell::new(1, 1)).unwrap(),
+            Values::new(&[1]).unwrap()
+        );
+    }
+
+    #[test]
+    fn fixpoint_is_idempotent() {
+        let puzzle = Puzzle::new(2)
+            .unwrap()
+            .insert_cage(cage_at(&[(0, 0)], Given, 1))
+            .unwrap();
+        let p1 = puzzle.fixpoint().unwrap();
+        let p2 = p1.fixpoint().unwrap();
+        assert_eq!(p1.grid(), p2.grid());
+    }
+
+    #[test]
+    fn fixpoint_no_cages_is_identity() {
+        let puzzle = Puzzle::new(3).unwrap();
+        let p = puzzle.fixpoint().unwrap();
+        for r in 0..3 {
+            for c in 0..3 {
+                assert_eq!(p.get_values(Cell::new(r, c)).unwrap(), Values::all(3));
+            }
+        }
+    }
+
+    #[test]
+    fn fixpoint_arithmetic_cages_prune_values() {
+        // 2×2 with Add=3 and Divide=2: all cells must hold {1,2}.
+        let puzzle = Puzzle::new(2)
+            .unwrap()
+            .insert_cage(cage_at(&[(0, 0), (0, 1)], Add, 3))
+            .unwrap()
+            .insert_cage(cage_at(&[(1, 0), (1, 1)], Operator::Divide, 2))
+            .unwrap();
+        let p = puzzle.fixpoint().unwrap();
+        let expected = Values::new(&[1, 2]).unwrap();
+        for r in 0..2 {
+            for c in 0..2 {
+                assert_eq!(
+                    p.get_values(Cell::new(r, c)).unwrap(),
+                    expected,
+                    "cell ({r},{c}) should be pruned to {{1,2}}"
+                );
+            }
+        }
     }
 }

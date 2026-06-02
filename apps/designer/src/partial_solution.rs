@@ -55,7 +55,7 @@ impl PartialSolution {
     #[must_use]
     pub fn cell_value_singleton(&self, cell: Cell) -> Option<u8> {
         let grid = self.lock_grid();
-        let v = grid.cell_values(cell).ok()?;
+        let v = grid.get_values(cell).ok()?;
         drop(grid);
         v.is_singleton().then(|| v.values().first().copied())?
     }
