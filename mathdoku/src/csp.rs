@@ -86,7 +86,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::{Constraint, State, generalized_arc_consistency};
+    use super::{generalized_arc_consistency, Constraint, State};
     use crate::csp::tests::Constraints::{Equal, Sum};
     use std::collections::{HashMap, HashSet};
 
@@ -230,10 +230,10 @@ mod tests {
                 if &new_b != old_b {
                     changed.push(name_b.to_string());
                 }
-                let new_state = IntegerSets(HashMap::from([
-                    (name_a.to_string(), new_a),
-                    (name_b.to_string(), new_b),
-                ]));
+                let mut new_map = state.0.clone();
+                let _ = new_map.insert(name_a.to_string(), new_a);
+                let _ = new_map.insert(name_b.to_string(), new_b);
+                let new_state = IntegerSets(new_map);
                 (new_state, changed)
             };
 
@@ -245,19 +245,47 @@ mod tests {
                     Ok(update(a, &da, common.clone(), b, &db, common))
                 }
                 Sum(vars, target) => {
-                    let da = state.get(vars[0].clone())?;
-                    let db = state.get(vars[1].clone())?;
-                    let mut new_a: Domain = HashSet::new();
-                    let mut new_b: Domain = HashSet::new();
-                    for &x in &da {
-                        for &y in &db {
-                            if x + y == *target {
-                                let _ = new_a.insert(x);
-                                let _ = new_b.insert(y);
+                    let domains: Vec<Domain> = vars
+                        .iter()
+                        .map(|v| state.get(v.clone()))
+                        .collect::<Result<_, _>>()?;
+                    let mut supported: Vec<Domain> = vec![HashSet::new(); vars.len()];
+                    // Enumerate all assignments; prune by partial sums.
+                    fn enumerate(
+                        domains: &[Domain],
+                        supported: &mut Vec<Domain>,
+                        idx: usize,
+                        partial: u8,
+                        target: u8,
+                        assignment: &mut Vec<u8>,
+                    ) {
+                        if idx == domains.len() {
+                            if partial == target {
+                                for (i, &v) in assignment.iter().enumerate() {
+                                    let _ = supported[i].insert(v);
+                                }
+                            }
+                            return;
+                        }
+                        for &v in &domains[idx] {
+                            let next = partial.saturating_add(v);
+                            if next <= target {
+                                assignment.push(v);
+                                enumerate(domains, supported, idx + 1, next, target, assignment);
+                                let _ = assignment.pop();
                             }
                         }
                     }
-                    Ok(update(&vars[0], &da, new_a, &vars[1], &db, new_b))
+                    enumerate(&domains, &mut supported, 0, 0, *target, &mut vec![]);
+                    let mut changed = vec![];
+                    let mut new_map = state.0.clone();
+                    for (i, name) in vars.iter().enumerate() {
+                        if supported[i] != domains[i] {
+                            changed.push(name.clone());
+                        }
+                        let _ = new_map.insert(name.clone(), supported[i].clone());
+                    }
+                    Ok((IntegerSets(new_map), changed))
                 }
             }
         }

@@ -172,15 +172,14 @@ impl Display for Grid {
 
 #[cfg(test)]
 mod tests {
-    use serde_json::{Value, from_str, json, to_string};
+    use serde_json::{from_str, json, to_string, Value};
 
     use super::*;
-    use crate::Target;
-    use crate::cage::Cage;
     use crate::operation::Operator;
     use crate::operation::Operator::{Add, Given};
     use crate::puzzle::Puzzle;
     use crate::test_utils::cage_at;
+    use crate::Target;
 
     fn puzzle_with_cage(
         n: usize,
