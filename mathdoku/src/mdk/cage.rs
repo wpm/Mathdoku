@@ -111,7 +111,7 @@ impl NonMonotonicOp {
     /// Applies this operator to the pair `(x, y)`, returning the result.
     const fn apply(self, x: N, y: N) -> Target {
         match self {
-            Self::Subtract => x - y,
+            Self::Subtract => x.abs_diff(y),
             Self::Divide => x / y,
         }
     }
@@ -146,7 +146,7 @@ impl Display for Operator {
 }
 
 /// An operator paired with a target value.
-#[derive(PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(PartialEq, Eq, Hash, PartialOrd, Ord, Copy, Clone)]
 pub struct Operation(
     /// The arithmetic operator.
     pub Operator,
