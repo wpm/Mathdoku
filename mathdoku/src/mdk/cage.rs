@@ -90,7 +90,7 @@ pub enum Arithmetic {
 }
 
 /// Operators valid for monotonic cages (MDD-backed): addition and multiplication.
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum Commutative {
     Add,
     Multiply,

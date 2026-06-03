@@ -14,74 +14,25 @@ use std::collections::{HashMap, HashSet};
 /// Suitable for cages whose constraint has monotonic structure (e.g. addition, multiplication).
 pub struct Mdd {
     cells: Vec<Cell>,
-    inner: MonotonicMDD,
+    n: N,
+    constraint: Constraint,
+    edges: HashMap<Node, Vec<(N, Node)>>,
 }
 
 impl Mdd {
     /// Creates an MDD memo for `polyomino` with the monotonic `op` and `target` on a grid of size `n`.
     pub fn new(n: usize, polyomino: &Polyomino, op: Commutative, target: Target) -> Self {
         #[allow(clippy::cast_possible_truncation)]
-        let constraint = match op {
-            Commutative::Add => MonotonicConstraint::Sum(Constraint {
-                target,
-                arity: polyomino.len() as N,
-            }),
-            Commutative::Multiply => MonotonicConstraint::Product(Constraint {
-                target,
-                arity: polyomino.len() as N,
-            }),
+        let constraint = Constraint {
+            op,
+            target,
+            arity: polyomino.len() as N,
         };
         #[allow(clippy::cast_possible_truncation)]
-        let inner = MonotonicMDD::new(n as N, constraint);
+        let n = n as N;
         let cells = polyomino.iter().copied().collect();
-        Self { cells, inner }
-    }
-
-    fn index(&self, cell: &Cell) -> Result<usize, Error> {
-        self.cells
-            .iter()
-            .position(|c| c == cell)
-            .ok_or(InvalidCell(*cell))
-    }
-}
-
-impl Memo for Mdd {
-    fn fill(&self, cell: &Cell) -> Result<Fill, Error> {
-        let index = self.index(cell)?;
-        let ns: Vec<N> = self.inner.tuples().iter().map(|t| t[index]).collect();
-        Ok(Fill::from(&ns))
-    }
-
-    fn remove(&self, fills: HashMap<Cell, Fill>) -> Result<Self, Error> {
-        let mut values: HashMap<N, HashSet<N>> = HashMap::new();
-        for (cell, fill) in &fills {
-            let index = self.index(cell)?;
-            #[allow(clippy::cast_possible_truncation)]
-            let depth = index as N;
-            let forbidden: HashSet<N> = (1..=self.inner.n).filter(|v| !fill.contains(*v)).collect();
-            drop(values.insert(depth, forbidden));
-        }
-        Ok(Self {
-            cells: self.cells.clone(),
-            inner: self.inner.remove_support(&values),
-        })
-    }
-}
-
-// ---------------------------------------------------------------------------
-// MonotonicMDD — copied from mdd.rs (src/mdd.rs)
-// ---------------------------------------------------------------------------
-
-#[derive(Debug, Clone, Eq, PartialEq)]
-struct MonotonicMDD {
-    n: N,
-    constraint: MonotonicConstraint,
-    edges: HashMap<Node, Vec<(N, Node)>>,
-}
-
-impl MonotonicMDD {
-    fn new(n: N, constraint: MonotonicConstraint) -> Self {
         let mut mdd = Self {
+            cells,
             n,
             constraint,
             edges: HashMap::new(),
@@ -94,12 +45,19 @@ impl MonotonicMDD {
         mdd
     }
 
+    fn index(&self, cell: &Cell) -> Result<usize, Error> {
+        self.cells
+            .iter()
+            .position(|c| c == cell)
+            .ok_or(InvalidCell(*cell))
+    }
+
     fn subtree(&mut self, head: Node) {
         if self.edges.contains_key(&head) {
             return;
         }
         debug!("{self}");
-        let remaining = self.constraint.arity() - head.depth - 1;
+        let remaining = self.constraint.arity - head.depth - 1;
         for i in 1..=self.n {
             if self.constraint.pruned(head.value, i, remaining) {
                 break;
@@ -120,6 +78,7 @@ impl MonotonicMDD {
 
     fn remove_support(&self, values: &HashMap<N, HashSet<N>>) -> Self {
         let mut mdd = Self {
+            cells: self.cells.clone(),
             n: self.n,
             constraint: self.constraint,
             edges: self.edges.clone(),
@@ -269,7 +228,7 @@ impl MonotonicMDD {
                 continue;
             }
             let is_terminal =
-                node.value == self.constraint.target() && node.depth == self.constraint.arity();
+                node.value == self.constraint.target && node.depth == self.constraint.arity;
             if !is_terminal {
                 let heads: Vec<Node> = self
                     .edges
@@ -296,7 +255,7 @@ impl MonotonicMDD {
     }
 
     fn at_arity(&self, tail: Node) -> bool {
-        let (d, a) = (u64::from(tail.depth), u64::from(self.constraint.arity()));
+        let (d, a) = (u64::from(tail.depth), u64::from(self.constraint.arity));
         assert!(d <= a, "depth {d} > arity {a}");
         let reached = d == a;
         if reached {
@@ -330,7 +289,7 @@ impl MonotonicMDD {
     fn collect_paths(&self, head: Node, path: &mut Vec<N>, result: &mut Vec<Vec<N>>) {
         match self.edges.get(&head) {
             None => {
-                if head.value == self.constraint.target() && head.depth == self.constraint.arity() {
+                if head.value == self.constraint.target && head.depth == self.constraint.arity {
                     result.push(path.clone());
                 }
             }
@@ -345,80 +304,83 @@ impl MonotonicMDD {
     }
 }
 
-impl std::fmt::Display for MonotonicMDD {
+impl std::fmt::Display for Mdd {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "MDD({} {} nodes)", self.constraint, self.edges.len())
     }
 }
 
+impl Memo for Mdd {
+    fn fill(&self, cell: &Cell) -> Result<Fill, Error> {
+        let index = self.index(cell)?;
+        let ns: Vec<N> = self.tuples().iter().map(|t| t[index]).collect();
+        Ok(Fill::from(&ns))
+    }
+
+    fn remove(&self, fills: HashMap<Cell, Fill>) -> Result<Self, Error> {
+        let mut values: HashMap<N, HashSet<N>> = HashMap::new();
+        for (cell, fill) in &fills {
+            let index = self.index(cell)?;
+            #[allow(clippy::cast_possible_truncation)]
+            let depth = index as N;
+            let forbidden: HashSet<N> = (1..=self.n).filter(|v| !fill.contains(*v)).collect();
+            drop(values.insert(depth, forbidden));
+        }
+        Ok(self.remove_support(&values))
+    }
+}
+
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 struct Constraint {
+    op: Commutative,
     target: N,
     arity: N,
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-enum MonotonicConstraint {
-    Sum(Constraint),
-    Product(Constraint),
-}
-
-impl MonotonicConstraint {
-    const fn arity(&self) -> N {
-        match self {
-            Self::Sum(c) | Self::Product(c) => c.arity,
+impl Constraint {
+    const fn target_reached(self, v: N) -> bool {
+        match self.op {
+            Commutative::Add => v >= self.target,
+            Commutative::Multiply => v > self.target,
         }
     }
 
-    const fn target(&self) -> N {
-        match self {
-            Self::Sum(c) | Self::Product(c) => c.target,
+    const fn pruned(self, acc: N, v: N, _remaining: N) -> bool {
+        match self.op {
+            Commutative::Add => acc + v > self.target,
+            Commutative::Multiply => acc * v > self.target,
         }
     }
 
-    const fn target_reached(&self, v: N) -> bool {
-        match self {
-            Self::Sum(c) => v >= c.target,
-            Self::Product(c) => v > c.target,
+    const fn skipped(self, acc: N, v: N, remaining: N, n: N) -> bool {
+        match self.op {
+            Commutative::Add => acc + v + remaining * n < self.target,
+            Commutative::Multiply => (acc * v) != 0 && !self.target.is_multiple_of(acc * v),
         }
     }
 
-    const fn pruned(&self, acc: N, v: N, _remaining: N) -> bool {
-        match self {
-            Self::Sum(c) => acc + v > c.target,
-            Self::Product(c) => acc * v > c.target,
+    const fn operation(self, x: N, y: N) -> N {
+        match self.op {
+            Commutative::Add => x + y,
+            Commutative::Multiply => x * y,
         }
     }
 
-    const fn skipped(&self, acc: N, v: N, remaining: N, n: N) -> bool {
-        match self {
-            Self::Sum(c) => acc + v + remaining * n < c.target,
-            Self::Product(c) => (acc * v) != 0 && c.target % (acc * v) != 0,
-        }
-    }
-
-    const fn operation(&self, x: N, y: N) -> N {
-        match self {
-            Self::Sum(_) => x + y,
-            Self::Product(_) => x * y,
-        }
-    }
-
-    const fn unit(&self) -> N {
-        match self {
-            Self::Sum(_) => 0,
-            Self::Product(_) => 1,
+    const fn unit(self) -> N {
+        match self.op {
+            Commutative::Add => 0,
+            Commutative::Multiply => 1,
         }
     }
 }
 
-impl std::fmt::Display for MonotonicConstraint {
+impl std::fmt::Display for Constraint {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let (symbol, c) = match self {
-            Self::Sum(c) => ('+', c),
-            Self::Product(c) => ('×', c),
+        let symbol = match self.op {
+            Commutative::Add => '+',
+            Commutative::Multiply => '×',
         };
-        write!(f, "{symbol}{} [{}]", c.target, c.arity)
+        write!(f, "{symbol}{} [{}]", self.target, self.arity)
     }
 }
 
@@ -440,12 +402,10 @@ mod tests {
     use crate::mdk::fill::Memo;
     use crate::mdk::grid::Polyomino;
 
-    // ---- Mdd::fill and Mdd::remove ----
-
     #[test]
     fn sum_pair_display() {
         assert_eq!(
-            MonotonicMDD::new(3, sum_c(4, 2)).to_string(),
+            Mdd::new(3, &pair(1, 1, 1, 2), Commutative::Add, 4).to_string(),
             "MDD(+4 [2] 4 nodes)"
         );
     }
@@ -453,7 +413,7 @@ mod tests {
     #[test]
     fn sum_triple_display() {
         assert_eq!(
-            MonotonicMDD::new(3, sum_c(5, 3)).to_string(),
+            Mdd::new(3, &triple(1, 1, 1, 2, 1, 3), Commutative::Add, 5).to_string(),
             "MDD(+5 [3] 7 nodes)"
         );
     }
@@ -461,7 +421,7 @@ mod tests {
     #[test]
     fn sum_triple_larger_n_display() {
         assert_eq!(
-            MonotonicMDD::new(4, sum_c(6, 3)).to_string(),
+            Mdd::new(4, &triple(1, 1, 1, 2, 1, 3), Commutative::Add, 6).to_string(),
             "MDD(+6 [3] 9 nodes)"
         );
     }
@@ -469,7 +429,7 @@ mod tests {
     #[test]
     fn product_pair_display() {
         assert_eq!(
-            MonotonicMDD::new(4, product_c(6, 2)).to_string(),
+            Mdd::new(4, &pair(1, 1, 1, 2), Commutative::Multiply, 6).to_string(),
             "MDD(×6 [2] 4 nodes)"
         );
     }
@@ -477,7 +437,7 @@ mod tests {
     #[test]
     fn product_triple_display() {
         assert_eq!(
-            MonotonicMDD::new(4, product_c(4, 3)).to_string(),
+            Mdd::new(4, &triple(1, 1, 1, 2, 1, 3), Commutative::Multiply, 4).to_string(),
             "MDD(×4 [3] 7 nodes)"
         );
     }
@@ -522,83 +482,110 @@ mod tests {
 
     #[test]
     fn sum_arity() {
-        assert_eq!(sum_c(10, 3).arity(), 3);
+        assert_eq!(
+            mdd(3, &pair(1, 1, 1, 2), Commutative::Add, 4)
+                .constraint
+                .arity,
+            2
+        );
     }
 
     #[test]
     fn product_arity() {
-        assert_eq!(product_c(6, 2).arity(), 2);
+        assert_eq!(
+            mdd(4, &pair(1, 1, 1, 2), Commutative::Multiply, 6)
+                .constraint
+                .arity,
+            2
+        );
     }
 
     #[test]
     fn sum_operation() {
-        assert_eq!(sum_c(7, 2).operation(3, 7), 10);
+        let c = mdd(3, &pair(1, 1, 1, 2), Commutative::Add, 7).constraint;
+        assert_eq!(c.operation(3, 7), 10);
     }
 
     #[test]
     fn product_operation() {
-        assert_eq!(product_c(4, 2).operation(3, 4), 12);
+        let c = mdd(4, &pair(1, 1, 1, 2), Commutative::Multiply, 4).constraint;
+        assert_eq!(c.operation(3, 4), 12);
     }
 
     #[test]
     fn sum_display() {
-        assert_eq!(sum_c(10, 3).to_string(), "+10 [3]");
+        assert_eq!(
+            mdd(3, &pair(1, 1, 1, 2), Commutative::Add, 10)
+                .constraint
+                .to_string(),
+            "+10 [2]"
+        );
     }
 
     #[test]
     fn product_display() {
-        assert_eq!(product_c(6, 2).to_string(), "×6 [2]");
+        assert_eq!(
+            mdd(4, &pair(1, 1, 1, 2), Commutative::Multiply, 6)
+                .constraint
+                .to_string(),
+            "×6 [2]"
+        );
     }
 
     // ---- remove_support ----
 
     #[test]
     fn remove_support_empty_is_identity() {
-        let mdd = MonotonicMDD::new(3, sum_c(5, 3));
+        let m = mdd(3, &triple(1, 1, 1, 2, 1, 3), Commutative::Add, 5);
         assert_eq!(
-            sorted_tuples_raw(&mdd.remove_support(&HashMap::new())),
-            sorted_tuples_raw(&mdd)
+            sorted_tuples(&m.remove_support(&HashMap::new())),
+            sorted_tuples(&m)
         );
     }
 
     #[test]
     fn remove_support_sum_triple_delete_var0() {
-        let mdd = MonotonicMDD::new(3, sum_c(5, 3)).remove_support(&forbidden(&[(0, &[1])]));
+        let m = mdd(3, &triple(1, 1, 1, 2, 1, 3), Commutative::Add, 5)
+            .remove_support(&forbidden(&[(0, &[1])]));
         assert_eq!(
-            sorted_tuples_raw(&mdd),
+            sorted_tuples(&m),
             vec![vec![2, 1, 2], vec![2, 2, 1], vec![3, 1, 1]]
         );
     }
 
     #[test]
     fn remove_support_sum_pair_delete_var0() {
-        let mdd = MonotonicMDD::new(3, sum_c(4, 2)).remove_support(&forbidden(&[(0, &[2])]));
-        assert_eq!(sorted_tuples_raw(&mdd), vec![vec![1, 3], vec![3, 1]]);
+        let m =
+            mdd(3, &pair(1, 1, 1, 2), Commutative::Add, 4).remove_support(&forbidden(&[(0, &[2])]));
+        assert_eq!(sorted_tuples(&m), vec![vec![1, 3], vec![3, 1]]);
     }
 
     #[test]
     fn remove_support_product_pair_delete_var0() {
-        let mdd = MonotonicMDD::new(4, product_c(6, 2)).remove_support(&forbidden(&[(0, &[3])]));
-        assert_eq!(sorted_tuples_raw(&mdd), vec![vec![2, 3]]);
+        let m = mdd(4, &pair(1, 1, 1, 2), Commutative::Multiply, 6)
+            .remove_support(&forbidden(&[(0, &[3])]));
+        assert_eq!(sorted_tuples(&m), vec![vec![2, 3]]);
     }
 
     #[test]
     fn remove_support_sum_triple_reset_var1() {
-        let mdd = MonotonicMDD::new(3, sum_c(5, 3)).remove_support(&forbidden(&[(1, &[1, 2])]));
-        assert_eq!(sorted_tuples_raw(&mdd), vec![vec![1, 3, 1]]);
+        let m = mdd(3, &triple(1, 1, 1, 2, 1, 3), Commutative::Add, 5)
+            .remove_support(&forbidden(&[(1, &[1, 2])]));
+        assert_eq!(sorted_tuples(&m), vec![vec![1, 3, 1]]);
     }
 
     #[test]
     fn remove_support_sum_triple_two_layers() {
-        let mdd =
-            MonotonicMDD::new(3, sum_c(5, 3)).remove_support(&forbidden(&[(0, &[1]), (2, &[1])]));
-        assert_eq!(sorted_tuples_raw(&mdd), vec![vec![2, 1, 2]]);
+        let m = mdd(3, &triple(1, 1, 1, 2, 1, 3), Commutative::Add, 5)
+            .remove_support(&forbidden(&[(0, &[1]), (2, &[1])]));
+        assert_eq!(sorted_tuples(&m), vec![vec![2, 1, 2]]);
     }
 
     #[test]
     fn remove_support_all_removed() {
-        let mdd = MonotonicMDD::new(3, sum_c(5, 3)).remove_support(&forbidden(&[(1, &[1, 2, 3])]));
-        assert_eq!(sorted_tuples_raw(&mdd), vec![] as Vec<Vec<N>>);
+        let m = mdd(3, &triple(1, 1, 1, 2, 1, 3), Commutative::Add, 5)
+            .remove_support(&forbidden(&[(1, &[1, 2, 3])]));
+        assert_eq!(sorted_tuples(&m), vec![] as Vec<Vec<N>>);
     }
 
     // ---- Memo::fill ----
@@ -624,7 +611,6 @@ mod tests {
         let pruned = m
             .remove(HashMap::from([(Cell::new(1, 1), Fill::from(&[2, 3, 4]))]))
             .unwrap();
-        // var0 restricted to {2,3,4}: tuples with var0=1 removed
         assert_eq!(
             pruned.fill(&Cell::new(1, 1)).unwrap(),
             Fill::from(&[2, 3, 4])
@@ -656,7 +642,7 @@ mod tests {
             for arity in 2u32..=4 {
                 let max_target = n * arity + 1;
                 for target in 1..=max_target {
-                    assert_equiv(n, sum_c(target, arity));
+                    assert_equiv(n, Commutative::Add, target, arity);
                 }
             }
         }
@@ -668,7 +654,7 @@ mod tests {
             for arity in 2u32..=3 {
                 let max_target = n.pow(arity) + 1;
                 for target in 1..=max_target {
-                    assert_equiv(n, product_c(target, arity));
+                    assert_equiv(n, Commutative::Multiply, target, arity);
                 }
             }
         }
@@ -681,11 +667,11 @@ mod tests {
             for arity in 2u32..=5 {
                 let max_sum = n * arity + 1;
                 for target in 1..=max_sum {
-                    assert_equiv(n, sum_c(target, arity));
+                    assert_equiv(n, Commutative::Add, target, arity);
                 }
                 let max_product = n.pow(arity) + 1;
                 for target in 1..=max_product {
-                    assert_equiv(n, product_c(target, arity));
+                    assert_equiv(n, Commutative::Multiply, target, arity);
                 }
             }
         }
@@ -695,7 +681,6 @@ mod tests {
 
     #[test]
     fn sum_target_out_of_range_is_empty() {
-        // min sum for arity=3, n=3 is 3; max is 9
         let low = mdd(3, &triple(1, 1, 1, 2, 1, 3), Commutative::Add, 1);
         assert_eq!(low.fill(&Cell::new(1, 1)).unwrap(), Fill::from(&[]));
         let high = mdd(3, &triple(1, 1, 1, 2, 1, 3), Commutative::Add, 10);
@@ -704,7 +689,6 @@ mod tests {
 
     #[test]
     fn product_target_out_of_range_is_empty() {
-        // no product of three values in 1..=3 equals 28
         let m = mdd(3, &triple(1, 1, 1, 2, 1, 3), Commutative::Multiply, 28);
         assert_eq!(m.fill(&Cell::new(1, 1)).unwrap(), Fill::from(&[]));
     }
@@ -713,33 +697,27 @@ mod tests {
 
     #[test]
     fn constructed_mdd_is_reduced() {
-        for (n, constraint) in [
-            (4, sum_c(5, 2)),
-            (6, sum_c(10, 3)),
-            (9, sum_c(20, 4)),
-            (4, product_c(6, 2)),
-            (6, product_c(24, 3)),
-        ] {
-            assert_reduced(&MonotonicMDD::new(n, constraint));
+        let cases = [
+            (4usize, Commutative::Add, 5u32, 2u32),
+            (6, Commutative::Add, 10, 3),
+            (9, Commutative::Add, 20, 4),
+            (4, Commutative::Multiply, 6, 2),
+            (6, Commutative::Multiply, 24, 3),
+        ];
+        for (n, op, target, arity) in cases {
+            let poly = cells_polyomino(arity as usize);
+            assert_reduced(&Mdd::new(n, &poly, op, target));
         }
     }
 
     #[test]
     fn mdd_is_reduced_after_remove_support() {
-        let mdd = MonotonicMDD::new(4, sum_c(6, 3));
-        let pruned = mdd.remove_support(&forbidden(&[(0, &[1])]));
+        let m = mdd(4, &triple(1, 1, 1, 2, 1, 3), Commutative::Add, 6);
+        let pruned = m.remove_support(&forbidden(&[(0, &[1])]));
         assert_reduced(&pruned);
     }
 
     // ---- helpers and fixtures ----
-
-    fn sum_c(target: N, arity: N) -> MonotonicConstraint {
-        MonotonicConstraint::Sum(Constraint { target, arity })
-    }
-
-    fn product_c(target: N, arity: N) -> MonotonicConstraint {
-        MonotonicConstraint::Product(Constraint { target, arity })
-    }
 
     fn pair(r0: usize, c0: usize, r1: usize, c1: usize) -> Polyomino {
         Polyomino::from_cells([Cell::new(r0, c0), Cell::new(r1, c1)])
@@ -747,6 +725,10 @@ mod tests {
 
     fn triple(r0: usize, c0: usize, r1: usize, c1: usize, r2: usize, c2: usize) -> Polyomino {
         Polyomino::from_cells([Cell::new(r0, c0), Cell::new(r1, c1), Cell::new(r2, c2)])
+    }
+
+    fn cells_polyomino(arity: usize) -> Polyomino {
+        Polyomino::from_cells((0..arity).map(|i| Cell::new(1, i + 1)))
     }
 
     fn mdd(n: usize, polyomino: &Polyomino, op: Commutative, target: Target) -> Mdd {
@@ -760,21 +742,27 @@ mod tests {
             .collect()
     }
 
-    fn sorted_tuples_raw(mdd: &MonotonicMDD) -> Vec<Vec<N>> {
-        let mut t = mdd.tuples();
+    fn sorted_tuples(m: &Mdd) -> Vec<Vec<N>> {
+        let mut t = m.tuples();
         t.sort();
         t
     }
 
-    fn ref_tuples(n: N, constraint: MonotonicConstraint) -> Vec<Vec<N>> {
-        let arity = constraint.arity() as usize;
+    fn ref_tuples(n: N, op: Commutative, target: N, arity: u32) -> Vec<Vec<N>> {
+        let arity = arity as usize;
+        let unit: N = match op {
+            Commutative::Add => 0,
+            Commutative::Multiply => 1,
+        };
+        let apply = |a: N, v: N| match op {
+            Commutative::Add => a + v,
+            Commutative::Multiply => a * v,
+        };
         let mut out = Vec::new();
         let mut t = vec![1u32; arity];
         loop {
-            let acc = t
-                .iter()
-                .fold(constraint.unit(), |a, &v| constraint.operation(a, v));
-            if acc == constraint.target() {
+            let acc = t.iter().fold(unit, |a, &v| apply(a, v));
+            if acc == target {
                 out.push(t.clone());
             }
             let mut i = 0;
@@ -791,20 +779,21 @@ mod tests {
         out
     }
 
-    fn assert_equiv(n: N, constraint: MonotonicConstraint) {
-        let mdd = MonotonicMDD::new(n, constraint);
-        let mut actual = mdd.tuples();
+    fn assert_equiv(n: N, op: Commutative, target: N, arity: u32) {
+        let poly = cells_polyomino(arity as usize);
+        let m = Mdd::new(n as usize, &poly, op, target);
+        let mut actual = m.tuples();
         actual.sort();
-        let expected = ref_tuples(n, constraint);
+        let expected = ref_tuples(n, op, target, arity);
         assert_eq!(
             actual, expected,
-            "mismatch for n={n}, constraint={constraint}"
+            "mismatch for n={n}, op={op:?}, target={target}, arity={arity}"
         );
     }
 
-    fn assert_reduced(mdd: &MonotonicMDD) {
+    fn assert_reduced(m: &Mdd) {
         let mut seen = std::collections::HashSet::new();
-        for node in mdd.edges.keys() {
+        for node in m.edges.keys() {
             assert!(seen.insert(*node), "duplicate node {node} in MDD");
         }
     }
