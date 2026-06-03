@@ -6,7 +6,7 @@ use std::collections::{BTreeSet, HashMap};
 use std::fmt::{Display, Formatter};
 
 /// The set of candidate values for a cell.
-#[derive(Eq, PartialEq, Ord, PartialOrd, Clone)]
+#[derive(Eq, PartialEq, Ord, PartialOrd, Clone, Debug)]
 pub struct Fill(BTreeSet<N>);
 
 impl Fill {
@@ -19,6 +19,11 @@ impl Fill {
     /// Creates a candidate set from an explicit slice of values.
     pub(crate) fn from(n: &[N]) -> Self {
         Self(n.iter().copied().collect())
+    }
+
+    /// Returns `true` if `value` is in this candidate set.
+    pub(crate) fn contains(&self, value: N) -> bool {
+        self.0.contains(&value)
     }
 }
 

@@ -36,8 +36,36 @@ impl Polyomino {
     pub fn contains(&self, cell: &Cell) -> bool {
         self.0.contains(cell)
     }
+
+    /// Returns the number of cells in this polyomino.
+    pub fn len(&self) -> usize {
+        // BTreeSet::len is not const, so this can't be const fn
+        self.0.len()
+    }
+
+    /// Returns an iterator over the cells of this polyomino in sorted order.
+    pub fn iter(&self) -> impl Iterator<Item = &Cell> {
+        self.0.iter()
+    }
+
+    /// Returns the cells of this polyomino in sorted order.
+    pub fn cells(&self) -> Vec<Cell> {
+        self.0.iter().copied().collect()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn from_cells(cells: impl IntoIterator<Item = Cell>) -> Self {
+        Self(cells.into_iter().collect())
+    }
 }
 
 /// A grid position identified by `(row, column)`, both 1-indexed.
-#[derive(Ord, Eq, PartialEq, Hash, PartialOrd, Copy, Clone)]
+#[derive(Ord, Eq, PartialEq, Hash, PartialOrd, Copy, Clone, Debug)]
 pub struct Cell(usize, usize);
+
+impl Cell {
+    /// Creates a cell at `(row, col)`, both 1-indexed.
+    pub(crate) const fn new(row: usize, col: usize) -> Self {
+        Self(row, col)
+    }
+}

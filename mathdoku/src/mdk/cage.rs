@@ -1,8 +1,8 @@
 //! [`Cage`] and the operator types used to construct one.
+use crate::mdk::binary_memo::BinaryMemo;
 use crate::mdk::fill::Memo;
 use crate::mdk::grid::Polyomino;
 use crate::mdk::mdd::Mdd;
-use crate::mdk::trie::Trie;
 use crate::mdk::{N, Target};
 use std::cmp::Ordering;
 use std::fmt;
@@ -35,13 +35,13 @@ impl Cage {
                 MonotonicOp::Multiply,
                 operation.1,
             ))),
-            Operator::Subtract => Some(Box::new(Trie::new(
+            Operator::Subtract => Some(Box::new(BinaryMemo::new(
                 n,
                 &polyomino,
                 NonMonotonicOp::Subtract,
                 operation.1,
             ))),
-            Operator::Divide => Some(Box::new(Trie::new(
+            Operator::Divide => Some(Box::new(BinaryMemo::new(
                 n,
                 &polyomino,
                 NonMonotonicOp::Divide,
@@ -98,7 +98,7 @@ impl MonotonicOp {
     }
 }
 
-/// Operators valid for non-monotonic cages (trie-backed): subtraction and division.
+/// Operators valid for non-monotonic binary cages: subtraction and division.
 #[derive(Copy, Clone)]
 pub enum NonMonotonicOp {
     /// Absolute difference of the two cell values equals the target.
@@ -109,7 +109,7 @@ pub enum NonMonotonicOp {
 
 impl NonMonotonicOp {
     /// Applies this operator to the pair `(x, y)`, returning the result.
-    const fn apply(self, x: N, y: N) -> Target {
+    pub(crate) const fn apply(self, x: N, y: N) -> Target {
         match self {
             Self::Subtract => x.abs_diff(y),
             Self::Divide => x / y,
