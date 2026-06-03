@@ -2,6 +2,8 @@
 use crate::mdk::grid::Cell;
 use crate::mdk::{Error, N};
 use itertools::Itertools;
+use serde::de::Error as DeError;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::{BTreeSet, HashMap};
 use std::fmt::{Display, Formatter};
 
@@ -24,6 +26,22 @@ impl Fill {
     /// Returns `true` if `value` is in this candidate set.
     pub(crate) fn contains(&self, value: N) -> bool {
         self.0.contains(&value)
+    }
+}
+
+impl Serialize for Fill {
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.collect_seq(self.0.iter())
+    }
+}
+
+impl<'de> Deserialize<'de> for Fill {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let values = Vec::<N>::deserialize(d)?;
+        if values.contains(&0) {
+            return Err(DeError::custom("fill value must be >= 1"));
+        }
+        Ok(Self::from(&values))
     }
 }
 
