@@ -109,8 +109,50 @@ impl Display for Grid {
 pub struct Polyomino(BTreeSet<Cell>);
 
 impl Polyomino {
-    pub(crate) fn from_cells(cells: impl IntoIterator<Item = Cell>) -> Self {
-        Self(cells.into_iter().collect())
+    /// Constructs a polyomino from `cells`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::mdk::Error::InvalidPolyomino`] if the cells are empty or not
+    /// edge-connected.
+    pub(crate) fn from_cells(
+        cells: impl IntoIterator<Item = Cell>,
+    ) -> Result<Self, crate::mdk::Error> {
+        let set: BTreeSet<Cell> = cells.into_iter().collect();
+        let p = Self(set);
+        if !p.is_edge_connected() {
+            return Err(crate::mdk::Error::InvalidPolyomino(p.cells()));
+        }
+        Ok(p)
+    }
+
+    /// Returns `true` if the cells form an edge-connected component.
+    ///
+    /// Uses DFS from the first cell. When checking neighbours, only looks right
+    /// (col+1) and down (row+1) while iterating — sufficient because the set is
+    /// sorted row-major and back-edges (left/up) are discovered from the other end.
+    fn is_edge_connected(&self) -> bool {
+        let Some(&start) = self.0.first() else {
+            return false;
+        };
+        let mut visited: BTreeSet<Cell> = BTreeSet::new();
+        let mut stack = vec![start];
+        while let Some(cell) = stack.pop() {
+            if visited.insert(cell) {
+                let Cell(r, c) = cell;
+                for neighbour in [
+                    Cell(r, c + 1),
+                    Cell(r + 1, c),
+                    Cell(r, c.wrapping_sub(1)),
+                    Cell(r.wrapping_sub(1), c),
+                ] {
+                    if self.0.contains(&neighbour) {
+                        stack.push(neighbour);
+                    }
+                }
+            }
+        }
+        visited.len() == self.0.len()
     }
 
     /// Returns the number of cells in this polyomino.
@@ -243,5 +285,56 @@ mod tests {
                 assert_eq!(restored.get(&Cell::new(r, c)).unwrap(), Fill::new(3));
             }
         }
+    }
+
+    // --- Polyomino::from_cells / is_edge_connected ---
+
+    #[test]
+    fn polyomino_single_cell_is_connected() {
+        assert!(Polyomino::from_cells([Cell::new(1, 1)]).is_ok());
+    }
+
+    #[test]
+    fn polyomino_horizontal_pair_is_connected() {
+        assert!(Polyomino::from_cells([Cell::new(1, 1), Cell::new(1, 2)]).is_ok());
+    }
+
+    #[test]
+    fn polyomino_vertical_pair_is_connected() {
+        assert!(Polyomino::from_cells([Cell::new(1, 1), Cell::new(2, 1)]).is_ok());
+    }
+
+    #[test]
+    fn polyomino_l_shape_is_connected() {
+        assert!(Polyomino::from_cells([Cell::new(1, 1), Cell::new(1, 2), Cell::new(2, 1)]).is_ok());
+    }
+
+    #[test]
+    fn polyomino_empty_is_disconnected() {
+        assert!(matches!(
+            Polyomino::from_cells([]),
+            Err(crate::mdk::Error::InvalidPolyomino(_))
+        ));
+    }
+
+    #[test]
+    fn polyomino_diagonal_pair_is_disconnected() {
+        assert!(matches!(
+            Polyomino::from_cells([Cell::new(1, 1), Cell::new(2, 2)]),
+            Err(crate::mdk::Error::InvalidPolyomino(_))
+        ));
+    }
+
+    #[test]
+    fn polyomino_two_separate_pairs_is_disconnected() {
+        assert!(matches!(
+            Polyomino::from_cells([
+                Cell::new(1, 1),
+                Cell::new(1, 2),
+                Cell::new(3, 3),
+                Cell::new(3, 4)
+            ]),
+            Err(crate::mdk::Error::InvalidPolyomino(_))
+        ));
     }
 }

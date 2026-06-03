@@ -85,7 +85,7 @@ mod tests {
     use crate::mdk::grid::Polyomino;
 
     fn pair(r0: usize, c0: usize, r1: usize, c1: usize) -> Polyomino {
-        Polyomino::from_cells([Cell::new(r0, c0), Cell::new(r1, c1)])
+        Polyomino::from_cells([Cell::new(r0, c0), Cell::new(r1, c1)]).unwrap()
     }
 
     fn fill(vals: &[N]) -> Fill {

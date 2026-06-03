@@ -720,15 +720,15 @@ mod tests {
     // ---- helpers and fixtures ----
 
     fn pair(r0: usize, c0: usize, r1: usize, c1: usize) -> Polyomino {
-        Polyomino::from_cells([Cell::new(r0, c0), Cell::new(r1, c1)])
+        Polyomino::from_cells([Cell::new(r0, c0), Cell::new(r1, c1)]).unwrap()
     }
 
     fn triple(r0: usize, c0: usize, r1: usize, c1: usize, r2: usize, c2: usize) -> Polyomino {
-        Polyomino::from_cells([Cell::new(r0, c0), Cell::new(r1, c1), Cell::new(r2, c2)])
+        Polyomino::from_cells([Cell::new(r0, c0), Cell::new(r1, c1), Cell::new(r2, c2)]).unwrap()
     }
 
     fn cells_polyomino(arity: usize) -> Polyomino {
-        Polyomino::from_cells((0..arity).map(|i| Cell::new(1, i + 1)))
+        Polyomino::from_cells((0..arity).map(|i| Cell::new(1, i + 1))).unwrap()
     }
 
     fn mdd(n: usize, polyomino: &Polyomino, op: Commutative, target: Target) -> Mdd {
