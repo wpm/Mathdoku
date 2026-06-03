@@ -20,12 +20,30 @@ impl Cage {
     #[must_use]
     pub fn new(n: usize, polyomino: Polyomino, operation: Operation) -> Self {
         let memo: Option<Box<dyn Memo>> = match operation.0 {
-            Operator::Add | Operator::Multiply => {
-                Some(Box::new(Mdd::new(n, &polyomino, &operation)))
-            }
-            Operator::Subtract | Operator::Divide => {
-                Some(Box::new(Trie::new(n, &polyomino, &operation)))
-            }
+            Operator::Add => Some(Box::new(Mdd::new(
+                n,
+                &polyomino,
+                MonotonicOp::Add,
+                operation.1,
+            ))),
+            Operator::Multiply => Some(Box::new(Mdd::new(
+                n,
+                &polyomino,
+                MonotonicOp::Multiply,
+                operation.1,
+            ))),
+            Operator::Subtract => Some(Box::new(Trie::new(
+                n,
+                &polyomino,
+                NonMonotonicOp::Subtract,
+                operation.1,
+            ))),
+            Operator::Divide => Some(Box::new(Trie::new(
+                n,
+                &polyomino,
+                NonMonotonicOp::Divide,
+                operation.1,
+            ))),
             Operator::Given => None,
         };
         Self {
@@ -58,8 +76,22 @@ impl Ord for Cage {
     }
 }
 
+/// Operators valid for monotonic cages (MDD-backed): addition and multiplication.
+#[derive(Copy, Clone)]
+pub enum MonotonicOp {
+    Add,
+    Multiply,
+}
+
+/// Operators valid for non-monotonic cages (trie-backed): subtraction and division.
+#[derive(Copy, Clone)]
+pub enum NonMonotonicOp {
+    Subtract,
+    Divide,
+}
+
 /// The arithmetic operator applied to a cage's cell values.
-#[derive(PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(PartialEq, Eq, Hash, PartialOrd, Ord, Copy, Clone)]
 pub enum Operator {
     Add,
     Multiply,
