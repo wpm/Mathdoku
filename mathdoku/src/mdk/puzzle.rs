@@ -1,4 +1,4 @@
-//! [`Puzzle`] and the cage types needed to build one.
+//! [`Puzzle`]: the top-level constraint-solving interface for an mdk grid.
 use crate::mdk::Error;
 use crate::mdk::cage::Cage;
 use crate::mdk::fill::Fill;
