@@ -73,3 +73,76 @@ pub trait Memo {
     where
         Self: Sized;
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::{from_str, to_string};
+
+    #[test]
+    fn new_contains_one_through_n() {
+        let f = Fill::new(4);
+        assert!(f.contains(1));
+        assert!(f.contains(4));
+        assert!(!f.contains(0));
+        assert!(!f.contains(5));
+    }
+
+    #[test]
+    fn from_empty_slice_is_empty() {
+        assert!(Fill::from(&[]).is_empty());
+    }
+
+    #[test]
+    fn from_deduplicates_values() {
+        assert_eq!(Fill::from(&[2, 2, 3]), Fill::from(&[2, 3]));
+    }
+
+    #[test]
+    fn contains_absent_value_is_false() {
+        assert!(!Fill::from(&[1, 3]).contains(2));
+    }
+
+    #[test]
+    fn is_empty_false_for_non_empty() {
+        assert!(!Fill::new(3).is_empty());
+    }
+
+    #[test]
+    fn default_is_empty() {
+        assert!(Fill::default().is_empty());
+    }
+
+    #[test]
+    fn display_empty() {
+        assert_eq!(Fill::from(&[]).to_string(), "{}");
+    }
+
+    #[test]
+    fn display_singleton() {
+        assert_eq!(Fill::from(&[3]).to_string(), "{3}");
+    }
+
+    #[test]
+    fn display_sorted() {
+        assert_eq!(Fill::from(&[3, 1, 2]).to_string(), "{1, 2, 3}");
+    }
+
+    #[test]
+    fn round_trips_through_json() {
+        let f = Fill::from(&[1, 3]);
+        assert_eq!(from_str::<Fill>(&to_string(&f).unwrap()).unwrap(), f);
+    }
+
+    #[test]
+    fn deserialize_zero_returns_err() {
+        assert!(from_str::<Fill>("[0,1]").is_err());
+    }
+
+    #[test]
+    fn serialize_is_sorted_array() {
+        let f = Fill::from(&[3, 1]);
+        let json = to_string(&f).unwrap();
+        assert_eq!(json, "[1,3]");
+    }
+}

@@ -113,15 +113,12 @@ impl Polyomino {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::mdk::Error::InvalidPolyomino`] if the cells are empty or not
-    /// edge-connected.
-    pub(crate) fn from_cells(
-        cells: impl IntoIterator<Item = Cell>,
-    ) -> Result<Self, crate::mdk::Error> {
+    /// Returns [`Error::InvalidPolyomino`] if the cells are empty or not edge-connected.
+    pub(crate) fn from_cells(cells: impl IntoIterator<Item = Cell>) -> Result<Self, Error> {
         let set: BTreeSet<Cell> = cells.into_iter().collect();
         let p = Self(set);
         if !p.is_edge_connected() {
-            return Err(crate::mdk::Error::InvalidPolyomino(p.cells()));
+            return Err(Error::InvalidPolyomino(p.cells()));
         }
         Ok(p)
     }
@@ -190,6 +187,7 @@ impl Cell {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::mdk::Error::InvalidPolyomino;
     use crate::mdk::fill::Fill;
     use serde_json::{Value, from_str, json, to_string};
 
@@ -313,7 +311,7 @@ mod tests {
     fn polyomino_empty_is_disconnected() {
         assert!(matches!(
             Polyomino::from_cells([]),
-            Err(crate::mdk::Error::InvalidPolyomino(_))
+            Err(InvalidPolyomino(_))
         ));
     }
 
@@ -321,7 +319,7 @@ mod tests {
     fn polyomino_diagonal_pair_is_disconnected() {
         assert!(matches!(
             Polyomino::from_cells([Cell::new(1, 1), Cell::new(2, 2)]),
-            Err(crate::mdk::Error::InvalidPolyomino(_))
+            Err(InvalidPolyomino(_))
         ));
     }
 
@@ -334,7 +332,7 @@ mod tests {
                 Cell::new(3, 3),
                 Cell::new(3, 4)
             ]),
-            Err(crate::mdk::Error::InvalidPolyomino(_))
+            Err(InvalidPolyomino(_))
         ));
     }
 }
