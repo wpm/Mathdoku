@@ -32,20 +32,20 @@ impl Grid {
     }
 }
 
-// Serde wire format: flat struct with an n×n `values` array of cell fill sets.
-// `values` is optional on deserialization; absent means full fill sets for all cells.
+// Serde wire format: flat struct with an n×n `fills` array of cell fill sets.
+// `fills` is optional on deserialization; absent means full fill sets for all cells.
 #[derive(Serialize, Deserialize)]
 struct GridWire {
     n: usize,
     #[serde(default)]
-    values: Vec<Vec<Fill>>,
+    fills: Vec<Vec<Fill>>,
 }
 
 impl Serialize for Grid {
     fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
         let full = Fill::new(self.n);
         let is_full = self.fill.values().all(|f| f == &full);
-        let values = if is_full {
+        let fills = if is_full {
             vec![]
         } else {
             (1..=self.n)
@@ -56,7 +56,7 @@ impl Serialize for Grid {
                 })
                 .collect()
         };
-        GridWire { n: self.n, values }.serialize(s)
+        GridWire { n: self.n, fills }.serialize(s)
     }
 }
 
@@ -67,16 +67,16 @@ impl<'de> Deserialize<'de> for Grid {
         if !(1..=9).contains(&n) {
             return Err(DeError::custom(format!("invalid grid size {n}")));
         }
-        if wire.values.is_empty() {
+        if wire.fills.is_empty() {
             return Ok(Self::new(n));
         }
-        if wire.values.len() != n {
+        if wire.fills.len() != n {
             return Err(DeError::custom(format!(
                 "expected {n} rows of values, got {}",
-                wire.values.len()
+                wire.fills.len()
             )));
         }
-        for (r, row) in wire.values.iter().enumerate() {
+        for (r, row) in wire.fills.iter().enumerate() {
             if row.len() != n {
                 return Err(DeError::custom(format!(
                     "row {r}: expected {n} columns, got {}",
@@ -85,7 +85,7 @@ impl<'de> Deserialize<'de> for Grid {
             }
         }
         let fill = wire
-            .values
+            .fills
             .into_iter()
             .enumerate()
             .flat_map(|(r, row)| {
@@ -193,18 +193,18 @@ mod tests {
 
     #[test]
     fn grid_deserialize_invalid_n_returns_err() {
-        assert!(from_str::<Grid>(r#"{"n":0,"values":[]}"#).is_err());
-        assert!(from_str::<Grid>(r#"{"n":10,"values":[]}"#).is_err());
+        assert!(from_str::<Grid>(r#"{"n":0,"fills":[]}"#).is_err());
+        assert!(from_str::<Grid>(r#"{"n":10,"fills":[]}"#).is_err());
     }
 
     #[test]
     fn grid_deserialize_wrong_row_count_returns_err() {
-        assert!(from_str::<Grid>(r#"{"n":2,"values":[[1,2]]}"#).is_err());
+        assert!(from_str::<Grid>(r#"{"n":2,"fills":[[1,2]]}"#).is_err());
     }
 
     #[test]
     fn grid_deserialize_wrong_column_count_returns_err() {
-        assert!(from_str::<Grid>(r#"{"n":2,"values":[[1,2,3],[1,2,3]]}"#).is_err());
+        assert!(from_str::<Grid>(r#"{"n":2,"fills":[[1,2,3],[1,2,3]]}"#).is_err());
     }
 
     #[test]
@@ -213,7 +213,7 @@ mod tests {
         drop(g.fill.insert(Cell::new(1, 1), Fill::from(&[1])));
         let json = to_string(&g).unwrap();
         let v: Value = from_str(&json).unwrap();
-        assert_eq!(v["values"][0][0], json!([1]));
+        assert_eq!(v["fills"][0][0], json!([1]));
     }
 
     #[test]
@@ -231,7 +231,7 @@ mod tests {
     fn grid_full_serializes_without_values() {
         let g = Grid::new(3);
         let v: Value = from_str(&to_string(&g).unwrap()).unwrap();
-        assert!(v.get("values").is_none() || v["values"] == json!([]));
+        assert!(v.get("fills").is_none() || v["fills"] == json!([]));
     }
 
     #[test]
