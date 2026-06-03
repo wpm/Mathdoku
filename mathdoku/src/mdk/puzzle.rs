@@ -3,12 +3,12 @@ use crate::mdk::Error;
 use crate::mdk::cage::Cage;
 use crate::mdk::fill::Fill;
 use crate::mdk::grid::{Cell, Grid};
-use std::collections::{BTreeSet, HashMap};
+use std::collections::HashMap;
 
 /// An n×n Mathdoku puzzle: a grid partitioned into cages, each with an arithmetic constraint.
 pub struct Puzzle {
     grid: Grid,
-    cages: BTreeSet<Cage>,
+    cages: HashMap<Cell, Cage>,
 }
 
 impl Puzzle {
@@ -18,14 +18,13 @@ impl Puzzle {
     ///
     /// Returns [`Error::InvalidCell`] if `cell` is not in the puzzle.
     pub fn get(&self, cell: &Cell) -> Result<Fill, Error> {
-        let cage = self
+        let memo = &self
             .cages
-            .iter()
-            .find(|c| c.polyomino.contains(cell))
-            .ok_or(Error::InvalidCell(*cell))?;
-        cage.memo
-            .as_ref()
-            .map_or_else(|| self.grid.get(cell), |memo| memo.fill(cell))
+            .get(cell)
+            .ok_or(Error::InvalidCell(*cell))?
+            .memo
+            .as_ref();
+        memo.map_or_else(|| self.grid.get(cell), |memo| memo.fill(cell))
     }
 
     /// Applies `fills` as assignments and returns the updated candidate fills for all cells.
