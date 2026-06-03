@@ -43,18 +43,20 @@ struct GridWire {
 
 impl Serialize for Grid {
     fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        let rows: Vec<Vec<Fill>> = (1..=self.n)
-            .map(|r| {
-                (1..=self.n)
-                    .map(|c| self.fill[&Cell(r, c)].clone())
-                    .collect()
-            })
-            .collect();
-        GridWire {
-            n: self.n,
-            values: rows,
-        }
-        .serialize(s)
+        let full = Fill::new(self.n);
+        let is_full = self.fill.values().all(|f| f == &full);
+        let values = if is_full {
+            vec![]
+        } else {
+            (1..=self.n)
+                .map(|r| {
+                    (1..=self.n)
+                        .map(|c| self.fill[&Cell(r, c)].clone())
+                        .collect()
+                })
+                .collect()
+        };
+        GridWire { n: self.n, values }.serialize(s)
     }
 }
 
@@ -221,6 +223,24 @@ mod tests {
         for r in 1..=3 {
             for c in 1..=3 {
                 assert_eq!(g.get(&Cell::new(r, c)).unwrap(), Fill::new(3));
+            }
+        }
+    }
+
+    #[test]
+    fn grid_full_serializes_without_values() {
+        let g = Grid::new(3);
+        let v: Value = from_str(&to_string(&g).unwrap()).unwrap();
+        assert!(v.get("values").is_none() || v["values"] == json!([]));
+    }
+
+    #[test]
+    fn grid_full_round_trips_through_json() {
+        let g = Grid::new(3);
+        let restored: Grid = from_str(&to_string(&g).unwrap()).unwrap();
+        for r in 1..=3 {
+            for c in 1..=3 {
+                assert_eq!(restored.get(&Cell::new(r, c)).unwrap(), Fill::new(3));
             }
         }
     }
