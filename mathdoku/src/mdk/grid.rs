@@ -105,7 +105,7 @@ impl Display for Grid {
 }
 
 /// A set of cells forming a polyomino (connected region of the grid).
-#[derive(Eq, PartialEq, Ord, PartialOrd, Clone, Hash)]
+#[derive(Eq, PartialEq, Ord, PartialOrd, Clone, Hash, Debug)]
 pub struct Polyomino(BTreeSet<Cell>);
 
 impl Polyomino {
