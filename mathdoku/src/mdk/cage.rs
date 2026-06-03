@@ -1,5 +1,5 @@
 //! [`Cage`] and the operator types used to construct one.
-use crate::mdk::binary_memo::BinaryMemo;
+use crate::mdk::domino_memo::DominoMemo;
 use crate::mdk::fill::Memo;
 use crate::mdk::grid::Polyomino;
 use crate::mdk::mdd::Mdd;
@@ -20,33 +20,35 @@ pub struct Cage {
 
 impl Cage {
     /// Creates a new cage for `polyomino` with `operation` on a grid of size `n`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `operation` is subtract or divide and `polyomino` is not a domino (2 cells).
     #[must_use]
     pub fn new(n: usize, polyomino: Polyomino, operation: Operation) -> Self {
         let memo: Option<Box<dyn Memo>> = match operation.0 {
             Operator::Add => Some(Box::new(Mdd::new(
                 n,
                 &polyomino,
-                MonotonicOp::Add,
+                Commutative::Add,
                 operation.1,
             ))),
             Operator::Multiply => Some(Box::new(Mdd::new(
                 n,
                 &polyomino,
-                MonotonicOp::Multiply,
+                Commutative::Multiply,
                 operation.1,
             ))),
-            Operator::Subtract => Some(Box::new(BinaryMemo::new(
-                n,
-                &polyomino,
-                NonMonotonicOp::Subtract,
-                operation.1,
-            ))),
-            Operator::Divide => Some(Box::new(BinaryMemo::new(
-                n,
-                &polyomino,
-                NonMonotonicOp::Divide,
-                operation.1,
-            ))),
+            Operator::Subtract => Some(Box::new(
+                #[allow(clippy::expect_used)]
+                DominoMemo::new(n, &polyomino, NonCommutative::Subtract, operation.1)
+                    .expect("subtract cage must be a domino"),
+            )),
+            Operator::Divide => Some(Box::new(
+                #[allow(clippy::expect_used)]
+                DominoMemo::new(n, &polyomino, NonCommutative::Divide, operation.1)
+                    .expect("divide cage must be a domino"),
+            )),
             Operator::Given => None,
         };
         Self {
@@ -79,18 +81,24 @@ impl Ord for Cage {
     }
 }
 
+/// Operators valid for domino cages: all except `Given`.
+pub enum Arithmetic {
+    Add,
+    Multiply,
+    Subtract,
+    Divide,
+}
+
 /// Operators valid for monotonic cages (MDD-backed): addition and multiplication.
 #[derive(Copy, Clone)]
-pub enum MonotonicOp {
-    /// Sum of all cell values equals the target.
+pub enum Commutative {
     Add,
-    /// Product of all cell values equals the target.
     Multiply,
 }
 
-impl MonotonicOp {
+impl Commutative {
     /// Applies this operator to `values`, returning the result.
-    fn apply(self, values: &[N]) -> Target {
+    pub(crate) fn apply(self, values: &[N]) -> Target {
         match self {
             Self::Add => values.iter().sum(),
             Self::Multiply => values.iter().product(),
@@ -100,14 +108,12 @@ impl MonotonicOp {
 
 /// Operators valid for non-monotonic binary cages: subtraction and division.
 #[derive(Copy, Clone)]
-pub enum NonMonotonicOp {
-    /// Absolute difference of the two cell values equals the target.
+pub enum NonCommutative {
     Subtract,
-    /// Quotient of the larger cell value divided by the smaller equals the target.
     Divide,
 }
 
-impl NonMonotonicOp {
+impl NonCommutative {
     /// Applies this operator to the pair `(x, y)`, returning the result.
     pub(crate) const fn apply(self, x: N, y: N) -> Target {
         match self {

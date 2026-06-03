@@ -17,8 +17,8 @@ impl Fill {
     }
 
     /// Creates a candidate set from an explicit slice of values.
-    pub(crate) fn from(n: &[N]) -> Self {
-        Self(n.iter().copied().collect())
+    pub(crate) fn from(ns: &[N]) -> Self {
+        Self(ns.iter().copied().collect())
     }
 
     /// Returns `true` if `value` is in this candidate set.

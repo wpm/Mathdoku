@@ -1,7 +1,7 @@
 //! MDD-based (multivalued decision diagram) implementation of [`Memo`].
 use crate::mdk::Error;
 use crate::mdk::Target;
-use crate::mdk::cage::MonotonicOp;
+use crate::mdk::cage::Commutative;
 use crate::mdk::fill::{Fill, Memo};
 use crate::mdk::grid::{Cell, Polyomino};
 use std::collections::HashMap;
@@ -14,7 +14,7 @@ pub struct Mdd {}
 impl Mdd {
     /// Creates an MDD memo for `polyomino` with the monotonic `op` and `target` on a grid of size `n`.
     #[allow(clippy::todo)]
-    pub fn new(_n: usize, _polyomino: &Polyomino, _op: MonotonicOp, _target: Target) -> Self {
+    pub fn new(_n: usize, _polyomino: &Polyomino, _op: Commutative, _target: Target) -> Self {
         todo!()
     }
 }

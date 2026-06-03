@@ -12,7 +12,8 @@ pub struct Grid {
 }
 
 impl Grid {
-    /// Creates a new grid of size `n` with every cell initialised to the full candidate set `{1..=n}`.
+    /// Creates a new grid of size `n` with every cell initialised to the full
+    /// candidate set `{1..=n}`.
     pub fn new(n: usize) -> Self {
         let fill = (1..=n)
             .flat_map(|i| (1..=n).map(move |j| Cell(i, j)))
@@ -21,7 +22,8 @@ impl Grid {
         Self { n, fill }
     }
 
-    /// Returns the candidate fill for `cell`, or an error if the cell is not in this grid.
+    /// Returns the candidate fill for `cell`, or an error if the cell is not in this
+    /// grid.
     pub fn get(&self, cell: &Cell) -> Result<Fill, Error> {
         self.fill.get(cell).cloned().ok_or(InvalidCell(*cell))
     }
@@ -32,15 +34,18 @@ impl Grid {
 pub struct Polyomino(BTreeSet<Cell>);
 
 impl Polyomino {
-    /// Returns `true` if `cell` is part of this polyomino.
-    pub fn contains(&self, cell: &Cell) -> bool {
-        self.0.contains(cell)
+    pub(crate) fn from_cells(cells: impl IntoIterator<Item = Cell>) -> Self {
+        Self(cells.into_iter().collect())
     }
 
     /// Returns the number of cells in this polyomino.
     pub fn len(&self) -> usize {
-        // BTreeSet::len is not const, so this can't be const fn
         self.0.len()
+    }
+
+    /// Returns `true` if `cell` is part of this polyomino.
+    pub fn contains(&self, cell: &Cell) -> bool {
+        self.0.contains(cell)
     }
 
     /// Returns an iterator over the cells of this polyomino in sorted order.
@@ -51,11 +56,6 @@ impl Polyomino {
     /// Returns the cells of this polyomino in sorted order.
     pub fn cells(&self) -> Vec<Cell> {
         self.0.iter().copied().collect()
-    }
-
-    #[cfg(test)]
-    pub(crate) fn from_cells(cells: impl IntoIterator<Item = Cell>) -> Self {
-        Self(cells.into_iter().collect())
     }
 }
 
