@@ -1,6 +1,7 @@
 //! New Mathdoku implementation — work in progress; will eventually replace the top-level crate API.
 use crate::mdk::grid::Cell;
 
+pub mod cage;
 pub(crate) mod fill;
 mod grid;
 pub(crate) mod mdd;

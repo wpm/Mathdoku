@@ -1,6 +1,7 @@
 //! Candidate value sets and the [`Memo`] trait for cage-fill memoization.
+use crate::mdk::cage::Operation;
 use crate::mdk::grid::Cell;
-use crate::mdk::puzzle::Cage;
+use crate::mdk::grid::Polyomino;
 use crate::mdk::{Error, N};
 use itertools::Itertools;
 use std::collections::{BTreeSet, HashMap};
@@ -31,8 +32,8 @@ impl Display for Fill {
 
 /// Memoizes the candidate fills for each cell of a cage given its size and arithmetic operation.
 pub trait Memo {
-    /// Initialises the memo for `cage` on a grid of size `n`.
-    fn new(n: usize, cage: Cage) -> Self
+    /// Initialises the memo for `polyomino` and `operation` on a grid of size `n`.
+    fn new(n: usize, polyomino: &Polyomino, operation: &Operation) -> Self
     where
         Self: Sized;
 

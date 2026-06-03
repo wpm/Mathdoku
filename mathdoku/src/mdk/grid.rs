@@ -31,6 +31,13 @@ impl Grid {
 #[derive(Eq, PartialEq, Ord, PartialOrd, Clone, Hash)]
 pub struct Polyomino(BTreeSet<Cell>);
 
+impl Polyomino {
+    /// Returns `true` if `cell` is part of this polyomino.
+    pub fn contains(&self, cell: &Cell) -> bool {
+        self.0.contains(cell)
+    }
+}
+
 /// A grid position identified by `(row, column)`, both 1-indexed.
 #[derive(Ord, Eq, PartialEq, Hash, PartialOrd, Copy, Clone)]
 pub struct Cell(usize, usize);

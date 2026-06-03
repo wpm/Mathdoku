@@ -1,16 +1,14 @@
 //! [`Puzzle`] and the cage types needed to build one.
-use crate::mdk::fill::{Fill, Memo};
-use crate::mdk::grid::{Cell, Grid, Polyomino};
-use crate::mdk::{Error, Target};
-use std::collections::HashMap;
-use std::fmt;
-use std::fmt::{Display, Formatter};
+use crate::mdk::Error;
+use crate::mdk::cage::Cage;
+use crate::mdk::fill::Fill;
+use crate::mdk::grid::{Cell, Grid};
+use std::collections::{BTreeSet, HashMap};
 
 /// An n×n Mathdoku puzzle: a grid partitioned into cages, each with an arithmetic constraint.
 pub struct Puzzle {
     grid: Grid,
-    cage: HashMap<Cell, Cage>,
-    memo: HashMap<Polyomino, Box<dyn Memo>>,
+    cages: BTreeSet<Cage>,
 }
 
 impl Puzzle {
@@ -20,15 +18,14 @@ impl Puzzle {
     ///
     /// Returns [`Error::InvalidCell`] if `cell` is not in the puzzle.
     pub fn get(&self, cell: &Cell) -> Result<Fill, Error> {
-        let cage = self.cage.get(cell).ok_or(Error::InvalidCell(*cell))?;
-        match cage.1.0 {
-            Operator::Given => self.grid.get(cell),
-            _ => self
-                .memo
-                .get(&cage.0)
-                .ok_or(Error::InvalidCell(*cell))?
-                .fill(cell),
-        }
+        let cage = self
+            .cages
+            .iter()
+            .find(|c| c.polyomino.contains(cell))
+            .ok_or(Error::InvalidCell(*cell))?;
+        cage.memo
+            .as_ref()
+            .map_or_else(|| self.grid.get(cell), |memo| memo.fill(cell))
     }
 
     /// Applies `fills` as assignments and returns the updated candidate fills for all cells.
@@ -47,7 +44,7 @@ impl Puzzle {
     ///
     /// Returns an error if `cage` overlaps with an existing cage.
     #[allow(clippy::todo)]
-    pub fn insert(&self, _cage: &Cage) -> Result<(), Error> {
+    pub fn insert(&self, _cage: Cage) -> Result<(), Error> {
         todo!()
     }
 
@@ -59,41 +56,5 @@ impl Puzzle {
     #[allow(clippy::todo)]
     pub fn remove(&self, _cage: &Cage) -> Result<(), Error> {
         todo!()
-    }
-}
-
-/// A polyomino paired with an arithmetic operation that its cell values must satisfy.
-#[derive(PartialEq, Eq, Hash)]
-pub struct Cage(Polyomino, Operation);
-
-#[derive(PartialEq, Eq, Hash)]
-enum Operator {
-    Add,
-    Multiply,
-    Subtract,
-    Divide,
-    /// Cell value is given directly; no arithmetic constraint.
-    Given,
-}
-
-impl Display for Operator {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let s = match self {
-            Self::Add => "+",
-            Self::Subtract => "−",
-            Self::Multiply => "×",
-            Self::Divide => "÷",
-            Self::Given => "",
-        };
-        write!(f, "{s}")
-    }
-}
-
-#[derive(PartialEq, Eq, Hash)]
-struct Operation(Operator, Target);
-
-impl Display for Operation {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{} {}", self.0, self.1)
     }
 }

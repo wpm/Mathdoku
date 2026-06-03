@@ -1,8 +1,8 @@
 //! Trie-based implementation of [`Memo`].
 use crate::mdk::Error;
+use crate::mdk::cage::Operation;
 use crate::mdk::fill::{Fill, Memo};
-use crate::mdk::grid::Cell;
-use crate::mdk::puzzle::Cage;
+use crate::mdk::grid::{Cell, Polyomino};
 use std::collections::HashMap;
 
 /// Non-monotonic cage-fill memo backed by a trie.
@@ -12,7 +12,7 @@ pub struct Trie {}
 
 #[allow(clippy::todo)]
 impl Memo for Trie {
-    fn new(_n: usize, _cage: Cage) -> Self {
+    fn new(_n: usize, _polyomino: &Polyomino, _operation: &Operation) -> Self {
         todo!()
     }
 
