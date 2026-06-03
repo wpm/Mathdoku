@@ -1,6 +1,6 @@
 //! Grid and cell types internal to the mdk implementation.
 use crate::mdk::Error;
-use crate::mdk::Error::InvalidCell;
+use crate::mdk::Error::MissingCell;
 use crate::mdk::fill::Fill;
 use serde::de::Error as DeError;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -28,7 +28,7 @@ impl Grid {
     /// Returns the candidate fill for `cell`, or an error if the cell is not in this
     /// grid.
     pub fn get(&self, cell: &Cell) -> Result<Fill, Error> {
-        self.fill.get(cell).cloned().ok_or(InvalidCell(*cell))
+        self.fill.get(cell).cloned().ok_or(MissingCell(*cell))
     }
 }
 
@@ -173,6 +173,15 @@ impl Polyomino {
     }
 }
 
+impl IntoIterator for Polyomino {
+    type Item = Cell;
+    type IntoIter = std::collections::btree_set::IntoIter<Cell>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
 /// A grid position identified by `(row, column)`, both 1-indexed.
 #[derive(Ord, Eq, PartialEq, Hash, PartialOrd, Copy, Clone, Debug, Serialize, Deserialize)]
 pub struct Cell(usize, usize);
@@ -191,6 +200,20 @@ mod tests {
     use crate::mdk::fill::Fill;
     use serde_json::{Value, from_str, json, to_string};
 
+    fn assert_all_full(g: &Grid, n: usize) {
+        for r in 1..=n {
+            for c in 1..=n {
+                assert_eq!(g.get(&Cell::new(r, c)).unwrap(), Fill::new(n));
+            }
+        }
+    }
+
+    fn grid_with_modified_cell(n: usize, cell: Cell, fill: Fill) -> Grid {
+        let mut g = Grid::new(n);
+        drop(g.fill.insert(cell, fill));
+        g
+    }
+
     #[test]
     fn new_valid_sizes_succeed() {
         for n in 1..=9 {
@@ -201,19 +224,14 @@ mod tests {
 
     #[test]
     fn new_values_are_full() {
-        let g = Grid::new(4);
-        for r in 1..=4 {
-            for c in 1..=4 {
-                assert_eq!(g.get(&Cell::new(r, c)).unwrap(), Fill::new(4));
-            }
-        }
+        assert_all_full(&Grid::new(4), 4);
     }
 
     #[test]
     fn get_values_out_of_bounds_returns_err() {
         let g = Grid::new(3);
-        assert!(matches!(g.get(&Cell::new(4, 1)), Err(InvalidCell(_))));
-        assert!(matches!(g.get(&Cell::new(1, 4)), Err(InvalidCell(_))));
+        assert!(matches!(g.get(&Cell::new(4, 1)), Err(MissingCell(_))));
+        assert!(matches!(g.get(&Cell::new(1, 4)), Err(MissingCell(_))));
     }
 
     #[test]
@@ -223,10 +241,8 @@ mod tests {
 
     #[test]
     fn grid_round_trips_through_json() {
-        let mut g = Grid::new(3);
-        drop(g.fill.insert(Cell::new(1, 1), Fill::from(&[2])));
-        let json = to_string(&g).unwrap();
-        let restored: Grid = from_str(&json).unwrap();
+        let g = grid_with_modified_cell(3, Cell::new(1, 1), Fill::from(&[2]));
+        let restored: Grid = from_str(&to_string(&g).unwrap()).unwrap();
         assert_eq!(g.fill, restored.fill);
         assert_eq!(g.n, restored.n);
     }
@@ -249,10 +265,8 @@ mod tests {
 
     #[test]
     fn grid_serialize_values_are_row_major() {
-        let mut g = Grid::new(2);
-        drop(g.fill.insert(Cell::new(1, 1), Fill::from(&[1])));
-        let json = to_string(&g).unwrap();
-        let v: Value = from_str(&json).unwrap();
+        let g = grid_with_modified_cell(2, Cell::new(1, 1), Fill::from(&[1]));
+        let v: Value = from_str(&to_string(&g).unwrap()).unwrap();
         assert_eq!(v["fills"][0][0], json!([1]));
     }
 
@@ -260,29 +274,19 @@ mod tests {
     fn grid_deserialize_absent_values_uses_full_fill_sets() {
         let g: Grid = from_str(r#"{"n":3}"#).unwrap();
         assert_eq!(g.n, 3);
-        for r in 1..=3 {
-            for c in 1..=3 {
-                assert_eq!(g.get(&Cell::new(r, c)).unwrap(), Fill::new(3));
-            }
-        }
+        assert_all_full(&g, 3);
     }
 
     #[test]
     fn grid_full_serializes_without_values() {
-        let g = Grid::new(3);
-        let v: Value = from_str(&to_string(&g).unwrap()).unwrap();
+        let v: Value = from_str(&to_string(&Grid::new(3)).unwrap()).unwrap();
         assert!(v.get("fills").is_none() || v["fills"] == json!([]));
     }
 
     #[test]
     fn grid_full_round_trips_through_json() {
-        let g = Grid::new(3);
-        let restored: Grid = from_str(&to_string(&g).unwrap()).unwrap();
-        for r in 1..=3 {
-            for c in 1..=3 {
-                assert_eq!(restored.get(&Cell::new(r, c)).unwrap(), Fill::new(3));
-            }
-        }
+        let restored: Grid = from_str(&to_string(&Grid::new(3)).unwrap()).unwrap();
+        assert_all_full(&restored, 3);
     }
 
     // --- Polyomino::from_cells / is_edge_connected ---
@@ -334,5 +338,24 @@ mod tests {
             ]),
             Err(InvalidPolyomino(_))
         ));
+    }
+
+    // --- Polyomino IntoIterator ---
+
+    #[test]
+    fn polyomino_into_iter_yields_cells_in_order() {
+        let p = Polyomino::from_cells([Cell::new(2, 1), Cell::new(1, 2), Cell::new(1, 1)]).unwrap();
+        let cells: Vec<Cell> = p.into_iter().collect();
+        assert_eq!(
+            cells,
+            vec![Cell::new(1, 1), Cell::new(1, 2), Cell::new(2, 1)]
+        );
+    }
+
+    #[test]
+    fn polyomino_into_iter_singleton() {
+        let p = Polyomino::from_cells([Cell::new(3, 4)]).unwrap();
+        let cells: Vec<Cell> = p.into_iter().collect();
+        assert_eq!(cells, vec![Cell::new(3, 4)]);
     }
 }

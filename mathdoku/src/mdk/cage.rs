@@ -1,56 +1,35 @@
 //! [`Cage`] and the operator types used to construct one.
-use crate::mdk::domino_memo::DominoMemo;
-use crate::mdk::fill::Memo;
-use crate::mdk::grid::Polyomino;
-use crate::mdk::mdd::Mdd;
+use crate::mdk::grid::{Cell, Polyomino};
+use crate::mdk::memo::CageMemo;
+use crate::mdk::operator::Operator;
 use crate::mdk::{N, Target};
 use std::cmp::Ordering;
 use std::fmt;
 use std::fmt::{Display, Formatter};
 
 /// A polyomino paired with an arithmetic operation and its memoized candidate fills.
+#[must_use]
+#[derive(Clone)]
 pub struct Cage {
-    /// The cells that make up this cage.
+    /// The cells covered by this cage.
     pub polyomino: Polyomino,
     /// The arithmetic constraint that the cage's cell values must satisfy.
     operation: Operation,
-    /// `None` for `Given` cages, which have no arithmetic constraint to memoize.
-    pub memo: Option<Box<dyn Memo>>,
+    /// Memoization of the possible [`Fill`]s.
+    pub memo: Option<CageMemo>,
 }
 
 impl Cage {
-    /// Creates a new cage for `polyomino` with `operation` on a grid of size `n`.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `operation` is subtract or divide and `polyomino` is not a domino (2 cells).
-    #[must_use]
-    pub fn new(n: usize, polyomino: Polyomino, operation: Operation) -> Self {
-        let memo: Option<Box<dyn Memo>> = match operation.0 {
-            Operator::Add => Some(Box::new(Mdd::new(
-                n,
-                &polyomino,
-                Commutative::Add,
-                operation.1,
-            ))),
-            Operator::Multiply => Some(Box::new(Mdd::new(
-                n,
-                &polyomino,
-                Commutative::Multiply,
-                operation.1,
-            ))),
-            Operator::Subtract => Some(Box::new(
-                #[allow(clippy::expect_used)]
-                DominoMemo::new(n, &polyomino, NonCommutative::Subtract, operation.1)
-                    .expect("subtract cage must be a domino"),
-            )),
-            Operator::Divide => Some(Box::new(
-                #[allow(clippy::expect_used)]
-                DominoMemo::new(n, &polyomino, NonCommutative::Divide, operation.1)
-                    .expect("divide cage must be a domino"),
-            )),
-            Operator::Given => None,
-        };
+    /// Creates a new `operation` cage in `polyomino` on a [`Grid`] of size `n`.
+    pub fn new(n: N, polyomino: Polyomino, operation: Operation) -> Self {
+        // todo!("Create the appropriate memo for the operator.");
+        match operation.0 {
+            Operator::Add => {}
+            Operator::Multiply => {}
+            Operator::Subtract => {}
+            Operator::Divide => {}
+            Operator::Given => {}
+        }
         Self {
             polyomino,
             operation,
@@ -76,6 +55,15 @@ impl PartialEq for Cage {
 
 impl Eq for Cage {}
 
+impl IntoIterator for Cage {
+    type Item = Cell;
+    type IntoIter = std::collections::btree_set::IntoIter<Cell>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.polyomino.into_iter()
+    }
+}
+
 impl PartialOrd for Cage {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
@@ -87,76 +75,6 @@ impl Ord for Cage {
         self.polyomino
             .cmp(&other.polyomino)
             .then_with(|| self.operation.cmp(&other.operation))
-    }
-}
-
-/// Operators valid for domino cages: all except `Given`.
-pub enum Arithmetic {
-    Add,
-    Multiply,
-    Subtract,
-    Divide,
-}
-
-/// Operators valid for monotonic cages (MDD-backed): addition and multiplication.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-pub enum Commutative {
-    Add,
-    Multiply,
-}
-
-impl Commutative {
-    /// Applies this operator to `values`, returning the result.
-    pub(crate) fn apply(self, values: &[N]) -> Target {
-        match self {
-            Self::Add => values.iter().sum(),
-            Self::Multiply => values.iter().product(),
-        }
-    }
-}
-
-/// Operators valid for non-monotonic binary cages: subtraction and division.
-#[derive(Copy, Clone)]
-pub enum NonCommutative {
-    Subtract,
-    Divide,
-}
-
-impl NonCommutative {
-    /// Applies this operator to the pair `(x, y)`, returning the result.
-    pub(crate) const fn apply(self, x: N, y: N) -> Target {
-        match self {
-            Self::Subtract => x.abs_diff(y),
-            Self::Divide => x / y,
-        }
-    }
-}
-
-/// The arithmetic operator applied to a cage's cell values.
-#[derive(PartialEq, Eq, Hash, PartialOrd, Ord, Copy, Clone)]
-pub enum Operator {
-    /// Sum of all cell values equals the target.
-    Add,
-    /// Product of all cell values equals the target.
-    Multiply,
-    /// Absolute difference of the two cell values equals the target.
-    Subtract,
-    /// Quotient of the larger cell value divided by the smaller equals the target.
-    Divide,
-    /// Cell value is given directly; no arithmetic constraint.
-    Given,
-}
-
-impl Display for Operator {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let s = match self {
-            Self::Add => "+",
-            Self::Subtract => "−",
-            Self::Multiply => "×",
-            Self::Divide => "÷",
-            Self::Given => "",
-        };
-        write!(f, "{s}")
     }
 }
 
@@ -198,7 +116,7 @@ mod tests {
     }
 
     fn cage(polyomino: Polyomino, operator: Operator, target: Target) -> Cage {
-        Cage::new(4, polyomino, Operation(operator, target))
+        Cage::new(polyomino, Operation(operator, target))
     }
 
     // --- Cage::new ---
@@ -219,56 +137,6 @@ mod tests {
     fn subtract_pair_succeeds() {
         let c = cage(pair(), Operator::Subtract, 1);
         assert_eq!(c.polyomino, pair());
-    }
-
-    // --- Cage::memo / fill ---
-
-    #[test]
-    fn add_memo_returns_non_empty_fill() {
-        let c = cage(pair(), Operator::Add, 3);
-        let fill = c.memo.as_ref().unwrap().fill(&Cell::new(1, 1)).unwrap();
-        assert!(!fill.is_empty());
-    }
-
-    #[test]
-    fn subtract_memo_returns_non_empty_fill() {
-        let c = cage(pair(), Operator::Subtract, 1);
-        let fill = c.memo.as_ref().unwrap().fill(&Cell::new(1, 1)).unwrap();
-        assert!(!fill.is_empty());
-    }
-
-    #[test]
-    fn divide_memo_returns_non_empty_fill() {
-        let c = cage(pair(), Operator::Divide, 2);
-        let fill = c.memo.as_ref().unwrap().fill(&Cell::new(1, 1)).unwrap();
-        assert!(!fill.is_empty());
-    }
-
-    #[test]
-    fn multiply_memo_returns_non_empty_fill() {
-        let c = cage(pair(), Operator::Multiply, 6);
-        let fill = c.memo.as_ref().unwrap().fill(&Cell::new(1, 1)).unwrap();
-        assert!(!fill.is_empty());
-    }
-
-    #[test]
-    fn given_has_no_memo() {
-        let c = cage(singleton(), Operator::Given, 3);
-        assert!(c.memo.is_none());
-    }
-
-    #[test]
-    fn infeasible_add_gives_empty_fill() {
-        let c = cage(pair(), Operator::Add, 99);
-        let fill = c.memo.as_ref().unwrap().fill(&Cell::new(1, 1)).unwrap();
-        assert!(fill.is_empty());
-    }
-
-    #[test]
-    fn infeasible_subtract_gives_empty_fill() {
-        let c = cage(pair(), Operator::Subtract, 9);
-        let fill = c.memo.as_ref().unwrap().fill(&Cell::new(1, 1)).unwrap();
-        assert!(fill.is_empty());
     }
 
     // --- equality and ordering ---
@@ -301,6 +169,29 @@ mod tests {
         assert_eq!(c.polyomino.cells(), pair().cells());
     }
 
+    // --- IntoIterator ---
+
+    #[test]
+    fn into_iter_yields_cells_in_order() {
+        let c = cage(pair(), Operator::Add, 3);
+        let cells: Vec<Cell> = c.into_iter().collect();
+        assert_eq!(cells, vec![Cell::new(1, 1), Cell::new(1, 2)]);
+    }
+
+    #[test]
+    fn into_iter_singleton_yields_one_cell() {
+        let c = cage(singleton(), Operator::Given, 5);
+        let cells: Vec<Cell> = c.into_iter().collect();
+        assert_eq!(cells, vec![Cell::new(1, 1)]);
+    }
+
+    #[test]
+    fn into_iter_l_shape_yields_cells_in_row_major_order() {
+        let c = cage(l_shape(), Operator::Add, 6);
+        let cells: Vec<Cell> = c.into_iter().collect();
+        assert_eq!(cells, vec![Cell::new(1, 1), Cell::new(1, 2), Cell::new(2, 1)]);
+    }
+
     // --- Display ---
 
     #[test]
@@ -323,14 +214,5 @@ mod tests {
     #[test]
     fn operation_display_given_has_no_symbol() {
         assert_eq!(Operation(Operator::Given, 7).to_string(), " 7");
-    }
-
-    // --- l_shape cage ---
-
-    #[test]
-    fn add_l_shape_memo_returns_non_empty_fill() {
-        let c = cage(l_shape(), Operator::Add, 6);
-        let fill = c.memo.as_ref().unwrap().fill(&Cell::new(1, 1)).unwrap();
-        assert!(!fill.is_empty());
     }
 }

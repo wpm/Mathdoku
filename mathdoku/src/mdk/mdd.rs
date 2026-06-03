@@ -1,17 +1,19 @@
-//! MDD-based (multivalued decision diagram) implementation of [`Memo`].
-use crate::mdk::Error;
-use crate::mdk::Error::InvalidCell;
-use crate::mdk::N;
-use crate::mdk::Target;
-use crate::mdk::cage::Commutative;
-use crate::mdk::fill::{Fill, Memo};
+//! Multivalued Decision Diagram (MDD) implementation of [`Memo`].
+use crate::mdk::operator::Commutative;
+use crate::mdk::fill::Fill;
 use crate::mdk::grid::{Cell, Polyomino};
+use crate::mdk::memo::Memo;
+use crate::mdk::Error;
+use crate::mdk::Error::MissingCell;
+use crate::mdk::Target;
+use crate::mdk::N;
 use log::debug;
 use std::collections::{HashMap, HashSet};
 
 /// Monotonic cage-fill memo backed by an MDD.
 ///
 /// Suitable for cages whose constraint has monotonic structure (e.g. addition, multiplication).
+#[derive(Clone)]
 pub struct Mdd {
     cells: Vec<Cell>,
     n: N,
@@ -21,10 +23,10 @@ pub struct Mdd {
 
 impl Mdd {
     /// Creates an MDD memo for `polyomino` with the monotonic `op` and `target` on a grid of size `n`.
-    pub fn new(n: usize, polyomino: &Polyomino, op: Commutative, target: Target) -> Self {
+    pub fn new(n: usize, polyomino: &Polyomino, operation: Commutative, target: Target) -> Self {
         #[allow(clippy::cast_possible_truncation)]
         let constraint = Constraint {
-            op,
+            operation,
             target,
             arity: polyomino.len() as N,
         };
@@ -49,7 +51,7 @@ impl Mdd {
         self.cells
             .iter()
             .position(|c| c == cell)
-            .ok_or(InvalidCell(*cell))
+            .ok_or(MissingCell(*cell))
     }
 
     fn subtree(&mut self, head: Node) {
@@ -332,42 +334,42 @@ impl Memo for Mdd {
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 struct Constraint {
-    op: Commutative,
+    operation: Commutative,
     target: N,
     arity: N,
 }
 
 impl Constraint {
     const fn target_reached(self, v: N) -> bool {
-        match self.op {
+        match self.operation {
             Commutative::Add => v >= self.target,
             Commutative::Multiply => v > self.target,
         }
     }
 
     const fn pruned(self, acc: N, v: N, _remaining: N) -> bool {
-        match self.op {
+        match self.operation {
             Commutative::Add => acc + v > self.target,
             Commutative::Multiply => acc * v > self.target,
         }
     }
 
     const fn skipped(self, acc: N, v: N, remaining: N, n: N) -> bool {
-        match self.op {
+        match self.operation {
             Commutative::Add => acc + v + remaining * n < self.target,
             Commutative::Multiply => (acc * v) != 0 && !self.target.is_multiple_of(acc * v),
         }
     }
 
     const fn operation(self, x: N, y: N) -> N {
-        match self.op {
+        match self.operation {
             Commutative::Add => x + y,
             Commutative::Multiply => x * y,
         }
     }
 
     const fn unit(self) -> N {
-        match self.op {
+        match self.operation {
             Commutative::Add => 0,
             Commutative::Multiply => 1,
         }
@@ -376,7 +378,7 @@ impl Constraint {
 
 impl std::fmt::Display for Constraint {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let symbol = match self.op {
+        let symbol = match self.operation {
             Commutative::Add => '+',
             Commutative::Multiply => '×',
         };
@@ -399,8 +401,8 @@ impl std::fmt::Display for Node {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mdk::fill::Memo;
     use crate::mdk::grid::Polyomino;
+    use crate::mdk::memo::Memo;
 
     #[test]
     fn sum_pair_display() {
@@ -600,7 +602,7 @@ mod tests {
     #[test]
     fn fill_invalid_cell_returns_error() {
         let m = mdd(3, &pair(1, 1, 1, 2), Commutative::Add, 4);
-        assert!(matches!(m.fill(&Cell::new(9, 9)), Err(InvalidCell(_))));
+        assert!(matches!(m.fill(&Cell::new(9, 9)), Err(MissingCell(_))));
     }
 
     // ---- Memo::remove ----
@@ -630,7 +632,7 @@ mod tests {
         let m = mdd(3, &pair(1, 1, 1, 2), Commutative::Add, 4);
         assert!(matches!(
             m.remove(HashMap::from([(Cell::new(9, 9), Fill::from(&[1]))])),
-            Err(InvalidCell(_))
+            Err(MissingCell(_))
         ));
     }
 

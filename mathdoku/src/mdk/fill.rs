@@ -1,10 +1,9 @@
-//! Candidate value sets and the [`Memo`] trait for cage-fill memoization.
-use crate::mdk::grid::Cell;
-use crate::mdk::{Error, N};
+//! Candidate value sets.
+use crate::mdk::N;
 use itertools::Itertools;
 use serde::de::Error as DeError;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::collections::{BTreeSet, HashMap};
+use std::collections::BTreeSet;
 use std::fmt::{Display, Formatter};
 
 /// The set of candidate values for a cell.
@@ -53,25 +52,6 @@ impl Display for Fill {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{{{}}}", self.0.iter().join(", "))
     }
-}
-
-/// Memoizes the candidate fills for each cell of a cage given its size and arithmetic operation.
-pub trait Memo {
-    /// Returns the candidate fill for `cell` within the cage.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`Error::InvalidCell`] if `cell` is not part of the cage.
-    fn fill(&self, cell: &Cell) -> Result<Fill, Error>;
-
-    /// Returns a new memo with `fills` removed as candidates, propagating the constraint.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`Error::InvalidCell`] if any cell in `fills` is not part of the cage.
-    fn remove(&self, fills: HashMap<Cell, Fill>) -> Result<Self, Error>
-    where
-        Self: Sized;
 }
 
 #[cfg(test)]

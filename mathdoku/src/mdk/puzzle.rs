@@ -1,11 +1,16 @@
-//! [`Puzzle`]: the top-level constraint-solving interface for an mdk grid.
+//! [`Puzzle`]: the top-level constraint-solving interface.
+use crate::csp::Constraint;
+use crate::mdk::Error::MissingCell;
 use crate::mdk::cage::{Cage, Operation};
 use crate::mdk::fill::Fill;
 use crate::mdk::grid::{Cell, Grid, Polyomino};
+use crate::mdk::memo::Memo;
 use crate::mdk::{Error, Target};
 use std::collections::HashMap;
+use std::sync::Arc;
 
 /// An n×n Mathdoku puzzle: a grid partitioned into cages, each with an arithmetic constraint.
+#[derive(Clone)]
 pub struct Puzzle {
     grid: Grid,
     cages: HashMap<Cell, Cage>,
@@ -16,12 +21,12 @@ impl Puzzle {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidCell`] if `cell` is not in the puzzle.
+    /// Returns [`MissingCell`] if `cell` is not in the puzzle.
     pub fn get(&self, cell: &Cell) -> Result<Fill, Error> {
         let memo = &self
             .cages
             .get(cell)
-            .ok_or(Error::InvalidCell(*cell))?
+            .ok_or(MissingCell(*cell))?
             .memo
             .as_ref();
         memo.map_or_else(|| self.grid.get(cell), |memo| memo.fill(cell))
@@ -53,8 +58,12 @@ impl Puzzle {
     ///
     /// Returns an error if `cage` is not in the puzzle.
     #[allow(clippy::todo)]
-    pub fn remove(&self, _cage: &Cage) -> Result<(), Error> {
-        todo!()
+    pub fn remove(&self, cage: &Cage) -> Result<(), Error> {
+        let mut cages = self.cages.clone();
+        for cell in cage.polyomino.iter() {
+            let _ = cages.remove(cell).ok_or_else(|| MissingCell(*cell));
+        }
+        Ok(())
     }
 
     /// Returns the operations that are feasible for `polyomino` given the current grid state.
@@ -64,7 +73,7 @@ impl Puzzle {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidCell`] if any cell of `polyomino` is not in the puzzle.
+    /// Returns [`MissingCell`] if any cell of `polyomino` is not in the puzzle.
     #[allow(clippy::todo)]
     pub fn possible_operations(&self, _polyomino: &Polyomino) -> Result<Vec<Operation>, Error> {
         todo!()
@@ -78,13 +87,31 @@ impl Puzzle {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidCell`] if any cell of `polyomino` is not in the puzzle.
+    /// Returns [`MissingCell`] if any cell of `polyomino` is not in the puzzle.
     #[allow(clippy::todo)]
     pub fn possible_targets(
         &self,
         _polyomino: &Polyomino,
         _operation: Operation,
     ) -> Result<Vec<Target>, Error> {
+        todo!()
+    }
+
+    /// Propagates all cage and all-different constraints to a GAC fixpoint.
+    ///
+    /// Returns `None` if any cell's domain becomes empty (infeasible).
+    #[must_use]
+    pub fn fixpoint(&self) -> Option<Self> {
+        let puzzle = Arc::new(self.clone());
+        let constraints = self.constraints();
+        let grid = crate::csp::generalized_arc_consistency(self.grid, &constraints)?;
+        Some(Self {
+            grid,
+            cages: self.cages,
+        })
+    }
+
+    fn constraints(&self) -> Vec<Constraint> {
         todo!()
     }
 }
