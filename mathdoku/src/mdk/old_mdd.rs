@@ -1,86 +1,70 @@
-//! Multivalued Decision Diagram (MDD) implementation of [`Memo`] and [`Narrow`].
-//!
-//! Only commutative (add, multiply) constraints are supported. For non-commutative
-//! constraints (subtract, divide), use [`Table`](crate::mdk::table::Table) instead.
-use crate::mdk::Error::{EmptyFills, IndexOutOfBounds};
+//! Multivalued Decision Diagram (MDD) implementation of [`Memo`].
+use crate::mdk::Error;
+use crate::mdk::Error::MissingCell;
+use crate::mdk::N;
+use crate::mdk::Target;
 use crate::mdk::fill::Fill;
-use crate::mdk::memo::{Memo, Narrow};
-use crate::mdk::operation::{Commutative, NonCommutative};
-use crate::mdk::{Error, N, Target};
+use crate::mdk::old_memo::Memo;
+use crate::mdk::operator::Commutative;
+use crate::mdk::shape::{Cell, Polyomino};
 use log::debug;
 use std::collections::{HashMap, HashSet};
 
-/// A cage constraint stored as a multivalued decision diagram.
+/// Monotonic cage-fill memo backed by an MDD.
 ///
-/// Nodes are keyed by `(depth, accumulated_value)`. Edges are labelled with the
-/// cell value chosen at that depth. Valid tuples correspond to paths from the
-/// root to a terminal node where `value == target` and `depth == arity`.
-///
-/// Per-position candidate sets ([`Fill`]s) are derived from the surviving paths
-/// and cached; construction fails with [`EmptyFills`] if no valid tuples exist.
+/// Suitable for cages whose constraint has monotonic structure (e.g. addition, multiplication).
 #[derive(Clone)]
 pub struct Mdd {
-    n: usize,
+    cells: Vec<Cell>,
+    n: N,
     constraint: Constraint,
     edges: HashMap<Node, Vec<(N, Node)>>,
-    fills: Vec<Fill>,
 }
 
 impl Mdd {
-    fn build(n: usize, k: usize, operation: Commutative, target: Target) -> Result<Self, Error> {
+    /// Creates an MDD memo for `polyomino` with the monotonic `op` and `target` on a grid of size `n`.
+    pub fn new(n: usize, polyomino: &Polyomino, operation: Commutative, target: Target) -> Self {
         #[allow(clippy::cast_possible_truncation)]
         let constraint = Constraint {
             operation,
             target,
-            arity: k as N,
+            arity: polyomino.len() as N,
         };
+        #[allow(clippy::cast_possible_truncation)]
+        let n = n as N;
+        let cells = polyomino.iter().copied().collect();
         let mut mdd = Self {
+            cells,
             n,
             constraint,
             edges: HashMap::new(),
-            fills: Vec::new(),
         };
         let root = Node {
             depth: 0,
             value: constraint.unit(),
         };
         mdd.subtree(root);
-        mdd.fills = mdd.compute_fills_or_err()?;
-        Ok(mdd)
+        mdd
     }
 
-    fn compute_fills_or_err(&self) -> Result<Vec<Fill>, Error> {
-        let tuples = self.tuples();
-        if tuples.is_empty() {
-            return Err(EmptyFills);
-        }
-        let k = tuples[0].len();
-        let fills: Vec<Fill> = (0..k)
-            .map(|i| Fill::from(&tuples.iter().map(|t| t[i]).collect::<Vec<N>>()))
-            .collect();
-        if fills.iter().any(Fill::is_empty) {
-            return Err(EmptyFills);
-        }
-        Ok(fills)
+    fn index(&self, cell: &Cell) -> Result<usize, Error> {
+        self.cells
+            .iter()
+            .position(|c| c == cell)
+            .ok_or(MissingCell(*cell))
     }
 
-    /// Recursively builds the MDD rooted at `head`, adding edges for all values
-    /// that are not pruned by the constraint's monotonicity bounds.
     fn subtree(&mut self, head: Node) {
         if self.edges.contains_key(&head) {
             return;
         }
         debug!("{self}");
         let remaining = self.constraint.arity - head.depth - 1;
-        #[allow(clippy::cast_possible_truncation)]
-        for i in 1..=self.n as N {
+        for i in 1..=self.n {
             if self.constraint.pruned(head.value, i, remaining) {
                 break;
             }
-            if self
-                .constraint
-                .skipped(head.value, i, remaining, self.n as N)
-            {
+            if self.constraint.skipped(head.value, i, remaining, self.n) {
                 continue;
             }
             let tail = Node {
@@ -94,27 +78,29 @@ impl Mdd {
         }
     }
 
-    /// Returns a copy of this MDD with edges for forbidden values removed and
-    /// dead nodes garbage-collected via downward and upward cascades.
-    fn remove_support(&self, forbidden: &HashMap<N, HashSet<N>>) -> Self {
+    fn remove_support(&self, values: &HashMap<N, HashSet<N>>) -> Self {
         let mut mdd = Self {
+            cells: self.cells.clone(),
             n: self.n,
             constraint: self.constraint,
             edges: self.edges.clone(),
-            fills: Vec::new(),
         };
-        let mut q_down: Vec<Node> = Vec::new(); // nodes that may have lost all incoming edges
-        let mut q_up: Vec<Node> = Vec::new(); // nodes that may have lost all outgoing edges
+        let mut q_down: Vec<Node> = Vec::new();
+        let mut q_up: Vec<Node> = Vec::new();
 
-        for (&depth, forbidden) in forbidden {
+        for (&depth, forbidden) in values {
             let heads = mdd.heads_at_depth(depth);
-            let (total_arcs, dead_arcs) = heads
+            let total_arcs: usize = heads
+                .iter()
+                .filter_map(|h| mdd.edges.get(h))
+                .map(Vec::len)
+                .sum();
+            let dead_arcs: usize = heads
                 .iter()
                 .filter_map(|h| mdd.edges.get(h))
                 .flat_map(|es| es.iter())
-                .fold((0, 0), |(total, dead), (label, _)| {
-                    (total + 1, dead + usize::from(forbidden.contains(label)))
-                });
+                .filter(|(label, _)| forbidden.contains(label))
+                .count();
 
             if dead_arcs > total_arcs / 2 {
                 debug!("Layer {depth}: reset ({dead_arcs}/{total_arcs} arcs dead)");
@@ -154,10 +140,7 @@ impl Mdd {
         q_down: &mut Vec<Node>,
         q_up: &mut Vec<Node>,
     ) {
-        #[allow(clippy::cast_possible_truncation)]
-        let surviving: HashSet<N> = (1..=self.n as N)
-            .filter(|v| !forbidden.contains(v))
-            .collect();
+        let surviving: HashSet<N> = (1..=self.n).filter(|v| !forbidden.contains(v)).collect();
         let tails_before = Self::tails_of(&self.edges, heads);
 
         let orig: Vec<(Node, Vec<(N, Node)>)> = heads
@@ -201,7 +184,7 @@ impl Mdd {
                     .iter()
                     .filter(|(label, _)| forbidden.contains(label))
                     .map(|(_, t)| *t)
-                    .collect(); // collect before retain to avoid borrow conflict
+                    .collect();
                 es.retain(|(label, _)| !forbidden.contains(label));
                 if es.is_empty() {
                     let _ = self.edges.remove(head);
@@ -269,33 +252,30 @@ impl Mdd {
     }
 
     fn insert_edge(&mut self, head: Node, value: N, tail: Node) {
-        debug!(
-            "{:indent$}{head} -{value}→ {tail}",
-            "",
-            indent = head.depth as usize
-        );
+        Self::indented_debug(head.depth, &format!("{head} -{value}→ {tail}"));
         self.edges.entry(head).or_default().push((value, tail));
     }
 
     fn at_arity(&self, tail: Node) -> bool {
         let (d, a) = (u64::from(tail.depth), u64::from(self.constraint.arity));
-        debug_assert!(d <= a, "depth {d} > arity {a}");
-        Self::log_if(d == a, tail.depth, &format!("{tail} Arity limit met"))
+        assert!(d <= a, "depth {d} > arity {a}");
+        let reached = d == a;
+        if reached {
+            Self::indented_debug(tail.depth, &format!("{tail} Arity limit met"));
+        }
+        reached
     }
 
     fn at_target(&self, node: Node) -> bool {
-        Self::log_if(
-            self.constraint.target_reached(node.value),
-            node.depth,
-            &format!("{node} Target reached"),
-        )
+        let reached = self.constraint.target_reached(node.value);
+        if reached {
+            Self::indented_debug(node.depth, &format!("{node} Target reached"));
+        }
+        reached
     }
 
-    fn log_if(condition: bool, depth: N, message: &str) -> bool {
-        if condition {
-            debug!("{:indent$}{message}", "", indent = depth as usize);
-        }
-        condition
+    fn indented_debug(depth: N, message: &str) {
+        debug!("{:indent$}{message}", "", indent = depth as usize);
     }
 
     fn tuples(&self) -> Vec<Vec<N>> {
@@ -333,54 +313,22 @@ impl std::fmt::Display for Mdd {
 }
 
 impl Memo for Mdd {
-    fn commutative(
-        n: usize,
-        k: usize,
-        operator: Commutative,
-        target: Target,
-    ) -> Result<Self, Error> {
-        Self::build(n, k, operator, target)
+    fn fill(&self, cell: &Cell) -> Result<Fill, Error> {
+        let index = self.index(cell)?;
+        let ns: Vec<N> = self.tuples().iter().map(|t| t[index]).collect();
+        Ok(Fill::from(&ns))
     }
 
-    /// Not implemented — the MDD structure relies on monotonicity, which only holds
-    /// for commutative (add, multiply) operators. Use [`Table`](crate::mdk::table::Table)
-    /// for subtract and divide constraints.
-    #[allow(clippy::unimplemented)]
-    fn non_commutative(
-        _n: usize,
-        _operator: NonCommutative,
-        _target: Target,
-    ) -> Result<Self, Error> {
-        unimplemented!("Mdd only supports commutative constraints; use Table for subtract/divide")
-    }
-
-    fn fill(&self, index: usize) -> Result<Fill, Error> {
-        self.fills
-            .get(index)
-            .cloned()
-            .ok_or(IndexOutOfBounds(index))
-    }
-}
-
-impl Narrow for Mdd {
-    fn remove(&self, fills: Vec<Fill>) -> Result<Self, Error> {
-        #[allow(clippy::cast_possible_truncation)]
-        let forbidden: HashMap<N, HashSet<N>> = fills
-            .iter()
-            .enumerate()
-            .filter_map(|(i, fill)| {
-                let excluded: HashSet<N> =
-                    (1..=self.n as N).filter(|v| !fill.contains(*v)).collect();
-                if excluded.is_empty() {
-                    None
-                } else {
-                    Some((i as N, excluded))
-                }
-            })
-            .collect();
-        let mut narrowed = self.remove_support(&forbidden);
-        narrowed.fills = narrowed.compute_fills_or_err()?;
-        Ok(narrowed)
+    fn remove(&self, fills: HashMap<Cell, Fill>) -> Result<Self, Error> {
+        let mut values: HashMap<N, HashSet<N>> = HashMap::new();
+        for (cell, fill) in &fills {
+            let index = self.index(cell)?;
+            #[allow(clippy::cast_possible_truncation)]
+            let depth = index as N;
+            let forbidden: HashSet<N> = (1..=self.n).filter(|v| !fill.contains(*v)).collect();
+            drop(values.insert(depth, forbidden));
+        }
+        Ok(self.remove_support(&values))
     }
 }
 
@@ -414,11 +362,17 @@ impl Constraint {
     }
 
     const fn operation(self, x: N, y: N) -> N {
-        self.operation.apply_pair(x, y)
+        match self.operation {
+            Commutative::Add => x + y,
+            Commutative::Multiply => x * y,
+        }
     }
 
     const fn unit(self) -> N {
-        self.operation.identity()
+        match self.operation {
+            Commutative::Add => 0,
+            Commutative::Multiply => 1,
+        }
     }
 }
 
@@ -447,62 +401,13 @@ impl std::fmt::Display for Node {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mdk::operation::Commutative::{Add, Multiply};
-
-    // ---- Memo::commutative construction ----
-
-    #[test]
-    fn add_fills_are_union_of_column_values() {
-        let m = Mdd::commutative(4, 2, Add, 6).unwrap();
-        assert_eq!(m.fill(0).unwrap(), Fill::from(&[2, 3, 4]));
-        assert_eq!(m.fill(1).unwrap(), Fill::from(&[2, 3, 4]));
-    }
-
-    #[test]
-    fn multiply_fills_contain_expected_values() {
-        let m = Mdd::commutative(6, 2, Multiply, 6).unwrap();
-        assert_eq!(m.fill(0).unwrap(), Fill::from(&[1, 2, 3, 6]));
-        assert_eq!(m.fill(1).unwrap(), Fill::from(&[1, 2, 3, 6]));
-    }
-
-    #[test]
-    fn commutative_no_solutions_returns_empty_fills_error() {
-        assert!(matches!(Mdd::commutative(4, 2, Add, 9), Err(EmptyFills)));
-    }
-
-    #[test]
-    fn fill_out_of_bounds_returns_index_error() {
-        let m = Mdd::commutative(4, 2, Add, 5).unwrap();
-        assert!(matches!(m.fill(2), Err(IndexOutOfBounds(2))));
-    }
-
-    // ---- Narrow::remove ----
-
-    #[test]
-    fn remove_filters_tuples_and_updates_fills() {
-        let m = Mdd::commutative(4, 2, Add, 5).unwrap();
-        let narrowed = m
-            .remove(vec![Fill::from(&[1, 2]), Fill::from(&[1, 2, 3, 4])])
-            .unwrap();
-        assert_eq!(narrowed.fill(0).unwrap(), Fill::from(&[1, 2]));
-        assert_eq!(narrowed.fill(1).unwrap(), Fill::from(&[3, 4]));
-    }
-
-    #[test]
-    fn remove_eliminating_all_tuples_returns_empty_fills_error() {
-        let m = Mdd::commutative(4, 2, Add, 5).unwrap();
-        assert!(matches!(
-            m.remove(vec![Fill::from(&[1]), Fill::from(&[1])]),
-            Err(EmptyFills)
-        ));
-    }
-
-    // ---- display ----
+    use crate::mdk::old_memo::Memo;
+    use crate::mdk::shape::Polyomino;
 
     #[test]
     fn sum_pair_display() {
         assert_eq!(
-            Mdd::commutative(3, 2, Add, 4).unwrap().to_string(),
+            Mdd::new(3, &pair(1, 1, 1, 2), Commutative::Add, 4).to_string(),
             "MDD(+4 [2] 4 nodes)"
         );
     }
@@ -510,7 +415,7 @@ mod tests {
     #[test]
     fn sum_triple_display() {
         assert_eq!(
-            Mdd::commutative(3, 3, Add, 5).unwrap().to_string(),
+            Mdd::new(3, &triple(1, 1, 1, 2, 1, 3), Commutative::Add, 5).to_string(),
             "MDD(+5 [3] 7 nodes)"
         );
     }
@@ -518,7 +423,7 @@ mod tests {
     #[test]
     fn sum_triple_larger_n_display() {
         assert_eq!(
-            Mdd::commutative(4, 3, Add, 6).unwrap().to_string(),
+            Mdd::new(4, &triple(1, 1, 1, 2, 1, 3), Commutative::Add, 6).to_string(),
             "MDD(+6 [3] 9 nodes)"
         );
     }
@@ -526,7 +431,7 @@ mod tests {
     #[test]
     fn product_pair_display() {
         assert_eq!(
-            Mdd::commutative(4, 2, Multiply, 6).unwrap().to_string(),
+            Mdd::new(4, &pair(1, 1, 1, 2), Commutative::Multiply, 6).to_string(),
             "MDD(×6 [2] 4 nodes)"
         );
     }
@@ -534,64 +439,106 @@ mod tests {
     #[test]
     fn product_triple_display() {
         assert_eq!(
-            Mdd::commutative(4, 3, Multiply, 4).unwrap().to_string(),
+            Mdd::new(4, &triple(1, 1, 1, 2, 1, 3), Commutative::Multiply, 4).to_string(),
             "MDD(×4 [3] 7 nodes)"
         );
     }
 
-    // ---- fill values ----
-
     #[test]
-    fn sum_pair_fills() {
-        let m = Mdd::commutative(3, 2, Add, 4).unwrap();
-        assert_eq!(m.fill(0).unwrap(), Fill::from(&[1, 2, 3]));
-        assert_eq!(m.fill(1).unwrap(), Fill::from(&[1, 2, 3]));
+    fn sum_pair_tuples() {
+        let m = mdd(3, &pair(1, 1, 1, 2), Commutative::Add, 4);
+        assert_eq!(m.fill(&Cell(1, 1)).unwrap(), Fill::from(&[1, 2, 3]));
+        assert_eq!(m.fill(&Cell(1, 2)).unwrap(), Fill::from(&[1, 2, 3]));
     }
 
     #[test]
-    fn sum_triple_fills() {
-        let m = Mdd::commutative(3, 3, Add, 5).unwrap();
-        assert_eq!(m.fill(0).unwrap(), Fill::from(&[1, 2, 3]));
-        assert_eq!(m.fill(1).unwrap(), Fill::from(&[1, 2, 3]));
-        assert_eq!(m.fill(2).unwrap(), Fill::from(&[1, 2, 3]));
+    fn sum_triple_tuples() {
+        let m = mdd(3, &triple(1, 1, 1, 2, 1, 3), Commutative::Add, 5);
+        assert_eq!(m.fill(&Cell(1, 1)).unwrap(), Fill::from(&[1, 2, 3]));
+        assert_eq!(m.fill(&Cell(1, 2)).unwrap(), Fill::from(&[1, 2, 3]));
+        assert_eq!(m.fill(&Cell(1, 3)).unwrap(), Fill::from(&[1, 2, 3]));
     }
 
     #[test]
-    fn product_pair_fills() {
-        let m = Mdd::commutative(4, 2, Multiply, 6).unwrap();
-        assert_eq!(m.fill(0).unwrap(), Fill::from(&[2, 3]));
-        assert_eq!(m.fill(1).unwrap(), Fill::from(&[2, 3]));
+    fn sum_triple_larger_n_tuples() {
+        let m = mdd(4, &triple(1, 1, 1, 2, 1, 3), Commutative::Add, 6);
+        assert_eq!(m.fill(&Cell(1, 1)).unwrap(), Fill::from(&[1, 2, 3, 4]));
+        assert_eq!(m.fill(&Cell(1, 2)).unwrap(), Fill::from(&[1, 2, 3, 4]));
+        assert_eq!(m.fill(&Cell(1, 3)).unwrap(), Fill::from(&[1, 2, 3, 4]));
     }
 
     #[test]
-    fn product_triple_fills() {
-        let m = Mdd::commutative(4, 3, Multiply, 4).unwrap();
-        assert_eq!(m.fill(0).unwrap(), Fill::from(&[1, 2, 4]));
-        assert_eq!(m.fill(1).unwrap(), Fill::from(&[1, 2, 4]));
-        assert_eq!(m.fill(2).unwrap(), Fill::from(&[1, 2, 4]));
-    }
-
-    // ---- infeasibility ----
-
-    #[test]
-    fn sum_target_out_of_range_is_empty_fills() {
-        assert!(matches!(Mdd::commutative(3, 3, Add, 1), Err(EmptyFills)));
-        assert!(matches!(Mdd::commutative(3, 3, Add, 10), Err(EmptyFills)));
+    fn product_pair_tuples() {
+        let m = mdd(4, &pair(1, 1, 1, 2), Commutative::Multiply, 6);
+        assert_eq!(m.fill(&Cell(1, 1)).unwrap(), Fill::from(&[2, 3]));
+        assert_eq!(m.fill(&Cell(1, 2)).unwrap(), Fill::from(&[2, 3]));
     }
 
     #[test]
-    fn product_target_out_of_range_is_empty_fills() {
-        assert!(matches!(
-            Mdd::commutative(3, 3, Multiply, 28),
-            Err(EmptyFills)
-        ));
+    fn product_triple_tuples() {
+        let m = mdd(4, &triple(1, 1, 1, 2, 1, 3), Commutative::Multiply, 4);
+        assert_eq!(m.fill(&Cell(1, 1)).unwrap(), Fill::from(&[1, 2, 4]));
+        assert_eq!(m.fill(&Cell(1, 2)).unwrap(), Fill::from(&[1, 2, 4]));
+        assert_eq!(m.fill(&Cell(1, 3)).unwrap(), Fill::from(&[1, 2, 4]));
+    }
+
+    #[test]
+    fn sum_arity() {
+        assert_eq!(
+            mdd(3, &pair(1, 1, 1, 2), Commutative::Add, 4)
+                .constraint
+                .arity,
+            2
+        );
+    }
+
+    #[test]
+    fn product_arity() {
+        assert_eq!(
+            mdd(4, &pair(1, 1, 1, 2), Commutative::Multiply, 6)
+                .constraint
+                .arity,
+            2
+        );
+    }
+
+    #[test]
+    fn sum_operation() {
+        let c = mdd(3, &pair(1, 1, 1, 2), Commutative::Add, 7).constraint;
+        assert_eq!(c.operation(3, 7), 10);
+    }
+
+    #[test]
+    fn product_operation() {
+        let c = mdd(4, &pair(1, 1, 1, 2), Commutative::Multiply, 4).constraint;
+        assert_eq!(c.operation(3, 4), 12);
+    }
+
+    #[test]
+    fn sum_display() {
+        assert_eq!(
+            mdd(3, &pair(1, 1, 1, 2), Commutative::Add, 10)
+                .constraint
+                .to_string(),
+            "+10 [2]"
+        );
+    }
+
+    #[test]
+    fn product_display() {
+        assert_eq!(
+            mdd(4, &pair(1, 1, 1, 2), Commutative::Multiply, 6)
+                .constraint
+                .to_string(),
+            "×6 [2]"
+        );
     }
 
     // ---- remove_support ----
 
     #[test]
     fn remove_support_empty_is_identity() {
-        let m = Mdd::commutative(3, 3, Add, 5).unwrap();
+        let m = mdd(3, &triple(1, 1, 1, 2, 1, 3), Commutative::Add, 5);
         assert_eq!(
             sorted_tuples(&m.remove_support(&HashMap::new())),
             sorted_tuples(&m)
@@ -600,8 +547,7 @@ mod tests {
 
     #[test]
     fn remove_support_sum_triple_delete_var0() {
-        let m = Mdd::commutative(3, 3, Add, 5)
-            .unwrap()
+        let m = mdd(3, &triple(1, 1, 1, 2, 1, 3), Commutative::Add, 5)
             .remove_support(&forbidden(&[(0, &[1])]));
         assert_eq!(
             sorted_tuples(&m),
@@ -611,65 +557,74 @@ mod tests {
 
     #[test]
     fn remove_support_sum_pair_delete_var0() {
-        let m = Mdd::commutative(3, 2, Add, 4)
-            .unwrap()
-            .remove_support(&forbidden(&[(0, &[2])]));
+        let m =
+            mdd(3, &pair(1, 1, 1, 2), Commutative::Add, 4).remove_support(&forbidden(&[(0, &[2])]));
         assert_eq!(sorted_tuples(&m), vec![vec![1, 3], vec![3, 1]]);
     }
 
     #[test]
     fn remove_support_product_pair_delete_var0() {
-        let m = Mdd::commutative(4, 2, Multiply, 6)
-            .unwrap()
+        let m = mdd(4, &pair(1, 1, 1, 2), Commutative::Multiply, 6)
             .remove_support(&forbidden(&[(0, &[3])]));
         assert_eq!(sorted_tuples(&m), vec![vec![2, 3]]);
     }
 
     #[test]
     fn remove_support_sum_triple_reset_var1() {
-        let m = Mdd::commutative(3, 3, Add, 5)
-            .unwrap()
+        let m = mdd(3, &triple(1, 1, 1, 2, 1, 3), Commutative::Add, 5)
             .remove_support(&forbidden(&[(1, &[1, 2])]));
         assert_eq!(sorted_tuples(&m), vec![vec![1, 3, 1]]);
     }
 
     #[test]
     fn remove_support_sum_triple_two_layers() {
-        let m = Mdd::commutative(3, 3, Add, 5)
-            .unwrap()
+        let m = mdd(3, &triple(1, 1, 1, 2, 1, 3), Commutative::Add, 5)
             .remove_support(&forbidden(&[(0, &[1]), (2, &[1])]));
         assert_eq!(sorted_tuples(&m), vec![vec![2, 1, 2]]);
     }
 
     #[test]
     fn remove_support_all_removed() {
-        let m = Mdd::commutative(3, 3, Add, 5)
-            .unwrap()
+        let m = mdd(3, &triple(1, 1, 1, 2, 1, 3), Commutative::Add, 5)
             .remove_support(&forbidden(&[(1, &[1, 2, 3])]));
         assert_eq!(sorted_tuples(&m), vec![] as Vec<Vec<N>>);
     }
 
-    // ---- reducedness ----
+    // ---- Memo::fill ----
 
     #[test]
-    fn constructed_mdd_is_reduced() {
-        let cases = [
-            (4usize, Add, 5u32, 2usize),
-            (6, Add, 10, 3),
-            (9, Add, 20, 4),
-            (4, Multiply, 6, 2),
-            (6, Multiply, 24, 3),
-        ];
-        for (n, op, target, k) in cases {
-            assert_reduced(&Mdd::commutative(n, k, op, target).unwrap());
-        }
+    fn fill_sum_pair_c0_all_values() {
+        // sum(4,2) n=3: all values {1,2,3} appear in column 0
+        let m = mdd(3, &pair(1, 1, 1, 2), Commutative::Add, 4);
+        assert_eq!(m.fill(&Cell(1, 1)).unwrap(), Fill::from(&[1, 2, 3]));
     }
 
     #[test]
-    fn mdd_is_reduced_after_remove_support() {
-        let m = Mdd::commutative(4, 3, Add, 6).unwrap();
-        let pruned = m.remove_support(&forbidden(&[(0, &[1])]));
-        assert_reduced(&pruned);
+    fn fill_invalid_cell_returns_error() {
+        let m = mdd(3, &pair(1, 1, 1, 2), Commutative::Add, 4);
+        assert!(matches!(m.fill(&Cell(9, 9)), Err(MissingCell(_))));
+    }
+
+    // ---- Memo::remove ----
+
+    #[test]
+    fn remove_prunes_fill() {
+        let m = mdd(4, &triple(1, 1, 1, 2, 1, 3), Commutative::Add, 6);
+        let pruned = m
+            .remove(HashMap::from([(Cell(1, 1), Fill::from(&[2, 3, 4]))]))
+            .unwrap();
+        assert_eq!(pruned.fill(&Cell(1, 1)).unwrap(), Fill::from(&[2, 3, 4]));
+        assert_eq!(pruned.fill(&Cell(1, 2)).unwrap(), Fill::from(&[1, 2, 3]));
+        assert_eq!(pruned.fill(&Cell(1, 3)).unwrap(), Fill::from(&[1, 2, 3]));
+    }
+
+    #[test]
+    fn remove_invalid_cell_returns_error() {
+        let m = mdd(3, &pair(1, 1, 1, 2), Commutative::Add, 4);
+        assert!(matches!(
+            m.remove(HashMap::from([(Cell(9, 9), Fill::from(&[1]))])),
+            Err(MissingCell(_))
+        ));
     }
 
     // ---- brute-force oracle cross-check ----
@@ -677,10 +632,10 @@ mod tests {
     #[test]
     fn sum_matches_brute_force_oracle() {
         for n in 3u32..=6 {
-            for k in 2u32..=4 {
-                let max_target = n * k + 1;
+            for arity in 2u32..=4 {
+                let max_target = n * arity + 1;
                 for target in 1..=max_target {
-                    assert_equiv(n, Add, target, k);
+                    assert_equiv(n, Commutative::Add, target, arity);
                 }
             }
         }
@@ -689,10 +644,10 @@ mod tests {
     #[test]
     fn product_matches_brute_force_oracle() {
         for n in 3u32..=6 {
-            for k in 2u32..=3 {
-                let max_target = n.pow(k) + 1;
+            for arity in 2u32..=3 {
+                let max_target = n.pow(arity) + 1;
                 for target in 1..=max_target {
-                    assert_equiv(n, Multiply, target, k);
+                    assert_equiv(n, Commutative::Multiply, target, arity);
                 }
             }
         }
@@ -702,20 +657,76 @@ mod tests {
     #[ignore = "exhaustive property test; run with --include-ignored on merge to main"]
     fn matches_brute_force_across_n_arity_and_target() {
         for n in 3u32..=9 {
-            for k in 2u32..=5 {
-                let max_sum = n * k + 1;
+            for arity in 2u32..=5 {
+                let max_sum = n * arity + 1;
                 for target in 1..=max_sum {
-                    assert_equiv(n, Add, target, k);
+                    assert_equiv(n, Commutative::Add, target, arity);
                 }
-                let max_product = n.pow(k) + 1;
+                let max_product = n.pow(arity) + 1;
                 for target in 1..=max_product {
-                    assert_equiv(n, Multiply, target, k);
+                    assert_equiv(n, Commutative::Multiply, target, arity);
                 }
             }
         }
     }
 
-    // ---- helpers ----
+    // ---- infeasibility ----
+
+    #[test]
+    fn sum_target_out_of_range_is_empty() {
+        let low = mdd(3, &triple(1, 1, 1, 2, 1, 3), Commutative::Add, 1);
+        assert_eq!(low.fill(&Cell(1, 1)).unwrap(), Fill::from(&[]));
+        let high = mdd(3, &triple(1, 1, 1, 2, 1, 3), Commutative::Add, 10);
+        assert_eq!(high.fill(&Cell(1, 1)).unwrap(), Fill::from(&[]));
+    }
+
+    #[test]
+    fn product_target_out_of_range_is_empty() {
+        let m = mdd(3, &triple(1, 1, 1, 2, 1, 3), Commutative::Multiply, 28);
+        assert_eq!(m.fill(&Cell(1, 1)).unwrap(), Fill::from(&[]));
+    }
+
+    // ---- reducedness ----
+
+    #[test]
+    fn constructed_mdd_is_reduced() {
+        let cases = [
+            (4usize, Commutative::Add, 5u32, 2u32),
+            (6, Commutative::Add, 10, 3),
+            (9, Commutative::Add, 20, 4),
+            (4, Commutative::Multiply, 6, 2),
+            (6, Commutative::Multiply, 24, 3),
+        ];
+        for (n, op, target, arity) in cases {
+            let poly = cells_polyomino(arity as usize);
+            assert_reduced(&Mdd::new(n, &poly, op, target));
+        }
+    }
+
+    #[test]
+    fn mdd_is_reduced_after_remove_support() {
+        let m = mdd(4, &triple(1, 1, 1, 2, 1, 3), Commutative::Add, 6);
+        let pruned = m.remove_support(&forbidden(&[(0, &[1])]));
+        assert_reduced(&pruned);
+    }
+
+    // ---- helpers and fixtures ----
+
+    fn pair(r0: usize, c0: usize, r1: usize, c1: usize) -> Polyomino {
+        Polyomino::from_cells([Cell(r0, c0), Cell(r1, c1)]).unwrap()
+    }
+
+    fn triple(r0: usize, c0: usize, r1: usize, c1: usize, r2: usize, c2: usize) -> Polyomino {
+        Polyomino::from_cells([Cell(r0, c0), Cell(r1, c1), Cell(r2, c2)]).unwrap()
+    }
+
+    fn cells_polyomino(arity: usize) -> Polyomino {
+        Polyomino::from_cells((0..arity).map(|i| Cell(1, i + 1))).unwrap()
+    }
+
+    fn mdd(n: usize, polyomino: &Polyomino, op: Commutative, target: Target) -> Mdd {
+        Mdd::new(n, polyomino, op, target)
+    }
 
     fn forbidden(pairs: &[(N, &[N])]) -> HashMap<N, HashSet<N>> {
         pairs
@@ -730,20 +741,29 @@ mod tests {
         t
     }
 
-    fn ref_tuples(n: N, op: Commutative, target: N, k: u32) -> Vec<Vec<N>> {
-        let k = k as usize;
+    fn ref_tuples(n: N, op: Commutative, target: N, arity: u32) -> Vec<Vec<N>> {
+        let arity = arity as usize;
+        let unit: N = match op {
+            Commutative::Add => 0,
+            Commutative::Multiply => 1,
+        };
+        let apply = |a: N, v: N| match op {
+            Commutative::Add => a + v,
+            Commutative::Multiply => a * v,
+        };
         let mut out = Vec::new();
-        let mut t = vec![1u32; k];
+        let mut t = vec![1u32; arity];
         loop {
-            if op.apply(&t) == target {
+            let acc = t.iter().fold(unit, |a, &v| apply(a, v));
+            if acc == target {
                 out.push(t.clone());
             }
             let mut i = 0;
-            while i < k && t[i] == n {
+            while i < arity && t[i] == n {
                 t[i] = 1;
                 i += 1;
             }
-            if i == k {
+            if i == arity {
                 break;
             }
             t[i] += 1;
@@ -752,25 +772,16 @@ mod tests {
         out
     }
 
-    fn assert_equiv(n: N, op: Commutative, target: N, k: u32) {
-        let expected = ref_tuples(n, op, target, k);
-        match Mdd::commutative(n as usize, k as usize, op, target) {
-            Ok(m) => {
-                let mut actual = m.tuples();
-                actual.sort();
-                assert_eq!(
-                    actual, expected,
-                    "mismatch for n={n}, op={op:?}, target={target}, k={k}"
-                );
-            }
-            Err(EmptyFills) => {
-                assert!(
-                    expected.is_empty(),
-                    "Mdd returned EmptyFills but expected {expected:?} for n={n}, op={op:?}, target={target}, k={k}"
-                );
-            }
-            Err(e) => panic!("unexpected error {e:?}"),
-        }
+    fn assert_equiv(n: N, op: Commutative, target: N, arity: u32) {
+        let poly = cells_polyomino(arity as usize);
+        let m = Mdd::new(n as usize, &poly, op, target);
+        let mut actual = m.tuples();
+        actual.sort();
+        let expected = ref_tuples(n, op, target, arity);
+        assert_eq!(
+            actual, expected,
+            "mismatch for n={n}, op={op:?}, target={target}, arity={arity}"
+        );
     }
 
     fn assert_reduced(m: &Mdd) {

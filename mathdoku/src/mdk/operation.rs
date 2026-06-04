@@ -35,7 +35,7 @@ pub enum ArithmeticOperation {
 ///
 /// Because applying the operator to a longer tuple can only increase the result,
 /// partial results can be used to prune the search for valid tuples.
-#[derive(Clone, Copy)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum Commutative {
     Add,
     Multiply,
@@ -47,6 +47,15 @@ impl Commutative {
         match self {
             Self::Add => ns.iter().sum(),
             Self::Multiply => ns.iter().product(),
+        }
+    }
+
+    /// Applies this operator to a single pair `(x, y)`.
+    #[must_use]
+    pub const fn apply_pair(self, x: N, y: N) -> N {
+        match self {
+            Self::Add => x + y,
+            Self::Multiply => x * y,
         }
     }
 

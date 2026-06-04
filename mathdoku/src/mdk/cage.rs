@@ -1,4 +1,4 @@
-use crate::mdk::mdd::Mdd;
+use crate::mdk::old_mdd::Mdd;
 use crate::mdk::operation::Commutative;
 use crate::mdk::shape::{Cell, Polyomino};
 use crate::mdk::{N, Target};

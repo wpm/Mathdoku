@@ -12,7 +12,7 @@ use crate::mdk::{Error, N, Target};
 /// Each tuple is a `k`-vector of values in `1..=n` satisfying the cage's
 /// arithmetic constraint. Per-position candidate sets ([`Fill`]s) are derived
 /// as the union of values appearing at each position across all tuples, and
-/// are guaranteed non-empty — construction fails with [`Error::EmptyFills`]
+/// are guaranteed non-empty — construction fails with [`EmptyFills`]
 /// if no valid tuples exist.
 pub struct Table {
     n: usize,
@@ -24,7 +24,7 @@ impl Table {
     /// Constructs a `Table` from a pre-computed list of tuples, deriving fills.
     ///
     /// # Errors
-    /// Returns [`Error::EmptyFills`] if `tuples` is empty or any position's
+    /// Returns [`EmptyFills`] if `tuples` is empty or any position's
     /// fill would be empty.
     fn new(n: usize, tuples: Vec<Vec<N>>) -> Result<Self, Error> {
         if tuples.is_empty() {
@@ -116,10 +116,7 @@ mod tests {
     #[test]
     fn commutative_no_solutions_returns_empty_fills_error() {
         // no 2-tuple in 1..=4 sums to 9
-        assert!(matches!(
-            Table::commutative(4, 2, Add, 9),
-            Err(EmptyFills)
-        ));
+        assert!(matches!(Table::commutative(4, 2, Add, 9), Err(EmptyFills)));
     }
 
     #[test]
