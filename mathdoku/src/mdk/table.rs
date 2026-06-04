@@ -61,3 +61,79 @@ impl Narrow for Table {
         Self::new(self.n, tuples)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mdk::operation::Commutative::{Add, Multiply};
+    use crate::mdk::operation::NonCommutative::{Divide, Subtract};
+
+    #[test]
+    fn add_fills_are_union_of_column_values() {
+        // 3+3=6, 2+4=6, 4+2=6 — position 0 is {2,3,4}, position 1 is {2,3,4}
+        let t = Table::commutative(4, 2, Add, 6).unwrap();
+        assert_eq!(t.fill(0).unwrap(), Fill::from(&[2, 3, 4]));
+        assert_eq!(t.fill(1).unwrap(), Fill::from(&[2, 3, 4]));
+    }
+
+    #[test]
+    fn multiply_fills_contain_expected_values() {
+        // 2*3=6, 3*2=6, 1*6=6, 6*1=6 within n=6
+        let t = Table::commutative(6, 2, Multiply, 6).unwrap();
+        assert_eq!(t.fill(0).unwrap(), Fill::from(&[1, 2, 3, 6]));
+        assert_eq!(t.fill(1).unwrap(), Fill::from(&[1, 2, 3, 6]));
+    }
+
+    #[test]
+    fn subtract_fills_contain_expected_values() {
+        // pairs with |a-b|=1 in n=4: (1,2),(2,1),(2,3),(3,2),(3,4),(4,3)
+        let t = Table::non_commutative(4, Subtract, 1).unwrap();
+        assert_eq!(t.fill(0).unwrap(), Fill::from(&[1, 2, 3, 4]));
+        assert_eq!(t.fill(1).unwrap(), Fill::from(&[1, 2, 3, 4]));
+    }
+
+    #[test]
+    fn divide_fills_contain_expected_values() {
+        // pairs with max/min=2 in n=4: (1,2),(2,1),(2,4),(4,2)
+        let t = Table::non_commutative(4, Divide, 2).unwrap();
+        assert_eq!(t.fill(0).unwrap(), Fill::from(&[1, 2, 4]));
+        assert_eq!(t.fill(1).unwrap(), Fill::from(&[1, 2, 4]));
+    }
+
+    #[test]
+    fn commutative_no_solutions_returns_empty_fills_error() {
+        // no 2-tuple in 1..=4 sums to 9
+        assert!(matches!(
+            Table::commutative(4, 2, Add, 9),
+            Err(EmptyFills)
+        ));
+    }
+
+    #[test]
+    fn fill_out_of_bounds_returns_index_error() {
+        let t = Table::commutative(4, 2, Add, 5).unwrap();
+        assert!(matches!(t.fill(2), Err(IndexOutOfBounds(2))));
+    }
+
+    #[test]
+    fn remove_filters_tuples_and_updates_fills() {
+        // add to 5 in n=4: (1,4),(2,3),(3,2),(4,1)
+        let t = Table::commutative(4, 2, Add, 5).unwrap();
+        // restrict position 0 to {1,2}, position 1 to {1,2,3,4}
+        let narrowed = t
+            .remove(vec![Fill::from(&[1, 2]), Fill::from(&[1, 2, 3, 4])])
+            .unwrap();
+        assert_eq!(narrowed.fill(0).unwrap(), Fill::from(&[1, 2]));
+        assert_eq!(narrowed.fill(1).unwrap(), Fill::from(&[3, 4]));
+    }
+
+    #[test]
+    fn remove_eliminating_all_tuples_returns_empty_fills_error() {
+        let t = Table::commutative(4, 2, Add, 5).unwrap();
+        // restrict both positions to {1} — no tuple (1,1) sums to 5
+        assert!(matches!(
+            t.remove(vec![Fill::from(&[1]), Fill::from(&[1])]),
+            Err(EmptyFills)
+        ));
+    }
+}
