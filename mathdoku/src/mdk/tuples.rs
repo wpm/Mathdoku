@@ -61,7 +61,9 @@ impl Tuples {
     /// already exceeds the target, using the dual operation's identity element
     /// as the minimum-per-remaining-slot bound.
     fn monotonic(&mut self, operator: Commutative, target: Target) -> Step {
-        let Some(tuple) = self.queue.pop_front() else { return Step::Exhausted };
+        let Some(tuple) = self.queue.pop_front() else {
+            return Step::Exhausted;
+        };
         match tuple.len() == self.k {
             true => {
                 if operator.apply(&tuple) == target {
@@ -90,7 +92,9 @@ impl Tuples {
     ///
     /// No pruning is possible since the operation is not monotonic.
     fn non_monotonic(&mut self, operator: NonCommutative, target: Target) -> Step {
-        let Some(tuple) = self.queue.pop_front() else { return Step::Exhausted };
+        let Some(tuple) = self.queue.pop_front() else {
+            return Step::Exhausted;
+        };
         match tuple.len() == self.k {
             true => {
                 if operator.apply(tuple[0], tuple[1]) == target {
@@ -193,12 +197,7 @@ mod tests {
         let actual: Vec<Vec<N>> = tuples.collect();
         assert_eq!(
             actual,
-            vec![
-                vec![1, 3],
-                vec![2, 4],
-                vec![3, 1],
-                vec![4, 2],
-            ]
+            vec![vec![1, 3], vec![2, 4], vec![3, 1], vec![4, 2],]
         );
     }
 
