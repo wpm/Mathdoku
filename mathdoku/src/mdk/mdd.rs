@@ -1,14 +1,14 @@
 //! Multivalued Decision Diagram (MDD) implementation of [`Memo`].
-use crate::mdk::operator::Commutative;
-use crate::mdk::fill::Fill;
-use crate::mdk::memo::Memo;
 use crate::mdk::Error;
 use crate::mdk::Error::MissingCell;
-use crate::mdk::Target;
 use crate::mdk::N;
+use crate::mdk::Target;
+use crate::mdk::fill::Fill;
+use crate::mdk::old_memo::Memo;
+use crate::mdk::operator::Commutative;
+use crate::mdk::shape::{Cell, Polyomino};
 use log::debug;
 use std::collections::{HashMap, HashSet};
-use crate::mdk::shape::{Cell, Polyomino};
 
 /// Monotonic cage-fill memo backed by an MDD.
 ///
@@ -401,8 +401,8 @@ impl std::fmt::Display for Node {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::mdk::old_memo::Memo;
     use crate::mdk::shape::Polyomino;
-    use crate::mdk::memo::Memo;
 
     #[test]
     fn sum_pair_display() {
@@ -613,18 +613,9 @@ mod tests {
         let pruned = m
             .remove(HashMap::from([(Cell(1, 1), Fill::from(&[2, 3, 4]))]))
             .unwrap();
-        assert_eq!(
-            pruned.fill(&Cell(1, 1)).unwrap(),
-            Fill::from(&[2, 3, 4])
-        );
-        assert_eq!(
-            pruned.fill(&Cell(1, 2)).unwrap(),
-            Fill::from(&[1, 2, 3])
-        );
-        assert_eq!(
-            pruned.fill(&Cell(1, 3)).unwrap(),
-            Fill::from(&[1, 2, 3])
-        );
+        assert_eq!(pruned.fill(&Cell(1, 1)).unwrap(), Fill::from(&[2, 3, 4]));
+        assert_eq!(pruned.fill(&Cell(1, 2)).unwrap(), Fill::from(&[1, 2, 3]));
+        assert_eq!(pruned.fill(&Cell(1, 3)).unwrap(), Fill::from(&[1, 2, 3]));
     }
 
     #[test]

@@ -1,39 +1,26 @@
-use crate::mdk::Error;
 use crate::mdk::fill::Fill;
-use crate::mdk::mdd::Mdd;
-use crate::mdk::old_cage::Operation;
-use crate::mdk::shape::{Cell, Polyomino};
-use std::collections::HashMap;
+use crate::mdk::operation::{Commutative, NonCommutative};
+use crate::mdk::{Error, Target};
 
-/// Memo used to store intermediate results for [`Cage`] operations.
-/// [`Commutative`] operations use an [`Mdd`] while [`NonCommutative`] operations use a [`DominoTable`].
-#[derive(Clone)]
-pub enum CageMemo {
-    Mdd(Mdd),
+pub trait Memo: Sized {
+    /// # Errors
+    /// Returns [`Error::EmptyFills`] if no tuples satisfy the constraint.
+    fn commutative(
+        n: usize,
+        k: usize,
+        operator: Commutative,
+        target: Target,
+    ) -> Result<Self, Error>;
+    /// # Errors
+    /// Returns [`Error::EmptyFills`] if no tuples satisfy the constraint.
+    fn non_commutative(n: usize, operator: NonCommutative, target: Target) -> Result<Self, Error>;
+    /// # Errors
+    /// Returns [`Error::IndexOutOfBounds`] if `index` exceeds the number of positions.
+    fn fill(&self, index: usize) -> Result<Fill, Error>;
 }
 
-impl CageMemo {
-    #[allow(clippy::todo)]
-    fn new(_n: usize, _polyomino: &Polyomino, _operation: Operation) -> Self {
-        todo!()
-    }
-}
-
-/// Memoizes the candidate fills for each cell of a cage given its size and arithmetic operation.
-pub trait Memo {
-    /// Returns the candidate fill for `cell` within the cage.
-    ///
+pub trait Narrow: Sized {
     /// # Errors
-    ///
-    /// Returns [`Error::MissingCell`] if `cell` is not part of the cage.
-    fn fill(&self, cell: &Cell) -> Result<Fill, Error>;
-
-    /// Returns a new memo with `fills` removed as candidates, propagating the constraint.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`Error::MissingCell`] if any cell in `fills` is not part of the cage.
-    fn remove(&self, fills: HashMap<Cell, Fill>) -> Result<Self, Error>
-    where
-        Self: Sized;
+    /// Returns [`Error::EmptyFills`] if filtering leaves no valid tuples.
+    fn remove(&self, fills: Vec<Fill>) -> Result<Self, Error>;
 }

@@ -1,5 +1,5 @@
 //! Iterator over value tuples satisfying a cage arithmetic constraint.
-use crate::mdk::operation::{Commutative, NonCommutative};
+use crate::mdk::operation::{ArithmeticOperation, Commutative, NonCommutative};
 use crate::mdk::{N, Target};
 use std::collections::VecDeque;
 
@@ -8,7 +8,7 @@ use std::collections::VecDeque;
 /// Tuples are yielded in lexicographic order via BFS. Commutative operations
 /// use the ring identity to prune the search; non-commutative operations
 /// enumerate all pairs without pruning.
-struct Tuples {
+pub struct Tuples {
     n: usize,
     k: usize,
     constraint: ArithmeticOperation,
@@ -17,7 +17,7 @@ struct Tuples {
 
 impl Tuples {
     /// Creates a `Tuples` iterator for a commutative (monotonic) operation.
-    fn commutative(n: usize, k: usize, operator: Commutative, target: Target) -> Self {
+    pub fn commutative(n: usize, k: usize, operator: Commutative, target: Target) -> Self {
         Tuples {
             n,
             k,
@@ -27,7 +27,7 @@ impl Tuples {
     }
 
     /// Creates a `Tuples` iterator for a non-commutative operation over pairs (`k = 2`).
-    fn non_commutative(n: usize, op: NonCommutative, target: Target) -> Self {
+    pub fn non_commutative(n: usize, op: NonCommutative, target: Target) -> Self {
         Tuples {
             n,
             k: 2,
@@ -125,15 +125,6 @@ impl Iterator for Tuples {
             }
         }
     }
-}
-
-/// An arithmetic operation paired with a target value.
-#[derive(Clone, Copy)]
-pub enum ArithmeticOperation {
-    /// A commutative (monotonic) operation: add or multiply.
-    Commutative(Commutative, Target),
-    /// A non-commutative (non-monotonic) operation: subtract or divide.
-    NonCommutative(NonCommutative, Target),
 }
 
 #[cfg(test)]

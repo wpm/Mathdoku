@@ -1,9 +1,9 @@
 //! [`Puzzle`]: the top-level constraint-solving interface.
+use crate::mdk::Error::MissingCell;
 use crate::mdk::fill::Fill;
 use crate::mdk::grid::Grid;
 use crate::mdk::old_cage::{Cage, Operation};
 use crate::mdk::shape::{Cell, Polyomino};
-use crate::mdk::Error::MissingCell;
 use crate::mdk::{Error, Target};
 use std::collections::HashMap;
 

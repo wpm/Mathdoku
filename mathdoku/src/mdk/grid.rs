@@ -2,11 +2,11 @@
 use crate::mdk::Error;
 use crate::mdk::Error::MissingCell;
 use crate::mdk::fill::Fill;
+use crate::mdk::shape::Cell;
 use serde::de::Error as DeError;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::BTreeMap;
 use std::fmt::{Display, Formatter};
-use crate::mdk::shape::Cell;
 
 /// An n×n grid mapping each cell to its current candidate fill.
 #[derive(Clone)]
@@ -20,7 +20,7 @@ impl Grid {
     /// candidate set `{1..=n}`.
     pub fn new(n: usize) -> Self {
         let fill = (1..=n)
-            .flat_map(|i| (1..=n).map(move |j| Cell( i, j )))
+            .flat_map(|i| (1..=n).map(move |j| Cell(i, j)))
             .map(|cell| (cell, Fill::new(n)))
             .collect();
         Self { n, fill }
@@ -109,7 +109,7 @@ impl Display for Grid {
 mod tests {
     use super::*;
     use crate::mdk::fill::Fill;
-    use serde_json::{from_str, json, to_string, Value};
+    use serde_json::{Value, from_str, json, to_string};
     fn assert_all_full(g: &Grid, n: usize) {
         for r in 1..=n {
             for c in 1..=n {

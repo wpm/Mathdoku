@@ -22,6 +22,15 @@ impl CageOperation {
     }
 }
 
+/// An arithmetic operation paired with a target value.
+#[derive(Clone, Copy)]
+pub enum ArithmeticOperation {
+    /// A commutative (monotonic) operation: add or multiply.
+    Commutative(Commutative, Target),
+    /// A non-commutative (non-monotonic) operation: subtract or divide.
+    NonCommutative(NonCommutative, Target),
+}
+
 /// A commutative, monotonically non-decreasing cage operator.
 ///
 /// Because applying the operator to a longer tuple can only increase the result,

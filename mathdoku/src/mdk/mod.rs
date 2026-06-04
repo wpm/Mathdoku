@@ -3,17 +3,19 @@
 use crate::mdk::old_cage::Cage;
 use shape::Cell;
 
+mod cage;
 pub(crate) mod fill;
 mod grid;
 pub(crate) mod mdd;
-pub mod puzzle;
 pub mod memo;
-pub mod operator;
 pub mod old_cage;
-pub mod shape;
-mod cage;
-pub mod tuples;
+pub mod old_memo;
 pub mod operation;
+pub mod operator;
+pub mod puzzle;
+pub mod shape;
+pub mod table;
+pub mod tuples;
 
 type N = u32;
 type Target = u32;
@@ -29,4 +31,8 @@ pub enum Error {
     MissingCell(Cell),
     /// Specified [`Cage`] is not in the [`Puzzle`].
     MissingCage(Cage),
+    /// No [`Fill`]s for a [`Cage`].
+    EmptyFills,
+    /// Index out of bounds.
+    IndexOutOfBounds(usize),
 }

@@ -1,11 +1,11 @@
 //! [`Cage`] and the operator types used to construct one.
-use crate::mdk::memo::CageMemo;
+use crate::mdk::old_memo::CageMemo;
 use crate::mdk::operator::Operator;
-use crate::mdk::{Target, N};
+use crate::mdk::shape::{Cell, Polyomino};
+use crate::mdk::{N, Target};
 use std::cmp::Ordering;
 use std::fmt;
 use std::fmt::{Display, Formatter};
-use crate::mdk::shape::{Cell, Polyomino};
 
 /// A polyomino paired with an arithmetic operation and its memoized candidate fills.
 #[must_use]
@@ -96,8 +96,8 @@ impl Display for Operation {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::cmp::Ordering;
     use crate::mdk::shape::{Cell, Polyomino};
+    use std::cmp::Ordering;
 
     fn singleton() -> Polyomino {
         Polyomino::from_cells([Cell(1, 1)]).unwrap()
@@ -163,7 +163,6 @@ mod tests {
 
     // --- cells ---
 
-
     // --- IntoIterator ---
 
     #[test]
@@ -184,10 +183,7 @@ mod tests {
     fn into_iter_l_shape_yields_cells_in_row_major_order() {
         let c = cage(l_shape(), Operator::Add, 6);
         let cells: Vec<Cell> = c.into_iter().collect();
-        assert_eq!(
-            cells,
-            vec![Cell(1, 1), Cell(1, 2), Cell(2, 1)]
-        );
+        assert_eq!(cells, vec![Cell(1, 1), Cell(1, 2), Cell(2, 1)]);
     }
 
     // --- Display ---
