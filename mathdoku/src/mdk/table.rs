@@ -1,3 +1,4 @@
+//! Explicit-tuple implementation of [`Memo`] and [`Narrow`].
 use crate::mdk::Error::EmptyFills;
 use crate::mdk::Error::IndexOutOfBounds;
 use crate::mdk::fill::Fill;
@@ -6,6 +7,13 @@ use crate::mdk::operation::{Commutative, NonCommutative};
 use crate::mdk::tuples::Tuples;
 use crate::mdk::{Error, N, Target};
 
+/// A cage constraint stored as an explicit list of valid value tuples.
+///
+/// Each tuple is a `k`-vector of values in `1..=n` satisfying the cage's
+/// arithmetic constraint. Per-position candidate sets ([`Fill`]s) are derived
+/// as the union of values appearing at each position across all tuples, and
+/// are guaranteed non-empty — construction fails with [`Error::EmptyFills`]
+/// if no valid tuples exist.
 pub struct Table {
     n: usize,
     tuples: Vec<Vec<N>>,
@@ -13,6 +21,11 @@ pub struct Table {
 }
 
 impl Table {
+    /// Constructs a `Table` from a pre-computed list of tuples, deriving fills.
+    ///
+    /// # Errors
+    /// Returns [`Error::EmptyFills`] if `tuples` is empty or any position's
+    /// fill would be empty.
     fn new(n: usize, tuples: Vec<Vec<N>>) -> Result<Self, Error> {
         if tuples.is_empty() {
             return Err(EmptyFills);
