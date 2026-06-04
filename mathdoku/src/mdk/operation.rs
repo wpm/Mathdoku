@@ -1,6 +1,7 @@
 use crate::mdk::cage::Memo;
 use crate::mdk::shape::Polyomino;
 use crate::mdk::{N, Target};
+use std::cmp::{max, min};
 use std::ops::Div;
 
 // An operator and a [`Target`] value or a single cell with a specified value.
@@ -25,7 +26,7 @@ pub enum Commutative {
 }
 
 impl Commutative {
-    pub fn apply(&self, ns: Vec<N>) -> Target {
+    pub fn apply(&self, ns: &[N]) -> Target {
         match self {
             Self::Add => ns.iter().sum(),
             Self::Multiply => ns.iter().product(),
@@ -57,7 +58,7 @@ impl NonCommutative {
     pub fn apply(&self, a: N, b: N) -> Target {
         match self {
             Self::Subtract => a.abs_diff(b),
-            Self::Divide => a.div(b),
+            Self::Divide => max(a, b).div(min(a, b)),
         }
     }
 }
