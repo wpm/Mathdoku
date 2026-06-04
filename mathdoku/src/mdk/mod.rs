@@ -3,7 +3,6 @@
 use crate::mdk::old_cage::Cage;
 use shape::Cell;
 
-pub(crate) mod domino_table;
 pub(crate) mod fill;
 mod grid;
 pub(crate) mod mdd;

@@ -1,26 +1,11 @@
 use crate::mdk::Error;
 use crate::mdk::Error::InvalidPolyomino;
 use serde::{Deserialize, Serialize};
-use std::cmp::Ordering;
 use std::collections::BTreeSet;
 
 /// A grid position identified by `(row, column)`, both 1-indexed.
 #[derive(Ord, Eq, PartialEq, Hash, PartialOrd, Copy, Clone, Debug, Serialize, Deserialize)]
 pub struct Cell(pub usize, pub usize);
-
-// Two edge-adjacent [`Cell`]s.
-#[derive(Ord, Eq, PartialEq, Hash, PartialOrd, Copy, Clone, Debug, Serialize, Deserialize)]
-pub struct Domino(pub Cell, pub Cell);
-
-impl Domino {
-    pub fn new(a: Cell, b: Cell) -> Result<Self, Error> {
-        match a.cmp(&b) {
-            Ordering::Less => Ok(Self(a, b)),
-            Ordering::Equal => Err(InvalidPolyomino(vec![a, b])),
-            Ordering::Greater => Ok(Self(b, a)),
-        }
-    }
-}
 
 /// A set of edge-adjacent cells.
 #[derive(Eq, PartialEq, Ord, PartialOrd, Clone, Hash, Debug)]

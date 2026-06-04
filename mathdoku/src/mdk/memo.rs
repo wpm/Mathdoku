@@ -1,16 +1,14 @@
 use crate::mdk::Error;
-use crate::mdk::old_cage::Operation;
-use crate::mdk::domino_table::DominoTable;
 use crate::mdk::fill::Fill;
 use crate::mdk::mdd::Mdd;
-use std::collections::HashMap;
+use crate::mdk::old_cage::Operation;
 use crate::mdk::shape::{Cell, Polyomino};
+use std::collections::HashMap;
 
 /// Memo used to store intermediate results for [`Cage`] operations.
 /// [`Commutative`] operations use an [`Mdd`] while [`NonCommutative`] operations use a [`DominoTable`].
 #[derive(Clone)]
 pub enum CageMemo {
-    DominoTable(DominoTable),
     Mdd(Mdd),
 }
 

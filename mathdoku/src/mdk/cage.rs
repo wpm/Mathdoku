@@ -1,19 +1,12 @@
-use crate::mdk::domino_table::DominoTable;
 use crate::mdk::mdd::Mdd;
-use crate::mdk::shape::{Cell, Domino, Polyomino};
-use crate::mdk::{Target, N};
-use crate::mdk::operation::{Commutative, NonCommutative};
+use crate::mdk::operation::Commutative;
+use crate::mdk::shape::{Cell, Polyomino};
+use crate::mdk::{N, Target};
 
 pub enum Cage {
     Given {
         cell: Cell,
         value: N,
-    },
-    Domino {
-        domino: Domino,
-        operation: NonCommutative,
-        target: Target,
-        memo: DominoTable,
     },
     Polyonimo {
         polyomino: Polyomino,
@@ -25,6 +18,5 @@ pub enum Cage {
 
 pub enum Memo {
     Mdd(Mdd),
-    DominoTable(DominoTable),
     Given(N),
 }

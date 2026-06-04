@@ -1,6 +1,6 @@
+use crate::mdk::{N, Target};
 use std::fmt;
 use std::fmt::{Display, Formatter};
-use crate::mdk::{Target, N};
 
 /// The arithmetic operator applied to a cage's cell values.
 #[derive(PartialEq, Eq, Hash, PartialOrd, Ord, Copy, Clone)]
@@ -17,7 +17,6 @@ pub enum Operator {
     Given,
 }
 
-
 impl Display for Operator {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let s = match self {
@@ -31,14 +30,6 @@ impl Display for Operator {
     }
 }
 
-/// Operators valid for domino cages: all except `Given`.
-pub enum Arithmetic {
-    Add,
-    Multiply,
-    Subtract,
-    Divide,
-}
-
 /// Operators valid for monotonic cages (MDD-backed): addition and multiplication.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum Commutative {
@@ -47,11 +38,11 @@ pub enum Commutative {
 }
 
 impl Commutative {
-    /// Applies this operator to `values`, returning the result.
-    pub(crate) fn apply(self, values: &[N]) -> Target {
+    /// Applies this operator to `ns`, returning the result.
+    pub(crate) fn apply(self, ns: &[N]) -> Target {
         match self {
-            Self::Add => values.iter().sum(),
-            Self::Multiply => values.iter().product(),
+            Self::Add => ns.iter().sum(),
+            Self::Multiply => ns.iter().product(),
         }
     }
 }

@@ -3,25 +3,6 @@ use crate::mdk::operation::{Commutative, NonCommutative};
 use crate::mdk::{N, Target};
 use std::collections::VecDeque;
 
-/// Result of one BFS step.
-enum Step {
-    /// A complete tuple that satisfies the target — yield it.
-    Yield(Vec<N>),
-    /// Partial tuple extended or complete tuple rejected — keep going.
-    Continue,
-    /// Queue is empty — iteration is finished.
-    Exhausted,
-}
-
-/// An arithmetic operation paired with a target value.
-#[derive(Clone, Copy)]
-pub enum ArithmeticOperation {
-    /// A commutative (monotonic) operation: add or multiply.
-    Commutative(Commutative, Target),
-    /// A non-commutative (non-monotonic) operation: subtract or divide.
-    NonCommutative(NonCommutative, Target),
-}
-
 /// Iterator over all `k`-tuples of values in `1..=n` that satisfy an arithmetic constraint.
 ///
 /// Tuples are yielded in lexicographic order via BFS. Commutative operations
@@ -30,7 +11,7 @@ pub enum ArithmeticOperation {
 struct Tuples {
     n: usize,
     k: usize,
-    operation: ArithmeticOperation,
+    constraint: ArithmeticOperation,
     queue: VecDeque<Vec<N>>,
 }
 
@@ -40,7 +21,7 @@ impl Tuples {
         Tuples {
             n,
             k,
-            operation: ArithmeticOperation::Commutative(operator, target),
+            constraint: ArithmeticOperation::Commutative(operator, target),
             queue: VecDeque::from([vec![]]),
         }
     }
@@ -50,7 +31,7 @@ impl Tuples {
         Tuples {
             n,
             k: 2,
-            operation: ArithmeticOperation::NonCommutative(op, target),
+            constraint: ArithmeticOperation::NonCommutative(op, target),
             queue: VecDeque::from([vec![]]),
         }
     }
@@ -115,11 +96,21 @@ impl Tuples {
     }
 }
 
+/// Result of one BFS step.
+enum Step {
+    /// A complete tuple that satisfies the target — yield it.
+    Yield(Vec<N>),
+    /// Partial tuple extended or complete tuple rejected — keep going.
+    Continue,
+    /// Queue is empty — iteration is finished.
+    Exhausted,
+}
+
 impl Iterator for Tuples {
     type Item = Vec<N>;
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            let step = match self.operation {
+            let step = match self.constraint {
                 ArithmeticOperation::Commutative(operator, target) => {
                     self.monotonic(operator, target)
                 }
@@ -134,6 +125,15 @@ impl Iterator for Tuples {
             }
         }
     }
+}
+
+/// An arithmetic operation paired with a target value.
+#[derive(Clone, Copy)]
+pub enum ArithmeticOperation {
+    /// A commutative (monotonic) operation: add or multiply.
+    Commutative(Commutative, Target),
+    /// A non-commutative (non-monotonic) operation: subtract or divide.
+    NonCommutative(NonCommutative, Target),
 }
 
 #[cfg(test)]
