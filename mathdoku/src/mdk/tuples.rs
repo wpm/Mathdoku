@@ -1,13 +1,32 @@
+//! Iterator over value tuples satisfying a cage arithmetic constraint.
 use crate::mdk::operation::{Commutative, NonCommutative};
 use crate::mdk::{N, Target};
 use std::collections::VecDeque;
 
+/// Result of one BFS step.
+enum Step {
+    /// A complete tuple that satisfies the target — yield it.
+    Yield(Vec<N>),
+    /// Partial tuple extended or complete tuple rejected — keep going.
+    Continue,
+    /// Queue is empty — iteration is finished.
+    Exhausted,
+}
+
+/// An arithmetic operation paired with a target value.
 #[derive(Clone, Copy)]
 pub enum ArithmeticOperation {
+    /// A commutative (monotonic) operation: add or multiply.
     Commutative(Commutative, Target),
+    /// A non-commutative (non-monotonic) operation: subtract or divide.
     NonCommutative(NonCommutative, Target),
 }
 
+/// Iterator over all `k`-tuples of values in `1..=n` that satisfy an arithmetic constraint.
+///
+/// Tuples are yielded in lexicographic order via BFS. Commutative operations
+/// use the ring identity to prune the search; non-commutative operations
+/// enumerate all pairs without pruning.
 struct Tuples {
     n: usize,
     k: usize,
@@ -16,6 +35,7 @@ struct Tuples {
 }
 
 impl Tuples {
+    /// Creates a `Tuples` iterator for a commutative (monotonic) operation.
     fn commutative(n: usize, k: usize, operator: Commutative, target: Target) -> Self {
         Tuples {
             n,
@@ -25,23 +45,29 @@ impl Tuples {
         }
     }
 
+    /// Creates a `Tuples` iterator for a non-commutative operation over pairs (`k = 2`).
     fn non_commutative(n: usize, op: NonCommutative, target: Target) -> Self {
         Tuples {
             n,
-            k: 2, // A non-commutative operation requires exactly 2 elements.
+            k: 2,
             operation: ArithmeticOperation::NonCommutative(op, target),
             queue: VecDeque::from([vec![]]),
         }
     }
 
-    fn monotonic(&mut self, operator: Commutative, target: Target) -> Option<Option<Vec<N>>> {
-        let tuple = self.queue.pop_front()?;
-        Some(match tuple.len() == self.k {
+    /// Advances one step for a commutative operation.
+    ///
+    /// Prunes partial tuples whose result plus the minimum possible completion
+    /// already exceeds the target, using the dual operation's identity element
+    /// as the minimum-per-remaining-slot bound.
+    fn monotonic(&mut self, operator: Commutative, target: Target) -> Step {
+        let Some(tuple) = self.queue.pop_front() else { return Step::Exhausted };
+        match tuple.len() == self.k {
             true => {
                 if operator.apply(&tuple) == target {
-                    Some(tuple)
+                    Step::Yield(tuple)
                 } else {
-                    self.next()
+                    Step::Continue
                 }
             }
             false => {
@@ -55,22 +81,22 @@ impl Tuples {
                         self.queue.push_back(new_tuple);
                     }
                 }
-                self.next()
+                Step::Continue
             }
-        })
+        }
     }
-    fn non_monotonic(
-        &mut self,
-        operator: NonCommutative,
-        target: Target,
-    ) -> Option<Option<Vec<N>>> {
-        let tuple = self.queue.pop_front()?;
-        Some(match tuple.len() == self.k {
+
+    /// Advances one step for a non-commutative operation.
+    ///
+    /// No pruning is possible since the operation is not monotonic.
+    fn non_monotonic(&mut self, operator: NonCommutative, target: Target) -> Step {
+        let Some(tuple) = self.queue.pop_front() else { return Step::Exhausted };
+        match tuple.len() == self.k {
             true => {
                 if operator.apply(tuple[0], tuple[1]) == target {
-                    Some(tuple)
+                    Step::Yield(tuple)
                 } else {
-                    self.next()
+                    Step::Continue
                 }
             }
             false => {
@@ -79,21 +105,28 @@ impl Tuples {
                     new_tuple.push(i as N);
                     self.queue.push_back(new_tuple);
                 }
-                self.next()
+                Step::Continue
             }
-        })
+        }
     }
 }
 
 impl Iterator for Tuples {
     type Item = Vec<N>;
     fn next(&mut self) -> Option<Self::Item> {
-        match self.operation {
-            ArithmeticOperation::Commutative(operator, target) => {
-                self.monotonic(operator, target)?
-            }
-            ArithmeticOperation::NonCommutative(operator, target) => {
-                self.non_monotonic(operator, target)?
+        loop {
+            let step = match self.operation {
+                ArithmeticOperation::Commutative(operator, target) => {
+                    self.monotonic(operator, target)
+                }
+                ArithmeticOperation::NonCommutative(operator, target) => {
+                    self.non_monotonic(operator, target)
+                }
+            };
+            match step {
+                Step::Yield(tuple) => return Some(tuple),
+                Step::Continue => continue,
+                Step::Exhausted => return None,
             }
         }
     }
@@ -103,6 +136,7 @@ impl Iterator for Tuples {
 mod tests {
     use crate::mdk::N;
     use crate::mdk::operation::Commutative::{Add, Multiply};
+    use crate::mdk::operation::NonCommutative::{Divide, Subtract};
     use crate::mdk::tuples::Tuples;
 
     #[test]
@@ -149,6 +183,41 @@ mod tests {
                 vec![6, 1, 4],
                 vec![6, 2, 2],
                 vec![6, 4, 1],
+            ]
+        );
+    }
+
+    #[test]
+    fn subtract_to_2() {
+        let tuples = Tuples::non_commutative(4, Subtract, 2);
+        let actual: Vec<Vec<N>> = tuples.collect();
+        assert_eq!(
+            actual,
+            vec![
+                vec![1, 3],
+                vec![2, 4],
+                vec![3, 1],
+                vec![4, 2],
+            ]
+        );
+    }
+
+    #[test]
+    fn divide_to_2() {
+        let tuples = Tuples::non_commutative(6, Divide, 2);
+        let actual: Vec<Vec<N>> = tuples.collect();
+        // includes integer-division pairs e.g. [2, 5] since max(2,5)/min(2,5) = 5/2 = 2
+        assert_eq!(
+            actual,
+            vec![
+                vec![1, 2],
+                vec![2, 1],
+                vec![2, 4],
+                vec![2, 5],
+                vec![3, 6],
+                vec![4, 2],
+                vec![5, 2],
+                vec![6, 3],
             ]
         );
     }
