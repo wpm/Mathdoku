@@ -39,7 +39,9 @@ impl Iterator for Tuples {
                     let mut new_tuple = tuple.clone();
                     new_tuple.push(i as N);
                     let remaining = (self.k - new_tuple.len()) as N;
-                    if self.op.apply(new_tuple.clone()) + self.op.dual().identity() * remaining <= self.target {
+                    let s = self.op.apply(new_tuple.clone());
+                    let residual = self.op.dual().identity() * remaining;
+                    if s + residual <= self.target {
                         self.queue.push_back(new_tuple);
                     }
                 }
@@ -52,7 +54,7 @@ impl Iterator for Tuples {
 #[cfg(test)]
 mod tests {
     use crate::mdk::N;
-    use crate::mdk::operation::Commutative::Add;
+    use crate::mdk::operation::Commutative::{Add, Multiply};
     use crate::mdk::tuples::Tuples;
 
     #[test]
@@ -72,6 +74,33 @@ mod tests {
                 vec![3, 1, 2],
                 vec![3, 2, 1],
                 vec![4, 1, 1],
+            ]
+        );
+    }
+
+    #[test]
+    fn multiply_to_24() {
+        let tuples = Tuples::new(7, 3, Multiply, 24);
+        let actual: Vec<Vec<N>> = tuples.collect();
+        // n=7 excludes e.g. [1, 3, 8] and [1, 2, 12]
+        assert_eq!(
+            actual,
+            vec![
+                vec![1, 4, 6],
+                vec![1, 6, 4],
+                vec![2, 2, 6],
+                vec![2, 3, 4],
+                vec![2, 4, 3],
+                vec![2, 6, 2],
+                vec![3, 2, 4],
+                vec![3, 4, 2],
+                vec![4, 1, 6],
+                vec![4, 2, 3],
+                vec![4, 3, 2],
+                vec![4, 6, 1],
+                vec![6, 1, 4],
+                vec![6, 2, 2],
+                vec![6, 4, 1],
             ]
         );
     }
