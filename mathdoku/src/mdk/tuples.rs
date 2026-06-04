@@ -1,20 +1,21 @@
+use crate::mdk::operation::Commutative;
 use crate::mdk::{N, Target};
 use std::collections::VecDeque;
 
 struct Tuples {
     n: usize,
     k: usize,
-    f: Box<dyn Fn(&Vec<N>) -> Target>,
+    op: Commutative,
     target: Target,
     queue: VecDeque<Vec<N>>,
 }
 
 impl Tuples {
-    fn new(n: usize, k: usize, f: impl Fn(&Vec<N>) -> Target + 'static, target: Target) -> Self {
+    fn new(n: usize, k: usize, op: Commutative, target: Target) -> Self {
         Tuples {
             n,
             k,
-            f: Box::new(f),
+            op,
             target,
             queue: VecDeque::from([vec![]]),
         }
@@ -27,7 +28,7 @@ impl Iterator for Tuples {
         let tuple = self.queue.pop_front()?;
         match tuple.len() == self.k {
             true => {
-                if (self.f)(&tuple) == self.target {
+                if self.op.apply(tuple.clone()) == self.target {
                     Some(tuple)
                 } else {
                     self.next()
@@ -38,7 +39,7 @@ impl Iterator for Tuples {
                     let mut new_tuple = tuple.clone();
                     new_tuple.push(i as N);
                     let remaining = (self.k - new_tuple.len()) as N;
-                    if (self.f)(&new_tuple) + remaining <= self.target {
+                    if self.op.apply(new_tuple.clone()) + remaining <= self.target {
                         self.queue.push_back(new_tuple);
                     }
                 }
@@ -51,14 +52,12 @@ impl Iterator for Tuples {
 #[cfg(test)]
 mod tests {
     use crate::mdk::N;
-    use crate::mdk::operation::CageOperation::Monotonic;
     use crate::mdk::operation::Commutative::Add;
-    use crate::mdk::table::Tuples;
+    use crate::mdk::tuples::Tuples;
 
     #[test]
     fn sum_to_6() {
-        let Monotonic(op, target) = Monotonic(Add, 6) else { panic!() };
-        let tuples = Tuples::new(7, 3, move |tuple| op.apply(tuple.clone()), target);
+        let tuples = Tuples::new(7, 3, Add, 6);
         let actual: Vec<Vec<N>> = tuples.collect();
         assert_eq!(
             actual,

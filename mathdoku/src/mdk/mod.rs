@@ -13,7 +13,7 @@ pub mod operator;
 pub mod old_cage;
 pub mod shape;
 mod cage;
-pub mod table;
+pub mod tuples;
 pub mod operation;
 
 type N = u32;
