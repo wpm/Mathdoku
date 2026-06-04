@@ -794,7 +794,7 @@ mod tests {
     }
 
     fn assert_reduced(m: &Mdd) {
-        let mut seen = std::collections::HashSet::new();
+        let mut seen = HashSet::new();
         for node in m.edges.keys() {
             assert!(seen.insert(*node), "duplicate node {node} in MDD");
         }

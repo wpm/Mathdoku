@@ -132,7 +132,7 @@ fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
 /// Builds the Puzzle submenu (Fix / Unfix mode switching).
 ///
 /// Both items are always visible; exactly one is enabled at a time, pushed from
-/// the frontend via [`commands::set_puzzle_menu_enabled`]. The item handles are
+/// the frontend via [`set_puzzle_menu_enabled`]. The item handles are
 /// stashed in app state so that command can reach them to toggle `set_enabled`.
 fn build_puzzle_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Submenu<R>> {
     let fix = MenuItemBuilder::with_id("fix", "Fix Solution")

@@ -1,12 +1,12 @@
 use crate::mdk::{N, Target};
-use std::vec;
+use std::collections::VecDeque;
 
 struct Tuples {
     n: usize,
     k: usize,
     f: Box<dyn Fn(&Vec<N>) -> Target>,
     target: Target,
-    stack: Vec<Vec<N>>,
+    queue: VecDeque<Vec<N>>,
 }
 
 impl Tuples {
@@ -16,14 +16,15 @@ impl Tuples {
             k,
             f: Box::new(f),
             target,
-            stack: vec![vec![]],
+            queue: VecDeque::from([vec![]]),
         }
     }
 }
+
 impl Iterator for Tuples {
     type Item = Vec<N>;
     fn next(&mut self) -> Option<Self::Item> {
-        let tuple = self.stack.pop()?;
+        let tuple = self.queue.pop_front()?;
         match tuple.len() == self.k {
             true => {
                 if (self.f)(&tuple) == self.target {
@@ -38,7 +39,7 @@ impl Iterator for Tuples {
                     new_tuple.push(i as N);
                     let remaining = (self.k - new_tuple.len()) as N;
                     if (self.f)(&new_tuple) + remaining <= self.target {
-                        self.stack.push(new_tuple);
+                        self.queue.push_back(new_tuple);
                     }
                 }
                 self.next()
@@ -62,16 +63,16 @@ mod tests {
         assert_eq!(
             actual,
             vec![
-                vec![4, 1, 1],
-                vec![3, 2, 1],
-                vec![3, 1, 2],
-                vec![2, 3, 1],
-                vec![2, 2, 2],
-                vec![2, 1, 3],
-                vec![1, 4, 1],
-                vec![1, 3, 2],
-                vec![1, 2, 3],
                 vec![1, 1, 4],
+                vec![1, 2, 3],
+                vec![1, 3, 2],
+                vec![1, 4, 1],
+                vec![2, 1, 3],
+                vec![2, 2, 2],
+                vec![2, 3, 1],
+                vec![3, 1, 2],
+                vec![3, 2, 1],
+                vec![4, 1, 1],
             ]
         );
     }

@@ -21,7 +21,7 @@ pub struct Cage {
 
 impl Cage {
     /// Creates a new `operation` cage in `polyomino` on a [`Grid`] of size `n`.
-    pub fn new(n: N, polyomino: Polyomino, operation: Operation) -> Self {
+    pub fn new(_n: N, polyomino: Polyomino, operation: Operation) -> Self {
         // todo!("Create the appropriate memo for the operator.");
         match operation.0 {
             Operator::Add => {}
