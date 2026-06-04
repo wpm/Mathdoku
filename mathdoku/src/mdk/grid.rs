@@ -4,8 +4,9 @@ use crate::mdk::Error::MissingCell;
 use crate::mdk::fill::Fill;
 use serde::de::Error as DeError;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::fmt::{Display, Formatter};
+use crate::mdk::shape::Cell;
 
 /// An n×n grid mapping each cell to its current candidate fill.
 #[derive(Clone)]
@@ -19,7 +20,7 @@ impl Grid {
     /// candidate set `{1..=n}`.
     pub fn new(n: usize) -> Self {
         let fill = (1..=n)
-            .flat_map(|i| (1..=n).map(move |j| Cell(i, j)))
+            .flat_map(|i| (1..=n).map(move |j| Cell( i, j )))
             .map(|cell| (cell, Fill::new(n)))
             .collect();
         Self { n, fill }
@@ -104,106 +105,15 @@ impl Display for Grid {
     }
 }
 
-/// A set of cells forming a polyomino (connected region of the grid).
-#[derive(Eq, PartialEq, Ord, PartialOrd, Clone, Hash, Debug)]
-pub struct Polyomino(BTreeSet<Cell>);
-
-impl Polyomino {
-    /// Constructs a polyomino from `cells`.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`Error::InvalidPolyomino`] if the cells are empty or not edge-connected.
-    pub(crate) fn from_cells(cells: impl IntoIterator<Item = Cell>) -> Result<Self, Error> {
-        let set: BTreeSet<Cell> = cells.into_iter().collect();
-        let p = Self(set);
-        if !p.is_edge_connected() {
-            return Err(Error::InvalidPolyomino(p.cells()));
-        }
-        Ok(p)
-    }
-
-    /// Returns `true` if the cells form an edge-connected component.
-    ///
-    /// Uses DFS from the first cell. When checking neighbours, only looks right
-    /// (col+1) and down (row+1) while iterating — sufficient because the set is
-    /// sorted row-major and back-edges (left/up) are discovered from the other end.
-    fn is_edge_connected(&self) -> bool {
-        let Some(&start) = self.0.first() else {
-            return false;
-        };
-        let mut visited: BTreeSet<Cell> = BTreeSet::new();
-        let mut stack = vec![start];
-        while let Some(cell) = stack.pop() {
-            if visited.insert(cell) {
-                let Cell(r, c) = cell;
-                for neighbour in [
-                    Cell(r, c + 1),
-                    Cell(r + 1, c),
-                    Cell(r, c.wrapping_sub(1)),
-                    Cell(r.wrapping_sub(1), c),
-                ] {
-                    if self.0.contains(&neighbour) {
-                        stack.push(neighbour);
-                    }
-                }
-            }
-        }
-        visited.len() == self.0.len()
-    }
-
-    /// Returns the number of cells in this polyomino.
-    pub fn len(&self) -> usize {
-        self.0.len()
-    }
-
-    /// Returns `true` if `cell` is part of this polyomino.
-    pub fn contains(&self, cell: &Cell) -> bool {
-        self.0.contains(cell)
-    }
-
-    /// Returns an iterator over the cells of this polyomino in sorted order.
-    pub fn iter(&self) -> impl Iterator<Item = &Cell> {
-        self.0.iter()
-    }
-
-    /// Returns the cells of this polyomino in sorted order.
-    pub fn cells(&self) -> Vec<Cell> {
-        self.0.iter().copied().collect()
-    }
-}
-
-impl IntoIterator for Polyomino {
-    type Item = Cell;
-    type IntoIter = std::collections::btree_set::IntoIter<Cell>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter()
-    }
-}
-
-/// A grid position identified by `(row, column)`, both 1-indexed.
-#[derive(Ord, Eq, PartialEq, Hash, PartialOrd, Copy, Clone, Debug, Serialize, Deserialize)]
-pub struct Cell(usize, usize);
-
-impl Cell {
-    /// Creates a cell at `(row, col)`, both 1-indexed.
-    pub(crate) const fn new(row: usize, col: usize) -> Self {
-        Self(row, col)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mdk::Error::InvalidPolyomino;
     use crate::mdk::fill::Fill;
-    use serde_json::{Value, from_str, json, to_string};
-
+    use serde_json::{from_str, json, to_string, Value};
     fn assert_all_full(g: &Grid, n: usize) {
         for r in 1..=n {
             for c in 1..=n {
-                assert_eq!(g.get(&Cell::new(r, c)).unwrap(), Fill::new(n));
+                assert_eq!(g.get(&Cell(r, c)).unwrap(), Fill::new(n));
             }
         }
     }
@@ -230,8 +140,8 @@ mod tests {
     #[test]
     fn get_values_out_of_bounds_returns_err() {
         let g = Grid::new(3);
-        assert!(matches!(g.get(&Cell::new(4, 1)), Err(MissingCell(_))));
-        assert!(matches!(g.get(&Cell::new(1, 4)), Err(MissingCell(_))));
+        assert!(matches!(g.get(&Cell(4, 1)), Err(MissingCell(_))));
+        assert!(matches!(g.get(&Cell(1, 4)), Err(MissingCell(_))));
     }
 
     #[test]
@@ -241,7 +151,7 @@ mod tests {
 
     #[test]
     fn grid_round_trips_through_json() {
-        let g = grid_with_modified_cell(3, Cell::new(1, 1), Fill::from(&[2]));
+        let g = grid_with_modified_cell(3, Cell(1, 1), Fill::from(&[2]));
         let restored: Grid = from_str(&to_string(&g).unwrap()).unwrap();
         assert_eq!(g.fill, restored.fill);
         assert_eq!(g.n, restored.n);
@@ -265,7 +175,7 @@ mod tests {
 
     #[test]
     fn grid_serialize_values_are_row_major() {
-        let g = grid_with_modified_cell(2, Cell::new(1, 1), Fill::from(&[1]));
+        let g = grid_with_modified_cell(2, Cell(1, 1), Fill::from(&[1]));
         let v: Value = from_str(&to_string(&g).unwrap()).unwrap();
         assert_eq!(v["fills"][0][0], json!([1]));
     }
@@ -287,75 +197,5 @@ mod tests {
     fn grid_full_round_trips_through_json() {
         let restored: Grid = from_str(&to_string(&Grid::new(3)).unwrap()).unwrap();
         assert_all_full(&restored, 3);
-    }
-
-    // --- Polyomino::from_cells / is_edge_connected ---
-
-    #[test]
-    fn polyomino_single_cell_is_connected() {
-        assert!(Polyomino::from_cells([Cell::new(1, 1)]).is_ok());
-    }
-
-    #[test]
-    fn polyomino_horizontal_pair_is_connected() {
-        assert!(Polyomino::from_cells([Cell::new(1, 1), Cell::new(1, 2)]).is_ok());
-    }
-
-    #[test]
-    fn polyomino_vertical_pair_is_connected() {
-        assert!(Polyomino::from_cells([Cell::new(1, 1), Cell::new(2, 1)]).is_ok());
-    }
-
-    #[test]
-    fn polyomino_l_shape_is_connected() {
-        assert!(Polyomino::from_cells([Cell::new(1, 1), Cell::new(1, 2), Cell::new(2, 1)]).is_ok());
-    }
-
-    #[test]
-    fn polyomino_empty_is_disconnected() {
-        assert!(matches!(
-            Polyomino::from_cells([]),
-            Err(InvalidPolyomino(_))
-        ));
-    }
-
-    #[test]
-    fn polyomino_diagonal_pair_is_disconnected() {
-        assert!(matches!(
-            Polyomino::from_cells([Cell::new(1, 1), Cell::new(2, 2)]),
-            Err(InvalidPolyomino(_))
-        ));
-    }
-
-    #[test]
-    fn polyomino_two_separate_pairs_is_disconnected() {
-        assert!(matches!(
-            Polyomino::from_cells([
-                Cell::new(1, 1),
-                Cell::new(1, 2),
-                Cell::new(3, 3),
-                Cell::new(3, 4)
-            ]),
-            Err(InvalidPolyomino(_))
-        ));
-    }
-
-    // --- Polyomino IntoIterator ---
-
-    #[test]
-    fn polyomino_into_iter_yields_cells_in_order() {
-        let p = Polyomino::from_cells([Cell::new(2, 1), Cell::new(1, 2), Cell::new(1, 1)]).unwrap();
-        let cells: Vec<Cell> = p.into_iter().collect();
-        assert_eq!(
-            cells,
-            vec![Cell::new(1, 1), Cell::new(1, 2), Cell::new(2, 1)]
-        );
-    }
-
-    #[test]
-    fn polyomino_into_iter_singleton() {
-        let p = Polyomino::from_cells([Cell::new(3, 4)]).unwrap();
-        let cells: Vec<Cell> = p.into_iter().collect();
-        assert_eq!(cells, vec![Cell::new(3, 4)]);
     }
 }

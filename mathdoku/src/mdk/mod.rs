@@ -1,9 +1,8 @@
 //! New Mathdoku implementation — work in progress; will eventually replace the top-level crate API.
 
-use crate::mdk::cage::Cage;
-use crate::mdk::grid::Cell;
+use crate::mdk::old_cage::Cage;
+use shape::Cell;
 
-pub mod cage;
 pub(crate) mod domino_table;
 pub(crate) mod fill;
 mod grid;
@@ -11,6 +10,11 @@ pub(crate) mod mdd;
 pub mod puzzle;
 pub mod memo;
 pub mod operator;
+pub mod old_cage;
+pub mod shape;
+mod cage;
+pub mod table;
+pub mod operation;
 
 type N = u32;
 type Target = u32;

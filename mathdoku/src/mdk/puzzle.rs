@@ -1,13 +1,14 @@
 //! [`Puzzle`]: the top-level constraint-solving interface.
 use crate::csp::Constraint;
 use crate::mdk::Error::MissingCell;
-use crate::mdk::cage::{Cage, Operation};
+use crate::mdk::old_cage::{Cage, Operation};
 use crate::mdk::fill::Fill;
-use crate::mdk::grid::{Cell, Grid, Polyomino};
+use crate::mdk::grid::Grid;
 use crate::mdk::memo::Memo;
 use crate::mdk::{Error, Target};
 use std::collections::HashMap;
 use std::sync::Arc;
+use crate::mdk::shape::{Cell, Polyomino};
 
 /// An n×n Mathdoku puzzle: a grid partitioned into cages, each with an arithmetic constraint.
 #[derive(Clone)]
@@ -22,14 +23,9 @@ impl Puzzle {
     /// # Errors
     ///
     /// Returns [`MissingCell`] if `cell` is not in the puzzle.
-    pub fn get(&self, cell: &Cell) -> Result<Fill, Error> {
-        let memo = &self
-            .cages
-            .get(cell)
-            .ok_or(MissingCell(*cell))?
-            .memo
-            .as_ref();
-        memo.map_or_else(|| self.grid.get(cell), |memo| memo.fill(cell))
+    #[allow(clippy::todo)]
+    pub fn get(&self, _cell: &Cell) -> Result<Fill, Error> {
+        todo!()
     }
 
     /// Applies `fills` as assignments and returns the updated candidate fills for all cells.
@@ -101,17 +97,8 @@ impl Puzzle {
     ///
     /// Returns `None` if any cell's domain becomes empty (infeasible).
     #[must_use]
+    #[allow(clippy::todo)]
     pub fn fixpoint(&self) -> Option<Self> {
-        let puzzle = Arc::new(self.clone());
-        let constraints = self.constraints();
-        let grid = crate::csp::generalized_arc_consistency(self.grid, &constraints)?;
-        Some(Self {
-            grid,
-            cages: self.cages,
-        })
-    }
-
-    fn constraints(&self) -> Vec<Constraint> {
         todo!()
     }
 }

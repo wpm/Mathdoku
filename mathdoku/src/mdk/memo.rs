@@ -1,11 +1,13 @@
 use crate::mdk::Error;
+use crate::mdk::old_cage::Operation;
 use crate::mdk::domino_table::DominoTable;
 use crate::mdk::fill::Fill;
-use crate::mdk::grid::{Cell, Polyomino};
 use crate::mdk::mdd::Mdd;
-use crate::mdk::operator::{Arithmetic, NonCommutative};
 use std::collections::HashMap;
+use crate::mdk::shape::{Cell, Polyomino};
 
+/// Memo used to store intermediate results for [`Cage`] operations.
+/// [`Commutative`] operations use an [`Mdd`] while [`NonCommutative`] operations use a [`DominoTable`].
 #[derive(Clone)]
 pub enum CageMemo {
     DominoTable(DominoTable),
@@ -13,11 +15,9 @@ pub enum CageMemo {
 }
 
 impl CageMemo {
-    fn new(n: usize, polyomino: &Polyomino, operation: Arithmetic) -> Self {
-        match operation.0 {
-            NonCommutative => DominoTable::new(n, polyomino, operation),
-            Commutative => CageMemo::DominoTable(DominoTable::new(n)),
-        }
+    #[allow(clippy::todo)]
+    fn new(_n: usize, _polyomino: &Polyomino, _operation: Operation) -> Self {
+        todo!()
     }
 }
 

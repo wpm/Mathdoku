@@ -17,6 +17,7 @@ pub enum Operator {
     Given,
 }
 
+
 impl Display for Operator {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let s = match self {

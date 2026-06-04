@@ -1,7 +1,6 @@
 //! Multivalued Decision Diagram (MDD) implementation of [`Memo`].
 use crate::mdk::operator::Commutative;
 use crate::mdk::fill::Fill;
-use crate::mdk::grid::{Cell, Polyomino};
 use crate::mdk::memo::Memo;
 use crate::mdk::Error;
 use crate::mdk::Error::MissingCell;
@@ -9,6 +8,7 @@ use crate::mdk::Target;
 use crate::mdk::N;
 use log::debug;
 use std::collections::{HashMap, HashSet};
+use crate::mdk::shape::{Cell, Polyomino};
 
 /// Monotonic cage-fill memo backed by an MDD.
 ///
@@ -401,7 +401,7 @@ impl std::fmt::Display for Node {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mdk::grid::Polyomino;
+    use crate::mdk::shape::Polyomino;
     use crate::mdk::memo::Memo;
 
     #[test]
@@ -447,39 +447,39 @@ mod tests {
     #[test]
     fn sum_pair_tuples() {
         let m = mdd(3, &pair(1, 1, 1, 2), Commutative::Add, 4);
-        assert_eq!(m.fill(&Cell::new(1, 1)).unwrap(), Fill::from(&[1, 2, 3]));
-        assert_eq!(m.fill(&Cell::new(1, 2)).unwrap(), Fill::from(&[1, 2, 3]));
+        assert_eq!(m.fill(&Cell(1, 1)).unwrap(), Fill::from(&[1, 2, 3]));
+        assert_eq!(m.fill(&Cell(1, 2)).unwrap(), Fill::from(&[1, 2, 3]));
     }
 
     #[test]
     fn sum_triple_tuples() {
         let m = mdd(3, &triple(1, 1, 1, 2, 1, 3), Commutative::Add, 5);
-        assert_eq!(m.fill(&Cell::new(1, 1)).unwrap(), Fill::from(&[1, 2, 3]));
-        assert_eq!(m.fill(&Cell::new(1, 2)).unwrap(), Fill::from(&[1, 2, 3]));
-        assert_eq!(m.fill(&Cell::new(1, 3)).unwrap(), Fill::from(&[1, 2, 3]));
+        assert_eq!(m.fill(&Cell(1, 1)).unwrap(), Fill::from(&[1, 2, 3]));
+        assert_eq!(m.fill(&Cell(1, 2)).unwrap(), Fill::from(&[1, 2, 3]));
+        assert_eq!(m.fill(&Cell(1, 3)).unwrap(), Fill::from(&[1, 2, 3]));
     }
 
     #[test]
     fn sum_triple_larger_n_tuples() {
         let m = mdd(4, &triple(1, 1, 1, 2, 1, 3), Commutative::Add, 6);
-        assert_eq!(m.fill(&Cell::new(1, 1)).unwrap(), Fill::from(&[1, 2, 3, 4]));
-        assert_eq!(m.fill(&Cell::new(1, 2)).unwrap(), Fill::from(&[1, 2, 3, 4]));
-        assert_eq!(m.fill(&Cell::new(1, 3)).unwrap(), Fill::from(&[1, 2, 3, 4]));
+        assert_eq!(m.fill(&Cell(1, 1)).unwrap(), Fill::from(&[1, 2, 3, 4]));
+        assert_eq!(m.fill(&Cell(1, 2)).unwrap(), Fill::from(&[1, 2, 3, 4]));
+        assert_eq!(m.fill(&Cell(1, 3)).unwrap(), Fill::from(&[1, 2, 3, 4]));
     }
 
     #[test]
     fn product_pair_tuples() {
         let m = mdd(4, &pair(1, 1, 1, 2), Commutative::Multiply, 6);
-        assert_eq!(m.fill(&Cell::new(1, 1)).unwrap(), Fill::from(&[2, 3]));
-        assert_eq!(m.fill(&Cell::new(1, 2)).unwrap(), Fill::from(&[2, 3]));
+        assert_eq!(m.fill(&Cell(1, 1)).unwrap(), Fill::from(&[2, 3]));
+        assert_eq!(m.fill(&Cell(1, 2)).unwrap(), Fill::from(&[2, 3]));
     }
 
     #[test]
     fn product_triple_tuples() {
         let m = mdd(4, &triple(1, 1, 1, 2, 1, 3), Commutative::Multiply, 4);
-        assert_eq!(m.fill(&Cell::new(1, 1)).unwrap(), Fill::from(&[1, 2, 4]));
-        assert_eq!(m.fill(&Cell::new(1, 2)).unwrap(), Fill::from(&[1, 2, 4]));
-        assert_eq!(m.fill(&Cell::new(1, 3)).unwrap(), Fill::from(&[1, 2, 4]));
+        assert_eq!(m.fill(&Cell(1, 1)).unwrap(), Fill::from(&[1, 2, 4]));
+        assert_eq!(m.fill(&Cell(1, 2)).unwrap(), Fill::from(&[1, 2, 4]));
+        assert_eq!(m.fill(&Cell(1, 3)).unwrap(), Fill::from(&[1, 2, 4]));
     }
 
     #[test]
@@ -596,13 +596,13 @@ mod tests {
     fn fill_sum_pair_c0_all_values() {
         // sum(4,2) n=3: all values {1,2,3} appear in column 0
         let m = mdd(3, &pair(1, 1, 1, 2), Commutative::Add, 4);
-        assert_eq!(m.fill(&Cell::new(1, 1)).unwrap(), Fill::from(&[1, 2, 3]));
+        assert_eq!(m.fill(&Cell(1, 1)).unwrap(), Fill::from(&[1, 2, 3]));
     }
 
     #[test]
     fn fill_invalid_cell_returns_error() {
         let m = mdd(3, &pair(1, 1, 1, 2), Commutative::Add, 4);
-        assert!(matches!(m.fill(&Cell::new(9, 9)), Err(MissingCell(_))));
+        assert!(matches!(m.fill(&Cell(9, 9)), Err(MissingCell(_))));
     }
 
     // ---- Memo::remove ----
@@ -611,18 +611,18 @@ mod tests {
     fn remove_prunes_fill() {
         let m = mdd(4, &triple(1, 1, 1, 2, 1, 3), Commutative::Add, 6);
         let pruned = m
-            .remove(HashMap::from([(Cell::new(1, 1), Fill::from(&[2, 3, 4]))]))
+            .remove(HashMap::from([(Cell(1, 1), Fill::from(&[2, 3, 4]))]))
             .unwrap();
         assert_eq!(
-            pruned.fill(&Cell::new(1, 1)).unwrap(),
+            pruned.fill(&Cell(1, 1)).unwrap(),
             Fill::from(&[2, 3, 4])
         );
         assert_eq!(
-            pruned.fill(&Cell::new(1, 2)).unwrap(),
+            pruned.fill(&Cell(1, 2)).unwrap(),
             Fill::from(&[1, 2, 3])
         );
         assert_eq!(
-            pruned.fill(&Cell::new(1, 3)).unwrap(),
+            pruned.fill(&Cell(1, 3)).unwrap(),
             Fill::from(&[1, 2, 3])
         );
     }
@@ -631,7 +631,7 @@ mod tests {
     fn remove_invalid_cell_returns_error() {
         let m = mdd(3, &pair(1, 1, 1, 2), Commutative::Add, 4);
         assert!(matches!(
-            m.remove(HashMap::from([(Cell::new(9, 9), Fill::from(&[1]))])),
+            m.remove(HashMap::from([(Cell(9, 9), Fill::from(&[1]))])),
             Err(MissingCell(_))
         ));
     }
@@ -684,15 +684,15 @@ mod tests {
     #[test]
     fn sum_target_out_of_range_is_empty() {
         let low = mdd(3, &triple(1, 1, 1, 2, 1, 3), Commutative::Add, 1);
-        assert_eq!(low.fill(&Cell::new(1, 1)).unwrap(), Fill::from(&[]));
+        assert_eq!(low.fill(&Cell(1, 1)).unwrap(), Fill::from(&[]));
         let high = mdd(3, &triple(1, 1, 1, 2, 1, 3), Commutative::Add, 10);
-        assert_eq!(high.fill(&Cell::new(1, 1)).unwrap(), Fill::from(&[]));
+        assert_eq!(high.fill(&Cell(1, 1)).unwrap(), Fill::from(&[]));
     }
 
     #[test]
     fn product_target_out_of_range_is_empty() {
         let m = mdd(3, &triple(1, 1, 1, 2, 1, 3), Commutative::Multiply, 28);
-        assert_eq!(m.fill(&Cell::new(1, 1)).unwrap(), Fill::from(&[]));
+        assert_eq!(m.fill(&Cell(1, 1)).unwrap(), Fill::from(&[]));
     }
 
     // ---- reducedness ----
@@ -722,15 +722,15 @@ mod tests {
     // ---- helpers and fixtures ----
 
     fn pair(r0: usize, c0: usize, r1: usize, c1: usize) -> Polyomino {
-        Polyomino::from_cells([Cell::new(r0, c0), Cell::new(r1, c1)]).unwrap()
+        Polyomino::from_cells([Cell(r0, c0), Cell(r1, c1)]).unwrap()
     }
 
     fn triple(r0: usize, c0: usize, r1: usize, c1: usize, r2: usize, c2: usize) -> Polyomino {
-        Polyomino::from_cells([Cell::new(r0, c0), Cell::new(r1, c1), Cell::new(r2, c2)]).unwrap()
+        Polyomino::from_cells([Cell(r0, c0), Cell(r1, c1), Cell(r2, c2)]).unwrap()
     }
 
     fn cells_polyomino(arity: usize) -> Polyomino {
-        Polyomino::from_cells((0..arity).map(|i| Cell::new(1, i + 1))).unwrap()
+        Polyomino::from_cells((0..arity).map(|i| Cell(1, i + 1))).unwrap()
     }
 
     fn mdd(n: usize, polyomino: &Polyomino, op: Commutative, target: Target) -> Mdd {
