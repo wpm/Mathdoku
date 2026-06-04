@@ -6,8 +6,8 @@ use std::ops::Div;
 // An operator and a [`Target`] value or a single cell with a specified value.
 #[derive(Clone, Copy)]
 pub enum CageOperation {
-    Monotonic(Commutative, Target),
-    NonMonotonic(NonCommutative, Target),
+    Commutative(Commutative, Target),
+    NonCommutative(NonCommutative, Target),
     Given(N),
 }
 
@@ -29,6 +29,20 @@ impl Commutative {
         match self {
             Self::Add => ns.iter().sum(),
             Self::Multiply => ns.iter().product(),
+        }
+    }
+
+    pub const fn identity(&self) -> Target {
+        match self {
+            Self::Add => 0,
+            Self::Multiply => 1,
+        }
+    }
+
+    pub const fn dual(&self) -> Self {
+        match self {
+            Self::Add => Self::Multiply,
+            Self::Multiply => Self::Add,
         }
     }
 }

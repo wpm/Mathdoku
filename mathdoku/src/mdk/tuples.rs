@@ -39,7 +39,7 @@ impl Iterator for Tuples {
                     let mut new_tuple = tuple.clone();
                     new_tuple.push(i as N);
                     let remaining = (self.k - new_tuple.len()) as N;
-                    if self.op.apply(new_tuple.clone()) + remaining <= self.target {
+                    if self.op.apply(new_tuple.clone()) + self.op.dual().identity() * remaining <= self.target {
                         self.queue.push_back(new_tuple);
                     }
                 }
