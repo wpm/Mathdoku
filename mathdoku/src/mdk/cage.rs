@@ -65,8 +65,6 @@ enum CageSupport {
 /// - **Given**: a singleton cell whose value is fixed.
 #[derive(Debug, Clone)]
 pub struct Cage {
-    /// The grid size `n` (values are drawn from `1..=n`).
-    n: usize,
     /// The cells belonging to this cage.
     pub polyomino: Polyomino,
     support: CageSupport,
@@ -88,11 +86,7 @@ impl Cage {
     ) -> Result<Self, Error> {
         let mdd = Mdd::new(n, polyomino.len(), operation, target)?;
         let support = CageSupport::Commutative(operation, target, mdd);
-        Ok(Self {
-            n,
-            polyomino,
-            support,
-        })
+        Ok(Self { polyomino, support })
     }
 
     /// Constructs a cage for a non-commutative constraint over `polyomino`.
@@ -110,20 +104,15 @@ impl Cage {
     ) -> Result<Self, Error> {
         let table = Table::non_commutative(n, operation, target)?;
         let support = CageSupport::NonCommutative(operation, target, table);
-        Ok(Self {
-            n,
-            polyomino,
-            support,
-        })
+        Ok(Self { polyomino, support })
     }
 
     /// Constructs a given cage: a single cell whose value is fixed to `target`.
     ///
     /// Always succeeds for a valid `cell`; returns `Err` only if the cell cannot
     /// form a polyomino, which cannot happen for a single non-empty cell.
-    pub fn given(cell: Cell, n: usize, target: N) -> Result<Self, Error> {
+    pub fn given(cell: Cell, target: N) -> Result<Self, Error> {
         Ok(Self {
-            n,
             polyomino: Polyomino::from(vec![cell])?,
             support: CageSupport::Given(target),
         })
@@ -284,7 +273,7 @@ mod tests {
 
     #[test]
     fn cage_propagate_given_pins_cell() {
-        let cage = Cage::given(Cell(1, 1), 4, 3).unwrap();
+        let cage = Cage::given(Cell(1, 1), 3).unwrap();
         let (new_g, changed) = cage.propagate(&full_grid(4)).unwrap();
         assert_eq!(new_g.get(Cell(1, 1)).unwrap(), Fill::from(&[3]));
         assert_eq!(changed, vec![Cell(1, 1)]);
@@ -337,19 +326,19 @@ mod tests {
 
     #[test]
     fn given_succeeds() {
-        assert!(Cage::given(Cell(1, 1), 4, 3).is_ok());
+        assert!(Cage::given(Cell(1, 1), 3).is_ok());
     }
 
     #[test]
     fn given_stores_singleton_polyomino() {
-        let cage = Cage::given(Cell(2, 3), 4, 5).unwrap();
+        let cage = Cage::given(Cell(2, 3), 5).unwrap();
         assert!(cage.polyomino.contains(&Cell(2, 3)));
         assert_eq!(cage.polyomino.len(), 1);
     }
 
     #[test]
     fn given_stores_target_as_value() {
-        let cage = Cage::given(Cell(1, 1), 4, 7).unwrap();
+        let cage = Cage::given(Cell(1, 1), 7).unwrap();
         assert_eq!(cage.support, CageSupport::Given(7));
     }
 
@@ -357,15 +346,15 @@ mod tests {
 
     #[test]
     fn is_disjoint_non_overlapping_cages_returns_true() {
-        let a = Cage::given(Cell(1, 1), 4, 1).unwrap();
-        let b = Cage::given(Cell(2, 2), 4, 2).unwrap();
+        let a = Cage::given(Cell(1, 1), 1).unwrap();
+        let b = Cage::given(Cell(2, 2), 2).unwrap();
         assert!(a.is_disjoint(&b));
     }
 
     #[test]
     fn is_disjoint_same_cell_returns_false() {
-        let a = Cage::given(Cell(1, 1), 4, 1).unwrap();
-        let b = Cage::given(Cell(1, 1), 4, 2).unwrap();
+        let a = Cage::given(Cell(1, 1), 1).unwrap();
+        let b = Cage::given(Cell(1, 1), 2).unwrap();
         assert!(!a.is_disjoint(&b));
     }
 
@@ -397,7 +386,7 @@ mod tests {
 
     #[test]
     fn get_given_returns_singleton_fill() {
-        let cage = Cage::given(Cell(1, 1), 4, 3).unwrap();
+        let cage = Cage::given(Cell(1, 1), 3).unwrap();
         assert_eq!(cage.get(Cell(1, 1)).unwrap(), Fill::from(&[3]));
     }
 }

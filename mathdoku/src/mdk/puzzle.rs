@@ -182,7 +182,7 @@ mod tests {
     #[test]
     fn fixpoint_given_cage_pins_cell() {
         // A given cage for value 3 must narrow cell(1,1) to {3}.
-        let cage = Cage::given(Cell(1, 1), 4, 3).unwrap();
+        let cage = Cage::given(Cell(1, 1), 3).unwrap();
         let p = Puzzle::from_parts(Grid::new(4).unwrap(), vec![cage]);
         let fp = p.fixpoint().unwrap();
         assert_eq!(fp.get(Cell(1, 1)).unwrap(), Fill::from(&[3]));
@@ -192,7 +192,7 @@ mod tests {
     fn fixpoint_given_cage_propagates_through_all_different() {
         // Given cage pins cell(1,1)={2}; AllDifferent for row 1 must then remove
         // 2 from every other cell in that row.
-        let cage = Cage::given(Cell(1, 1), 3, 2).unwrap();
+        let cage = Cage::given(Cell(1, 1), 2).unwrap();
         let p = Puzzle::from_parts(Grid::new(3).unwrap(), vec![cage]);
         let fp = p.fixpoint().unwrap();
         assert_eq!(fp.get(Cell(1, 1)).unwrap(), Fill::from(&[2]));
@@ -226,8 +226,8 @@ mod tests {
     #[test]
     fn fixpoint_infeasible_returns_none() {
         // Two given cages both claiming value 1 in the same row: infeasible.
-        let c1 = Cage::given(Cell(1, 1), 2, 1).unwrap();
-        let c2 = Cage::given(Cell(1, 2), 2, 1).unwrap();
+        let c1 = Cage::given(Cell(1, 1), 1).unwrap();
+        let c2 = Cage::given(Cell(1, 2), 1).unwrap();
         let p = Puzzle::from_parts(Grid::new(2).unwrap(), vec![c1, c2]);
         assert!(p.fixpoint().is_none());
     }
