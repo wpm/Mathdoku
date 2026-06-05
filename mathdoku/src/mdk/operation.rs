@@ -4,12 +4,12 @@ use std::cmp::{max, min};
 use std::ops::Div;
 
 /// An arithmetic operation paired with a target value.
-#[derive(Clone, Copy)]
-pub enum ArithmeticOperation {
-    /// A commutative (monotonic) operation: add or multiply.
-    Commutative(CommutativeOperation, Target),
-    /// A non-commutative (non-monotonic) operation: subtract or divide.
-    NonCommutative(NonCommutativeOperation, Target),
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ArithmeticConstraint {
+    /// A commutative operation and a target.
+    CommutativeConstraint(CommutativeOperator, Target),
+    /// A non-commutative operation and a target.
+    NonCommutativeConstraint(NonCommutativeOperator, Target),
 }
 
 /// A commutative, monotonically non-decreasing cage operation.
@@ -17,12 +17,12 @@ pub enum ArithmeticOperation {
 /// Because applying the operator to a longer tuple can only increase the result,
 /// partial results can be used to prune the search for valid tuples.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-pub enum CommutativeOperation {
+pub enum CommutativeOperator {
     Add,
     Multiply,
 }
 // TODO Does CommutativeOperation need noth apply and apply_pair?
-impl CommutativeOperation {
+impl CommutativeOperator {
     /// Applies this operator to `ns`, returning the result.
     #[must_use]
     pub fn apply(&self, ns: &[N]) -> Target {
@@ -73,12 +73,12 @@ impl CommutativeOperation {
 /// difference and divide uses `max / min` — so the result is order-independent
 /// even though the operator is not commutative in the algebraic sense.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub enum NonCommutativeOperation {
+pub enum NonCommutativeOperator {
     Subtract,
     Divide,
 }
 
-impl NonCommutativeOperation {
+impl NonCommutativeOperator {
     /// Applies this operator to `(a, b)`, returning the result.
     ///
     /// Subtract returns `|a - b|`. Divide returns `max(a, b) / min(a, b)`

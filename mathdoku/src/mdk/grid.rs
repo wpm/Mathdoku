@@ -151,7 +151,7 @@ mod tests {
 
     #[test]
     fn grid_round_trips_through_json() {
-        let g = grid_with_modified_cell(3, Cell(1, 1), Fill::from(&[2]));
+        let g = grid_with_modified_cell(3, Cell(1, 1), Fill::from(3, &[2]));
         let restored: Grid = from_str(&to_string(&g).unwrap()).unwrap();
         assert_eq!(g.fill, restored.fill);
         assert_eq!(g.n, restored.n);
@@ -175,9 +175,9 @@ mod tests {
 
     #[test]
     fn grid_serialize_values_are_row_major() {
-        let g = grid_with_modified_cell(2, Cell(1, 1), Fill::from(&[1]));
+        let g = grid_with_modified_cell(2, Cell(1, 1), Fill::from(2, &[1]));
         let v: Value = from_str(&to_string(&g).unwrap()).unwrap();
-        assert_eq!(v["fills"][0][0], json!([1]));
+        assert_eq!(v["fills"][0][0], json!({"n": 2, "values": [1]}));
     }
 
     #[test]

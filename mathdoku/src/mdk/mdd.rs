@@ -1,11 +1,11 @@
-//! Multivalued Decision Diagram (MDD) implementation of [`Lookup`] and [`Narrow`].
+//! Multivalued Decision Diagram (MDD) implementation of [`Memo`] and `Narrow`.
 //!
 //! Only commutative (add, multiply) constraints are supported. For non-commutative
 //! constraints (subtract, divide), use `Table` instead.
-use crate::mdk::Error::IndexOutOfBounds;
+use crate::mdk::Error::InvalidCellCageIndex;
 use crate::mdk::fill::Fill;
-use crate::mdk::memo::{Lookup, Narrow, fills_from_tuples};
-use crate::mdk::operation::CommutativeOperation;
+use crate::mdk::memo::{Memo, fills_from_tuples};
+use crate::mdk::operation::CommutativeOperator;
 use crate::mdk::{Error, N, Target};
 use log::debug;
 use std::collections::{HashMap, HashSet};
@@ -35,12 +35,12 @@ impl Mdd {
     pub fn new(
         n: usize,
         k: usize,
-        operator: CommutativeOperation,
+        operator: CommutativeOperator,
         target: Target,
     ) -> Result<Self, Error> {
         #[allow(clippy::cast_possible_truncation)]
         let constraint = Constraint {
-            operation: operator,
+            operator,
             target,
             arity: k as N,
         };
@@ -55,7 +55,7 @@ impl Mdd {
             value: constraint.unit(),
         };
         mdd.subtree(root);
-        mdd.fills = fills_from_tuples(&mdd.tuples())?;
+        mdd.fills = fills_from_tuples(n, &mdd.tuples())?;
         Ok(mdd)
     }
 
@@ -327,19 +327,28 @@ impl std::fmt::Display for Mdd {
     }
 }
 
-impl Lookup for Mdd {
-    fn fill(&self, index: usize) -> Result<Fill, Error> {
+impl Memo for Mdd {
+    fn get(&self, index: usize) -> Result<Fill, Error> {
         self.fills
             .get(index)
             .cloned()
-            .ok_or(IndexOutOfBounds(index))
+            .ok_or(InvalidCellCageIndex(index))
     }
-}
 
-impl Narrow for Mdd {
-    fn remove(&self, fills: Vec<Fill>) -> Result<Self, Error> {
+    #[allow(clippy::todo)]
+    fn set(&self, _fills: Vec<Fill>) -> Result<Self, Error> {
+        todo!()
+    }
+
+    #[allow(clippy::todo)]
+    fn reset(&self) -> Self {
+        todo!()
+    }
+
+    // TODO Is Mdd.narrow written for its support or its support's compliment?
+    fn narrow(&self, support: Vec<Fill>) -> Result<Self, Error> {
         #[allow(clippy::cast_possible_truncation)]
-        let forbidden: HashMap<N, HashSet<N>> = fills
+        let forbidden: HashMap<N, HashSet<N>> = support
             .iter()
             .enumerate()
             .filter_map(|(i, fill)| {
@@ -353,56 +362,54 @@ impl Narrow for Mdd {
             })
             .collect();
         let mut narrowed = self.remove_support(&forbidden);
-        narrowed.fills = fills_from_tuples(&narrowed.tuples())?;
+        narrowed.fills = fills_from_tuples(self.n, &narrowed.tuples())?;
         Ok(narrowed)
     }
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 struct Constraint {
-    operation: CommutativeOperation,
+    operator: CommutativeOperator,
     target: N,
     arity: N,
 }
 
 impl Constraint {
     const fn target_reached(self, v: N) -> bool {
-        match self.operation {
-            CommutativeOperation::Add => v >= self.target,
-            CommutativeOperation::Multiply => v > self.target,
+        match self.operator {
+            CommutativeOperator::Add => v >= self.target,
+            CommutativeOperator::Multiply => v > self.target,
         }
     }
 
     const fn pruned(self, acc: N, v: N, _remaining: N) -> bool {
-        match self.operation {
-            CommutativeOperation::Add => acc + v > self.target,
-            CommutativeOperation::Multiply => acc * v > self.target,
+        match self.operator {
+            CommutativeOperator::Add => acc + v > self.target,
+            CommutativeOperator::Multiply => acc * v > self.target,
         }
     }
 
     const fn skipped(self, acc: N, v: N, remaining: N, n: N) -> bool {
-        match self.operation {
-            CommutativeOperation::Add => acc + v + remaining * n < self.target,
-            CommutativeOperation::Multiply => {
-                (acc * v) != 0 && !self.target.is_multiple_of(acc * v)
-            }
+        match self.operator {
+            CommutativeOperator::Add => acc + v + remaining * n < self.target,
+            CommutativeOperator::Multiply => (acc * v) != 0 && !self.target.is_multiple_of(acc * v),
         }
     }
 
     const fn operation(self, x: N, y: N) -> N {
-        self.operation.apply_pair(x, y)
+        self.operator.apply_pair(x, y)
     }
 
     const fn unit(self) -> N {
-        self.operation.identity()
+        self.operator.identity()
     }
 }
 
 impl std::fmt::Display for Constraint {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let symbol = match self.operation {
-            CommutativeOperation::Add => '+',
-            CommutativeOperation::Multiply => '×',
+        let symbol = match self.operator {
+            CommutativeOperator::Add => '+',
+            CommutativeOperator::Multiply => '×',
         };
         write!(f, "{symbol}{} [{}]", self.target, self.arity)
     }
@@ -424,22 +431,22 @@ impl std::fmt::Display for Node {
 mod tests {
     use super::*;
     use crate::mdk::Error::EmptyFills;
-    use crate::mdk::operation::CommutativeOperation::{Add, Multiply};
+    use crate::mdk::operation::CommutativeOperator::{Add, Multiply};
 
     // ---- Memo::commutative construction ----
 
     #[test]
     fn add_fills_are_union_of_column_values() {
         let m = Mdd::new(4, 2, Add, 6).unwrap();
-        assert_eq!(m.fill(0).unwrap(), Fill::from(&[2, 3, 4]));
-        assert_eq!(m.fill(1).unwrap(), Fill::from(&[2, 3, 4]));
+        assert_eq!(m.get(0).unwrap(), Fill::from(4, &[2, 3, 4]));
+        assert_eq!(m.get(1).unwrap(), Fill::from(4, &[2, 3, 4]));
     }
 
     #[test]
     fn multiply_fills_contain_expected_values() {
         let m = Mdd::new(6, 2, Multiply, 6).unwrap();
-        assert_eq!(m.fill(0).unwrap(), Fill::from(&[1, 2, 3, 6]));
-        assert_eq!(m.fill(1).unwrap(), Fill::from(&[1, 2, 3, 6]));
+        assert_eq!(m.get(0).unwrap(), Fill::from(6, &[1, 2, 3, 6]));
+        assert_eq!(m.get(1).unwrap(), Fill::from(6, &[1, 2, 3, 6]));
     }
 
     #[test]
@@ -450,7 +457,7 @@ mod tests {
     #[test]
     fn fill_out_of_bounds_returns_index_error() {
         let m = Mdd::new(4, 2, Add, 5).unwrap();
-        assert!(matches!(m.fill(2), Err(IndexOutOfBounds(2))));
+        assert!(matches!(m.get(2), Err(InvalidCellCageIndex(2))));
     }
 
     // ---- Narrow::remove ----
@@ -459,17 +466,17 @@ mod tests {
     fn remove_filters_tuples_and_updates_fills() {
         let m = Mdd::new(4, 2, Add, 5).unwrap();
         let narrowed = m
-            .remove(vec![Fill::from(&[1, 2]), Fill::from(&[1, 2, 3, 4])])
+            .narrow(vec![Fill::from(4, &[1, 2]), Fill::from(4, &[1, 2, 3, 4])])
             .unwrap();
-        assert_eq!(narrowed.fill(0).unwrap(), Fill::from(&[1, 2]));
-        assert_eq!(narrowed.fill(1).unwrap(), Fill::from(&[3, 4]));
+        assert_eq!(narrowed.get(0).unwrap(), Fill::from(4, &[1, 2]));
+        assert_eq!(narrowed.get(1).unwrap(), Fill::from(4, &[3, 4]));
     }
 
     #[test]
     fn remove_eliminating_all_tuples_returns_empty_fills_error() {
         let m = Mdd::new(4, 2, Add, 5).unwrap();
         assert!(matches!(
-            m.remove(vec![Fill::from(&[1]), Fill::from(&[1])]),
+            m.narrow(vec![Fill::from(4, &[1]), Fill::from(4, &[1])]),
             Err(EmptyFills)
         ));
     }
@@ -521,31 +528,31 @@ mod tests {
     #[test]
     fn sum_pair_fills() {
         let m = Mdd::new(3, 2, Add, 4).unwrap();
-        assert_eq!(m.fill(0).unwrap(), Fill::from(&[1, 2, 3]));
-        assert_eq!(m.fill(1).unwrap(), Fill::from(&[1, 2, 3]));
+        assert_eq!(m.get(0).unwrap(), Fill::from(3, &[1, 2, 3]));
+        assert_eq!(m.get(1).unwrap(), Fill::from(3, &[1, 2, 3]));
     }
 
     #[test]
     fn sum_triple_fills() {
         let m = Mdd::new(3, 3, Add, 5).unwrap();
-        assert_eq!(m.fill(0).unwrap(), Fill::from(&[1, 2, 3]));
-        assert_eq!(m.fill(1).unwrap(), Fill::from(&[1, 2, 3]));
-        assert_eq!(m.fill(2).unwrap(), Fill::from(&[1, 2, 3]));
+        assert_eq!(m.get(0).unwrap(), Fill::from(3, &[1, 2, 3]));
+        assert_eq!(m.get(1).unwrap(), Fill::from(3, &[1, 2, 3]));
+        assert_eq!(m.get(2).unwrap(), Fill::from(3, &[1, 2, 3]));
     }
 
     #[test]
     fn product_pair_fills() {
         let m = Mdd::new(4, 2, Multiply, 6).unwrap();
-        assert_eq!(m.fill(0).unwrap(), Fill::from(&[2, 3]));
-        assert_eq!(m.fill(1).unwrap(), Fill::from(&[2, 3]));
+        assert_eq!(m.get(0).unwrap(), Fill::from(4, &[2, 3]));
+        assert_eq!(m.get(1).unwrap(), Fill::from(4, &[2, 3]));
     }
 
     #[test]
     fn product_triple_fills() {
         let m = Mdd::new(4, 3, Multiply, 4).unwrap();
-        assert_eq!(m.fill(0).unwrap(), Fill::from(&[1, 2, 4]));
-        assert_eq!(m.fill(1).unwrap(), Fill::from(&[1, 2, 4]));
-        assert_eq!(m.fill(2).unwrap(), Fill::from(&[1, 2, 4]));
+        assert_eq!(m.get(0).unwrap(), Fill::from(4, &[1, 2, 4]));
+        assert_eq!(m.get(1).unwrap(), Fill::from(4, &[1, 2, 4]));
+        assert_eq!(m.get(2).unwrap(), Fill::from(4, &[1, 2, 4]));
     }
 
     // ---- infeasibility ----
@@ -680,7 +687,7 @@ mod tests {
         t
     }
 
-    fn ref_tuples(n: N, op: CommutativeOperation, target: N, k: u32) -> Vec<Vec<N>> {
+    fn ref_tuples(n: N, op: CommutativeOperator, target: N, k: u32) -> Vec<Vec<N>> {
         let k = k as usize;
         let mut out = Vec::new();
         let mut t = vec![1u32; k];
@@ -702,7 +709,7 @@ mod tests {
         out
     }
 
-    fn assert_equiv(n: N, op: CommutativeOperation, target: N, k: u32) {
+    fn assert_equiv(n: N, op: CommutativeOperator, target: N, k: u32) {
         let expected = ref_tuples(n, op, target, k);
         match Mdd::new(n as usize, k as usize, op, target) {
             Ok(m) => {

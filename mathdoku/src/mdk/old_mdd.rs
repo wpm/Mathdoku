@@ -316,7 +316,7 @@ impl Memo for Mdd {
     fn fill(&self, cell: &Cell) -> Result<Fill, Error> {
         let index = self.index(cell)?;
         let ns: Vec<N> = self.tuples().iter().map(|t| t[index]).collect();
-        Ok(Fill::from(&ns))
+        Ok(Fill::from(self.n as usize, &ns))
     }
 
     fn remove(&self, fills: HashMap<Cell, Fill>) -> Result<Self, Error> {
@@ -447,39 +447,39 @@ mod tests {
     #[test]
     fn sum_pair_tuples() {
         let m = mdd(3, &pair(1, 1, 1, 2), Commutative::Add, 4);
-        assert_eq!(m.fill(&Cell(1, 1)).unwrap(), Fill::from(&[1, 2, 3]));
-        assert_eq!(m.fill(&Cell(1, 2)).unwrap(), Fill::from(&[1, 2, 3]));
+        assert_eq!(m.fill(&Cell(1, 1)).unwrap(), Fill::from(3, &[1, 2, 3]));
+        assert_eq!(m.fill(&Cell(1, 2)).unwrap(), Fill::from(3, &[1, 2, 3]));
     }
 
     #[test]
     fn sum_triple_tuples() {
         let m = mdd(3, &triple(1, 1, 1, 2, 1, 3), Commutative::Add, 5);
-        assert_eq!(m.fill(&Cell(1, 1)).unwrap(), Fill::from(&[1, 2, 3]));
-        assert_eq!(m.fill(&Cell(1, 2)).unwrap(), Fill::from(&[1, 2, 3]));
-        assert_eq!(m.fill(&Cell(1, 3)).unwrap(), Fill::from(&[1, 2, 3]));
+        assert_eq!(m.fill(&Cell(1, 1)).unwrap(), Fill::from(3, &[1, 2, 3]));
+        assert_eq!(m.fill(&Cell(1, 2)).unwrap(), Fill::from(3, &[1, 2, 3]));
+        assert_eq!(m.fill(&Cell(1, 3)).unwrap(), Fill::from(3, &[1, 2, 3]));
     }
 
     #[test]
     fn sum_triple_larger_n_tuples() {
         let m = mdd(4, &triple(1, 1, 1, 2, 1, 3), Commutative::Add, 6);
-        assert_eq!(m.fill(&Cell(1, 1)).unwrap(), Fill::from(&[1, 2, 3, 4]));
-        assert_eq!(m.fill(&Cell(1, 2)).unwrap(), Fill::from(&[1, 2, 3, 4]));
-        assert_eq!(m.fill(&Cell(1, 3)).unwrap(), Fill::from(&[1, 2, 3, 4]));
+        assert_eq!(m.fill(&Cell(1, 1)).unwrap(), Fill::from(4, &[1, 2, 3, 4]));
+        assert_eq!(m.fill(&Cell(1, 2)).unwrap(), Fill::from(4, &[1, 2, 3, 4]));
+        assert_eq!(m.fill(&Cell(1, 3)).unwrap(), Fill::from(4, &[1, 2, 3, 4]));
     }
 
     #[test]
     fn product_pair_tuples() {
         let m = mdd(4, &pair(1, 1, 1, 2), Commutative::Multiply, 6);
-        assert_eq!(m.fill(&Cell(1, 1)).unwrap(), Fill::from(&[2, 3]));
-        assert_eq!(m.fill(&Cell(1, 2)).unwrap(), Fill::from(&[2, 3]));
+        assert_eq!(m.fill(&Cell(1, 1)).unwrap(), Fill::from(4, &[2, 3]));
+        assert_eq!(m.fill(&Cell(1, 2)).unwrap(), Fill::from(4, &[2, 3]));
     }
 
     #[test]
     fn product_triple_tuples() {
         let m = mdd(4, &triple(1, 1, 1, 2, 1, 3), Commutative::Multiply, 4);
-        assert_eq!(m.fill(&Cell(1, 1)).unwrap(), Fill::from(&[1, 2, 4]));
-        assert_eq!(m.fill(&Cell(1, 2)).unwrap(), Fill::from(&[1, 2, 4]));
-        assert_eq!(m.fill(&Cell(1, 3)).unwrap(), Fill::from(&[1, 2, 4]));
+        assert_eq!(m.fill(&Cell(1, 1)).unwrap(), Fill::from(4, &[1, 2, 4]));
+        assert_eq!(m.fill(&Cell(1, 2)).unwrap(), Fill::from(4, &[1, 2, 4]));
+        assert_eq!(m.fill(&Cell(1, 3)).unwrap(), Fill::from(4, &[1, 2, 4]));
     }
 
     #[test]
@@ -596,7 +596,7 @@ mod tests {
     fn fill_sum_pair_c0_all_values() {
         // sum(4,2) n=3: all values {1,2,3} appear in column 0
         let m = mdd(3, &pair(1, 1, 1, 2), Commutative::Add, 4);
-        assert_eq!(m.fill(&Cell(1, 1)).unwrap(), Fill::from(&[1, 2, 3]));
+        assert_eq!(m.fill(&Cell(1, 1)).unwrap(), Fill::from(3, &[1, 2, 3]));
     }
 
     #[test]
@@ -611,18 +611,18 @@ mod tests {
     fn remove_prunes_fill() {
         let m = mdd(4, &triple(1, 1, 1, 2, 1, 3), Commutative::Add, 6);
         let pruned = m
-            .remove(HashMap::from([(Cell(1, 1), Fill::from(&[2, 3, 4]))]))
+            .remove(HashMap::from([(Cell(1, 1), Fill::from(4, &[2, 3, 4]))]))
             .unwrap();
-        assert_eq!(pruned.fill(&Cell(1, 1)).unwrap(), Fill::from(&[2, 3, 4]));
-        assert_eq!(pruned.fill(&Cell(1, 2)).unwrap(), Fill::from(&[1, 2, 3]));
-        assert_eq!(pruned.fill(&Cell(1, 3)).unwrap(), Fill::from(&[1, 2, 3]));
+        assert_eq!(pruned.fill(&Cell(1, 1)).unwrap(), Fill::from(4, &[2, 3, 4]));
+        assert_eq!(pruned.fill(&Cell(1, 2)).unwrap(), Fill::from(4, &[1, 2, 3]));
+        assert_eq!(pruned.fill(&Cell(1, 3)).unwrap(), Fill::from(4, &[1, 2, 3]));
     }
 
     #[test]
     fn remove_invalid_cell_returns_error() {
         let m = mdd(3, &pair(1, 1, 1, 2), Commutative::Add, 4);
         assert!(matches!(
-            m.remove(HashMap::from([(Cell(9, 9), Fill::from(&[1]))])),
+            m.remove(HashMap::from([(Cell(9, 9), Fill::from(3, &[1]))])),
             Err(MissingCell(_))
         ));
     }
@@ -651,15 +651,15 @@ mod tests {
     #[test]
     fn sum_target_out_of_range_is_empty() {
         let low = mdd(3, &triple(1, 1, 1, 2, 1, 3), Commutative::Add, 1);
-        assert_eq!(low.fill(&Cell(1, 1)).unwrap(), Fill::from(&[]));
+        assert_eq!(low.fill(&Cell(1, 1)).unwrap(), Fill::from(3, &[]));
         let high = mdd(3, &triple(1, 1, 1, 2, 1, 3), Commutative::Add, 10);
-        assert_eq!(high.fill(&Cell(1, 1)).unwrap(), Fill::from(&[]));
+        assert_eq!(high.fill(&Cell(1, 1)).unwrap(), Fill::from(3, &[]));
     }
 
     #[test]
     fn product_target_out_of_range_is_empty() {
         let m = mdd(3, &triple(1, 1, 1, 2, 1, 3), Commutative::Multiply, 28);
-        assert_eq!(m.fill(&Cell(1, 1)).unwrap(), Fill::from(&[]));
+        assert_eq!(m.fill(&Cell(1, 1)).unwrap(), Fill::from(3, &[]));
     }
 
     // ---- reducedness ----

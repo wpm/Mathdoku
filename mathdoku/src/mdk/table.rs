@@ -1,8 +1,8 @@
-//! Explicit-tuple implementation of [`Lookup`] and [`Narrow`].
-use crate::mdk::Error::IndexOutOfBounds;
+//! Explicit-tuple implementation of [`Memo`] and `Narrow`.
+use crate::mdk::Error::InvalidCellCageIndex;
 use crate::mdk::fill::Fill;
-use crate::mdk::memo::{Lookup, Narrow, fills_from_tuples};
-use crate::mdk::operation::{CommutativeOperation, NonCommutativeOperation};
+use crate::mdk::memo::{Memo, fills_from_tuples};
+use crate::mdk::operation::{ArithmeticConstraint, CommutativeOperator, NonCommutativeOperator};
 use crate::mdk::tuples::Tuples;
 use crate::mdk::{Error, N, Target};
 
@@ -13,9 +13,10 @@ use crate::mdk::{Error, N, Target};
 /// as the union of values appearing at each position across all tuples, and
 /// are guaranteed non-empty — construction fails with [`EmptyFills`]
 /// if no valid tuples exist.
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Table {
     n: usize,
+    constraint: ArithmeticConstraint,
     tuples: Vec<Vec<N>>,
     fills: Vec<Fill>,
 }
@@ -29,10 +30,15 @@ impl Table {
     pub fn commutative(
         n: usize,
         k: usize,
-        operator: CommutativeOperation,
+        operator: CommutativeOperator,
         target: Target,
     ) -> Result<Self, Error> {
-        Self::build(n, Tuples::commutative(n, k, operator, target).collect())
+        let constraint = ArithmeticConstraint::CommutativeConstraint(operator, target);
+        Self::build(
+            n,
+            constraint,
+            Tuples::commutative(n, k, operator, target).collect(),
+        )
     }
 
     /// Constructs a representation of all pairs of values in `1..=n`
@@ -42,10 +48,15 @@ impl Table {
     /// Returns [`EmptyFills`] if no tuples satisfy the constraint.
     pub fn non_commutative(
         n: usize,
-        operator: NonCommutativeOperation,
+        operator: NonCommutativeOperator,
         target: Target,
     ) -> Result<Self, Error> {
-        Self::build(n, Tuples::non_commutative(n, operator, target).collect())
+        let constraint = ArithmeticConstraint::NonCommutativeConstraint(operator, target);
+        Self::build(
+            n,
+            constraint,
+            Tuples::non_commutative(n, operator, target).collect(),
+        )
     }
 
     /// Constructs a `Table` from a pre-computed list of tuples, deriving fills.
@@ -53,30 +64,52 @@ impl Table {
     /// # Errors
     /// Returns [`EmptyFills`] if `tuples` is empty or any position's
     /// fill would be empty.
-    fn build(n: usize, tuples: Vec<Vec<N>>) -> Result<Self, Error> {
-        let fills = fills_from_tuples(&tuples)?;
-        Ok(Self { n, tuples, fills })
+    fn build(
+        n: usize,
+        constraint: ArithmeticConstraint,
+        tuples: Vec<Vec<N>>,
+    ) -> Result<Self, Error> {
+        let fills = fills_from_tuples(n, &tuples)?;
+        Ok(Self {
+            n,
+            constraint,
+            tuples,
+            fills,
+        })
     }
 }
 
-impl Lookup for Table {
-    fn fill(&self, index: usize) -> Result<Fill, Error> {
+impl Memo for Table {
+    fn get(&self, index: usize) -> Result<Fill, Error> {
         self.fills
             .get(index)
             .cloned()
-            .ok_or(IndexOutOfBounds(index))
+            .ok_or(InvalidCellCageIndex(index))
     }
-}
 
-impl Narrow for Table {
-    fn remove(&self, fills: Vec<Fill>) -> Result<Self, Error> {
+    #[allow(clippy::todo)]
+    fn set(&self, _fills: Vec<Fill>) -> Result<Self, Error> {
+        todo!()
+    }
+
+    #[allow(clippy::todo)]
+    fn reset(&self) -> Self {
+        todo!()
+    }
+
+    fn narrow(&self, support: Vec<Fill>) -> Result<Self, Error> {
         let tuples = self
             .tuples
             .iter()
-            .filter(|tuple| tuple.iter().enumerate().all(|(i, &v)| fills[i].contains(v)))
+            .filter(|tuple| {
+                tuple
+                    .iter()
+                    .enumerate()
+                    .all(|(i, &v)| support[i].contains(v))
+            })
             .cloned()
             .collect::<Vec<_>>();
-        Self::build(self.n, tuples)
+        Self::build(self.n, self.constraint, tuples)
     }
 }
 
@@ -84,39 +117,39 @@ impl Narrow for Table {
 mod tests {
     use super::*;
     use crate::mdk::Error::EmptyFills;
-    use crate::mdk::operation::CommutativeOperation::{Add, Multiply};
-    use crate::mdk::operation::NonCommutativeOperation::{Divide, Subtract};
+    use crate::mdk::operation::CommutativeOperator::{Add, Multiply};
+    use crate::mdk::operation::NonCommutativeOperator::{Divide, Subtract};
 
     #[test]
     fn add_fills_are_union_of_column_values() {
         // 3+3=6, 2+4=6, 4+2=6 — position 0 is {2,3,4}, position 1 is {2,3,4}
         let t = Table::commutative(4, 2, Add, 6).unwrap();
-        assert_eq!(t.fill(0).unwrap(), Fill::from(&[2, 3, 4]));
-        assert_eq!(t.fill(1).unwrap(), Fill::from(&[2, 3, 4]));
+        assert_eq!(t.get(0).unwrap(), Fill::from(4, &[2, 3, 4]));
+        assert_eq!(t.get(1).unwrap(), Fill::from(4, &[2, 3, 4]));
     }
 
     #[test]
     fn multiply_fills_contain_expected_values() {
         // 2*3=6, 3*2=6, 1*6=6, 6*1=6 within n=6
         let t = Table::commutative(6, 2, Multiply, 6).unwrap();
-        assert_eq!(t.fill(0).unwrap(), Fill::from(&[1, 2, 3, 6]));
-        assert_eq!(t.fill(1).unwrap(), Fill::from(&[1, 2, 3, 6]));
+        assert_eq!(t.get(0).unwrap(), Fill::from(6, &[1, 2, 3, 6]));
+        assert_eq!(t.get(1).unwrap(), Fill::from(6, &[1, 2, 3, 6]));
     }
 
     #[test]
     fn subtract_fills_contain_expected_values() {
         // pairs with |a-b|=1 in n=4: (1,2),(2,1),(2,3),(3,2),(3,4),(4,3)
         let t = Table::non_commutative(4, Subtract, 1).unwrap();
-        assert_eq!(t.fill(0).unwrap(), Fill::from(&[1, 2, 3, 4]));
-        assert_eq!(t.fill(1).unwrap(), Fill::from(&[1, 2, 3, 4]));
+        assert_eq!(t.get(0).unwrap(), Fill::from(4, &[1, 2, 3, 4]));
+        assert_eq!(t.get(1).unwrap(), Fill::from(4, &[1, 2, 3, 4]));
     }
 
     #[test]
     fn divide_fills_contain_expected_values() {
         // pairs with max/min=2 in n=4: (1,2),(2,1),(2,4),(4,2)
         let t = Table::non_commutative(4, Divide, 2).unwrap();
-        assert_eq!(t.fill(0).unwrap(), Fill::from(&[1, 2, 4]));
-        assert_eq!(t.fill(1).unwrap(), Fill::from(&[1, 2, 4]));
+        assert_eq!(t.get(0).unwrap(), Fill::from(4, &[1, 2, 4]));
+        assert_eq!(t.get(1).unwrap(), Fill::from(4, &[1, 2, 4]));
     }
 
     #[test]
@@ -128,7 +161,7 @@ mod tests {
     #[test]
     fn fill_out_of_bounds_returns_index_error() {
         let t = Table::commutative(4, 2, Add, 5).unwrap();
-        assert!(matches!(t.fill(2), Err(IndexOutOfBounds(2))));
+        assert!(matches!(t.get(2), Err(InvalidCellCageIndex(2))));
     }
 
     #[test]
@@ -137,10 +170,10 @@ mod tests {
         let t = Table::commutative(4, 2, Add, 5).unwrap();
         // restrict position 0 to {1,2}, position 1 to {1,2,3,4}
         let narrowed = t
-            .remove(vec![Fill::from(&[1, 2]), Fill::from(&[1, 2, 3, 4])])
+            .narrow(vec![Fill::from(4, &[1, 2]), Fill::from(4, &[1, 2, 3, 4])])
             .unwrap();
-        assert_eq!(narrowed.fill(0).unwrap(), Fill::from(&[1, 2]));
-        assert_eq!(narrowed.fill(1).unwrap(), Fill::from(&[3, 4]));
+        assert_eq!(narrowed.get(0).unwrap(), Fill::from(4, &[1, 2]));
+        assert_eq!(narrowed.get(1).unwrap(), Fill::from(4, &[3, 4]));
     }
 
     #[test]
@@ -148,7 +181,7 @@ mod tests {
         let t = Table::commutative(4, 2, Add, 5).unwrap();
         // restrict both positions to {1} — no tuple (1,1) sums to 5
         assert!(matches!(
-            t.remove(vec![Fill::from(&[1]), Fill::from(&[1])]),
+            t.narrow(vec![Fill::from(4, &[1]), Fill::from(4, &[1])]),
             Err(EmptyFills)
         ));
     }

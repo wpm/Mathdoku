@@ -1,6 +1,7 @@
 //! New Mathdoku implementation — work in progress; will eventually replace the top-level crate API.
 
-use crate::mdk::old_cage::Cage;
+use crate::mdk::fill::Fill;
+use crate::mdk::polyomino::Polyomino;
 use polyomino::Cell;
 
 mod cage;
@@ -26,14 +27,14 @@ type Target = u32;
 pub enum Error {
     /// Invalid grid size
     InvalidGridSize(usize),
-    /// The [`Cell`]s do not form a polyomino
+    /// The [`Cell`]s do not form a [`Polyomino`]
     InvalidPolyomino(Vec<Cell>),
-    /// The [`Cell`] is missing from the specified polyomino or grid.
+    /// The [`Cell`] is missing from the specified polyomino or grid
     MissingCell(Cell),
-    /// Specified cage is not in the puzzle.
-    MissingCage(Cage),
-    /// No candidate fills for a cage.
+    /// Invalid fill for a cage
+    InvalidCageFill(Polyomino, Fill),
+    /// No candidate fills for a cage
     EmptyFills,
-    /// Index out of bounds.
-    IndexOutOfBounds(usize),
+    /// The index for a [`Cell`] in a cage is out of bounds
+    InvalidCellCageIndex(usize),
 }

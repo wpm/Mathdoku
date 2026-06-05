@@ -22,9 +22,10 @@ impl Puzzle {
     /// # Errors
     ///
     /// Returns [`MissingCell`] if `cell` is not in the puzzle.
-    #[allow(clippy::todo)]
-    pub fn get(&self, _cell: &Cell) -> Result<Fill, Error> {
-        todo!()
+    pub fn get(&self, cell: Cell) -> Result<Fill, Error> {
+        self.cages
+            .get(&cell)
+            .map_or(Err(MissingCell(cell)), |cage| cage.get(cell))
     }
 
     /// Applies `fills` as assignments and returns the updated candidate fills for all cells.
