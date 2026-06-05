@@ -33,6 +33,11 @@ impl Grid {
         self.1.get(&cell).cloned().ok_or(MissingCell(cell))
     }
 
+    /// Returns the grid size `n`.
+    pub const fn size(&self) -> usize {
+        self.0
+    }
+
     /// Returns a new grid with `cell` updated to `fill`.
     pub fn set(&self, cell: Cell, fill: Fill) -> Self {
         let mut grid = self.clone();
