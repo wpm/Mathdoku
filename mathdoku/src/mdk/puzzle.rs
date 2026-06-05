@@ -36,7 +36,7 @@ impl Puzzle {
             return Err(Error::InvalidCellValue(cell, n));
         }
         Ok(Self {
-            grid: self.grid.set(cell, fill),
+            grid: self.grid.set(cell, Fill::from(&[n])),
             cages: self.cages.clone(),
         })
     }

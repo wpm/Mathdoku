@@ -1,7 +1,7 @@
 //! Grid and cell types internal to the mdk implementation.
 use crate::mdk::Error;
 use crate::mdk::Error::MissingCell;
-use crate::mdk::csp::State;
+use crate::mdk::csp::{Constraint, State};
 use crate::mdk::fill::Fill;
 use crate::mdk::polyomino::Cell;
 use serde::de::Error as DeError;
@@ -39,12 +39,70 @@ impl Grid {
         let _ = grid.1.insert(cell, fill);
         grid
     }
+
+    /// Applies `new_fills` to `cells`, returning the updated grid and the cells whose fill changed.
+    pub(crate) fn apply_fills(
+        &self,
+        cells: &[Cell],
+        old_fills: &[Fill],
+        new_fills: Vec<Fill>,
+    ) -> (Self, Vec<Cell>) {
+        let mut new_state = self.clone();
+        let mut changed = vec![];
+        for ((&cell, old), new) in cells.iter().zip(old_fills).zip(new_fills) {
+            if new != *old {
+                new_state = new_state.set(cell, new);
+                changed.push(cell);
+            }
+        }
+        (new_state, changed)
+    }
 }
 
 impl State<Cell, Fill, Error> for Grid {
     fn get(&self, cell: Cell) -> Result<Fill, Error> {
         let fill = self.1.get(&cell).ok_or(MissingCell(cell))?;
         Ok(fill.clone())
+    }
+}
+
+// ---- AllDifferent ----
+
+/// The constraint that all cells in a row or column must contain distinct values.
+#[derive(Clone)]
+pub struct AllDifferent {
+    cells: Vec<Cell>,
+}
+
+impl AllDifferent {
+    /// Creates an all-different constraint over row `row` of an `n`×`n` grid.
+    pub fn row(n: usize, row: usize) -> Self {
+        Self {
+            cells: (1..=n).map(|col| Cell(row, col)).collect(),
+        }
+    }
+
+    /// Creates an all-different constraint over column `col` of an `n`×`n` grid.
+    pub fn column(n: usize, col: usize) -> Self {
+        Self {
+            cells: (1..=n).map(|row| Cell(row, col)).collect(),
+        }
+    }
+}
+
+impl Constraint<Grid, Cell, Fill, Error> for AllDifferent {
+    fn propagate(&self, state: &Grid) -> Result<(Grid, Vec<Cell>), Error> {
+        let cells = &self.cells;
+        let old_fills: Vec<Fill> = cells
+            .iter()
+            .map(|&c| state.get(c))
+            .collect::<Result<_, _>>()?;
+        let new_fills = crate::mdk::regin::regin_gac(&old_fills);
+        Ok(state.apply_fills(cells, &old_fills, new_fills))
+    }
+
+    fn in_scope(&self, variable: Cell) -> bool {
+        self.cells.contains(&variable)
     }
 }
 
@@ -129,10 +187,61 @@ mod tests {
         }
     }
 
+    // Row 1 forced-chain: cell(1,1)={1,2}, cell(1,2)={2}, cell(1,3)={1,3}.
+    // After AllDifferent: {1}, {2}, {3}.
+    fn forced_chain_row1() -> Grid {
+        Grid::new(3)
+            .set(Cell(1, 1), Fill::from(&[1, 2]))
+            .set(Cell(1, 2), Fill::from(&[2]))
+            .set(Cell(1, 3), Fill::from(&[1, 3]))
+    }
+
     fn grid_with_modified_cell(n: usize, cell: Cell, fill: Fill) -> Grid {
         let mut g = Grid::new(n);
         drop(g.1.insert(cell, fill));
         g
+    }
+
+    #[test]
+    fn all_different_propagate_full_values_unchanged() {
+        let g = Grid::new(3);
+        let (new_g, changed) = AllDifferent::row(3, 1).propagate(&g).unwrap();
+        assert_eq!(new_g.1, g.1);
+        assert!(changed.is_empty());
+    }
+
+    #[test]
+    fn all_different_propagate_prunes_forced_value() {
+        let (new_g, changed) = AllDifferent::row(3, 1)
+            .propagate(&forced_chain_row1())
+            .unwrap();
+        assert_eq!(new_g.get(Cell(1, 1)).unwrap(), Fill::from(&[1]));
+        assert_eq!(new_g.get(Cell(1, 2)).unwrap(), Fill::from(&[2]));
+        assert_eq!(new_g.get(Cell(1, 3)).unwrap(), Fill::from(&[3]));
+        assert_eq!(changed.len(), 2);
+        assert!(changed.contains(&Cell(1, 1)));
+        assert!(changed.contains(&Cell(1, 3)));
+    }
+
+    #[test]
+    fn all_different_propagate_infeasible_empties_values() {
+        // 2×2 grid: both column-1 cells pinned to {1} — infeasible.
+        let g = Grid::new(2)
+            .set(Cell(1, 1), Fill::from(&[1]))
+            .set(Cell(2, 1), Fill::from(&[1]));
+        let (new_g, changed) = AllDifferent::column(2, 1).propagate(&g).unwrap();
+        assert!(new_g.get(Cell(1, 1)).unwrap().is_empty());
+        assert!(new_g.get(Cell(2, 1)).unwrap().is_empty());
+        assert_eq!(changed.len(), 2);
+    }
+
+    #[test]
+    fn all_different_propagate_unchanged_cells_not_in_changed() {
+        // cell(1,2)={2} is already a singleton — should not appear in changed.
+        let (_, changed) = AllDifferent::row(3, 1)
+            .propagate(&forced_chain_row1())
+            .unwrap();
+        assert!(!changed.contains(&Cell(1, 2)));
     }
 
     #[test]

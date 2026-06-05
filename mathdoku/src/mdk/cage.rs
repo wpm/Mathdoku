@@ -36,13 +36,15 @@
 //!
 //! A given cage is a singleton cell whose value is fixed by the puzzle author.
 //! There is no arithmetic constraint and no memo: the value is stored directly.
+use crate::mdk::csp::Constraint;
 use crate::mdk::fill::Fill;
+use crate::mdk::grid::Grid;
 use crate::mdk::mdd::Mdd;
 use crate::mdk::memo::Memo;
 use crate::mdk::operation::{CommutativeOperator, NonCommutativeOperator};
 use crate::mdk::polyomino::{Cell, Polyomino};
 use crate::mdk::table::Table;
-use crate::mdk::{Error, N, Target};
+use crate::mdk::{Error, Error::EmptyFills, N, Target};
 
 /// The constraint for a cage and its backing memo.
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -153,9 +155,50 @@ impl Cage {
     }
 }
 
+impl Constraint<Grid, Cell, Fill, Error> for Cage {
+    fn propagate(&self, state: &Grid) -> Result<(Grid, Vec<Cell>), Error> {
+        let cells: Vec<Cell> = self.polyomino.iter().copied().collect();
+        let old_fills: Vec<Fill> = cells
+            .iter()
+            .map(|&c| state.get(c))
+            .collect::<Result<_, _>>()?;
+        let new_fills = match &self.operation {
+            CageOperation::Given(n) => {
+                // Singleton cell: fill is always the fixed value, intersected with current state.
+                let singleton = Fill::from(&[*n]);
+                vec![if old_fills[0].contains(*n) {
+                    singleton
+                } else {
+                    Fill::default()
+                }]
+            }
+            CageOperation::Commutative(_, _, memo) => match memo.narrow(old_fills.clone()) {
+                Ok(narrowed) => (0..cells.len())
+                    .map(|i| narrowed.get(i).unwrap_or_default())
+                    .collect(),
+                Err(EmptyFills) => vec![Fill::default(); cells.len()],
+                Err(e) => return Err(e),
+            },
+            CageOperation::NonCommutative(_, _, memo) => match memo.narrow(old_fills.clone()) {
+                Ok(narrowed) => (0..cells.len())
+                    .map(|i| narrowed.get(i).unwrap_or_default())
+                    .collect(),
+                Err(EmptyFills) => vec![Fill::default(); cells.len()],
+                Err(e) => return Err(e),
+            },
+        };
+        Ok(state.apply_fills(&cells, &old_fills, new_fills))
+    }
+
+    fn in_scope(&self, variable: Cell) -> bool {
+        self.polyomino.contains(&variable)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::mdk::grid::Grid;
     use crate::mdk::operation::CommutativeOperator::{Add, Multiply};
     use crate::mdk::operation::NonCommutativeOperator::{Divide, Subtract};
 
@@ -225,6 +268,63 @@ mod tests {
         let poly = domino(2, 1, 2, 2);
         let cage = Cage::non_commutative(4, poly.clone(), Subtract, 1).unwrap();
         assert_eq!(cage.polyomino, poly);
+    }
+
+    // ---- Constraint::propagate ----
+
+    fn full_grid(n: usize) -> Grid {
+        Grid::new(n)
+    }
+
+    #[test]
+    fn cage_propagate_given_pins_cell() {
+        let cage = Cage::given(Cell(1, 1), 4, 3).unwrap();
+        let (new_g, changed) = cage.propagate(&full_grid(4)).unwrap();
+        assert_eq!(new_g.get(Cell(1, 1)).unwrap(), Fill::from(&[3]));
+        assert_eq!(changed, vec![Cell(1, 1)]);
+    }
+
+    #[test]
+    fn cage_propagate_add_prunes_impossible_values() {
+        // Add 3 in a 4×4: valid pairs summing to 3 are (1,2),(2,1) — only values {1,2}
+        let cage = Cage::commutative(4, domino(1, 1, 1, 2), Add, 3).unwrap();
+        let (new_g, _) = cage.propagate(&full_grid(4)).unwrap();
+        assert_eq!(new_g.get(Cell(1, 1)).unwrap(), Fill::from(&[1, 2]));
+        assert_eq!(new_g.get(Cell(1, 2)).unwrap(), Fill::from(&[1, 2]));
+    }
+
+    #[test]
+    fn cage_propagate_cross_cell_add_prunes_partner() {
+        // Add 5 in 4×4: valid pairs are (1,4),(2,3),(3,2),(4,1).
+        // Pin cell A to {4}: only (4,1) survives, so B must narrow to {1}.
+        let cage = Cage::commutative(4, domino(1, 1, 1, 2), Add, 5).unwrap();
+        let g = full_grid(4).set(Cell(1, 1), Fill::from(&[4]));
+        let (new_g, changed) = cage.propagate(&g).unwrap();
+        assert_eq!(new_g.get(Cell(1, 2)).unwrap(), Fill::from(&[1]));
+        assert!(changed.contains(&Cell(1, 2)));
+    }
+
+    #[test]
+    fn cage_propagate_cross_cell_subtract_prunes_partner() {
+        // Subtract 3 in 4×4: only valid pair is (4,1).
+        // Pin cell A to {4}: B must narrow to {1}.
+        let cage = Cage::non_commutative(4, domino(1, 1, 1, 2), Subtract, 3).unwrap();
+        let g = full_grid(4).set(Cell(1, 1), Fill::from(&[4]));
+        let (new_g, _) = cage.propagate(&g).unwrap();
+        assert_eq!(new_g.get(Cell(1, 2)).unwrap(), Fill::from(&[1]));
+    }
+
+    #[test]
+    fn cage_propagate_no_valid_tuple_empties_values() {
+        // Grid has both cells pinned to {4}; Add 3 has no tuple (4,?) summing to 3
+        let g = full_grid(4)
+            .set(Cell(1, 1), Fill::from(&[4]))
+            .set(Cell(1, 2), Fill::from(&[4]));
+        let cage = Cage::commutative(4, domino(1, 1, 1, 2), Add, 3).unwrap();
+        let (new_g, changed) = cage.propagate(&g).unwrap();
+        assert!(new_g.get(Cell(1, 1)).unwrap().is_empty());
+        assert!(new_g.get(Cell(1, 2)).unwrap().is_empty());
+        assert_eq!(changed.len(), 2);
     }
 
     // ---- given ----

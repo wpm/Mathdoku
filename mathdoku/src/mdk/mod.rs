@@ -13,6 +13,7 @@ pub mod memo;
 pub mod operation;
 pub mod polyomino;
 pub mod puzzle;
+pub(crate) mod regin;
 pub mod table;
 pub mod tuples;
 

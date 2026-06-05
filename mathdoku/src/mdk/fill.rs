@@ -7,7 +7,7 @@ use std::fmt::{Display, Formatter};
 
 /// The set of candidate values for a cell.
 #[derive(Eq, PartialEq, Ord, PartialOrd, Clone, Debug, Default, Serialize, Deserialize)]
-pub struct Fill(BTreeSet<N>);
+pub struct Fill(pub(crate) BTreeSet<N>);
 
 impl Fill {
     /// Creates a full candidate set `{1..=n}`.
@@ -27,6 +27,12 @@ impl Fill {
     }
 
     pub(crate) fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
+impl crate::mdk::csp::Domain for Fill {
+    fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
 }

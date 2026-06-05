@@ -195,7 +195,7 @@ mod tests {
 
     type TestDomain = HashSet<u8>;
 
-    impl<S: ::std::hash::BuildHasher> super::Domain for HashSet<u8, S> {
+    impl<S: std::hash::BuildHasher> super::Domain for HashSet<u8, S> {
         fn is_empty(&self) -> bool {
             self.is_empty()
         }
