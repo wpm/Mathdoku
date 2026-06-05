@@ -79,7 +79,7 @@ impl Cage {
     /// `1..=n` whose `operation` equals `target`.
     ///
     /// # Errors
-    /// Returns [`Error::EmptyFills`] if no tuples satisfy the constraint.
+    /// Returns [`EmptyFills`] if no tuples satisfy the constraint.
     pub fn commutative(
         n: usize,
         polyomino: Polyomino,
@@ -101,7 +101,7 @@ impl Cage {
     /// equals `target`. Non-commutative cages must be exactly 2 cells.
     ///
     /// # Errors
-    /// Returns [`Error::EmptyFills`] if no pairs satisfy the constraint.
+    /// Returns [`EmptyFills`] if no pairs satisfy the constraint.
     pub fn non_commutative(
         n: usize,
         polyomino: Polyomino,
@@ -231,7 +231,7 @@ mod tests {
     fn commutative_infeasible_target_returns_empty_fills() {
         assert!(matches!(
             Cage::commutative(4, domino(1, 1, 1, 2), Add, 9),
-            Err(Error::EmptyFills)
+            Err(EmptyFills)
         ));
     }
 
@@ -259,7 +259,7 @@ mod tests {
         // no pair in 1..=4 has |a-b| = 4
         assert!(matches!(
             Cage::non_commutative(4, domino(1, 1, 1, 2), Subtract, 4),
-            Err(Error::EmptyFills)
+            Err(EmptyFills)
         ));
     }
 
