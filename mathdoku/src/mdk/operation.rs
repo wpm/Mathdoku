@@ -16,6 +16,16 @@ pub enum ArithmeticConstraint {
 ///
 /// Because applying the operator to a longer tuple can only increase the result,
 /// partial results can be used to prune the search for valid tuples.
+///
+/// Two apply methods serve different purposes:
+/// - [`apply_to_tuple`](Self::apply_to_tuple) evaluates a complete tuple of cell values — used
+///   for validation and table construction.
+/// - [`apply_to_pair`](Self::apply_to_pair) extends an accumulated `T` by one more `T` step
+///   — used during MDD traversal, where the running total is built up one node at a time.
+///
+/// [`NonCommutativeOperator`] has no equivalent of `apply_to_pair` because subtract and divide
+/// are only valid on 2-cell cages and are solved via `Table` rather than MDD traversal, so no
+/// step-by-step accumulator is needed.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum CommutativeOperator {
     Add,
@@ -31,7 +41,6 @@ impl CommutativeOperator {
         }
     }
 
-    // TODO Why isn't apply_to_pair a method in NonCommutativeOperator?
     /// Applies this operator to a single pair `(x, y)`.
     #[must_use]
     pub const fn apply_to_pair(self, x: T, y: T) -> T {

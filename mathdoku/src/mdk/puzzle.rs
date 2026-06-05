@@ -80,7 +80,6 @@ impl Puzzle {
     /// # Errors
     ///
     /// Returns an error if `cage` is not in the puzzle.
-    #[allow(clippy::todo)]
     pub fn remove(&self, cage: &Cage) -> Result<(), Error> {
         let mut cages = self.cages.clone();
         for cell in cage.polyomino.iter() {
