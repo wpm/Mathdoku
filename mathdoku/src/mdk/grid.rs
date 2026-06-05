@@ -28,9 +28,9 @@ impl Grid {
     }
 
     pub fn set(&self, cell: Cell, fill: Fill) -> Self {
-        let mut fills = self.1.clone();
-        let _ = fills.insert(cell, fill);
-        Self(self.0, fills)
+        let mut grid = self.clone();
+        let _ = grid.1.insert(cell, fill);
+        grid
     }
 }
 

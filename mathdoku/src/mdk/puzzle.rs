@@ -37,7 +37,10 @@ impl Puzzle {
         if !fill.contains(n) {
             return Err(Error::InvalidCellValue(cell, n));
         }
-        todo!()
+        Ok(Self {
+            grid: self.grid.set(cell, fill),
+            cages: self.cages.clone(),
+        })
     }
 
     /// Adds `cage` to the puzzle.
