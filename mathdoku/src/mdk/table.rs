@@ -1,8 +1,7 @@
-//! Explicit-tuple implementation of [`Memo`] and [`Narrow`].
-use crate::mdk::Error::EmptyFills;
+//! Explicit-tuple implementation of [`Lookup`] and [`Narrow`].
 use crate::mdk::Error::IndexOutOfBounds;
 use crate::mdk::fill::Fill;
-use crate::mdk::memo::{Memo, Narrow};
+use crate::mdk::memo::{fills_from_tuples, Lookup, Narrow};
 use crate::mdk::operation::{Commutative, NonCommutative};
 use crate::mdk::tuples::Tuples;
 use crate::mdk::{Error, N, Target};
@@ -21,40 +20,41 @@ pub struct Table {
 }
 
 impl Table {
-    /// Constructs a `Table` from a pre-computed list of tuples, deriving fills.
+    /// Constructs a representation of all `k`-tuples of values in `1..=n`
+    /// satisfying a commutative (add or multiply) constraint.
     ///
     /// # Errors
-    /// Returns [`EmptyFills`] if `tuples` is empty or any position's
-    /// fill would be empty.
-    fn new(n: usize, tuples: Vec<Vec<N>>) -> Result<Self, Error> {
-        if tuples.is_empty() {
-            return Err(EmptyFills);
-        }
-        let k = tuples[0].len();
-        let fills: Vec<Fill> = (0..k)
-            .map(|i| Fill::from(&tuples.iter().map(|t| t[i]).collect::<Vec<N>>()))
-            .collect();
-        if fills.iter().any(Fill::is_empty) {
-            return Err(EmptyFills);
-        }
-        Ok(Self { n, tuples, fills })
-    }
-}
-
-impl Memo for Table {
+    /// Returns [`EmptyFills`] if no tuples satisfy the constraint.
     fn commutative(
         n: usize,
         k: usize,
         operator: Commutative,
         target: Target,
     ) -> Result<Self, Error> {
-        Self::new(n, Tuples::commutative(n, k, operator, target).collect())
+        Self::build(n, Tuples::commutative(n, k, operator, target).collect())
     }
 
+    /// Constructs a representation of all pairs of values in `1..=n`
+    /// satisfying a non-commutative (subtract or divide) constraint.
+    ///
+    /// # Errors
+    /// Returns [`EmptyFills`] if no tuples satisfy the constraint.
     fn non_commutative(n: usize, operator: NonCommutative, target: Target) -> Result<Self, Error> {
-        Self::new(n, Tuples::non_commutative(n, operator, target).collect())
+        Self::build(n, Tuples::non_commutative(n, operator, target).collect())
     }
 
+    /// Constructs a `Table` from a pre-computed list of tuples, deriving fills.
+    ///
+    /// # Errors
+    /// Returns [`EmptyFills`] if `tuples` is empty or any position's
+    /// fill would be empty.
+    fn build(n: usize, tuples: Vec<Vec<N>>) -> Result<Self, Error> {
+        let fills = fills_from_tuples(&tuples)?;
+        Ok(Self { n, tuples, fills })
+    }
+}
+
+impl Lookup for Table {
     fn fill(&self, index: usize) -> Result<Fill, Error> {
         self.fills
             .get(index)
@@ -71,13 +71,14 @@ impl Narrow for Table {
             .filter(|tuple| tuple.iter().enumerate().all(|(i, &v)| fills[i].contains(v)))
             .cloned()
             .collect::<Vec<_>>();
-        Self::new(self.n, tuples)
+        Self::build(self.n, tuples)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::mdk::Error::EmptyFills;
     use crate::mdk::operation::Commutative::{Add, Multiply};
     use crate::mdk::operation::NonCommutative::{Divide, Subtract};
 

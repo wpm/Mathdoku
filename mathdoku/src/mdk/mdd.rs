@@ -1,11 +1,11 @@
-//! Multivalued Decision Diagram (MDD) implementation of [`Memo`] and [`Narrow`].
+//! Multivalued Decision Diagram (MDD) implementation of [`Lookup`] and [`Narrow`].
 //!
 //! Only commutative (add, multiply) constraints are supported. For non-commutative
 //! constraints (subtract, divide), use [`Table`](crate::mdk::table::Table) instead.
-use crate::mdk::Error::{EmptyFills, IndexOutOfBounds};
+use crate::mdk::Error::IndexOutOfBounds;
 use crate::mdk::fill::Fill;
-use crate::mdk::memo::{Memo, Narrow};
-use crate::mdk::operation::{Commutative, NonCommutative};
+use crate::mdk::memo::{fills_from_tuples, Lookup, Narrow};
+use crate::mdk::operation::Commutative;
 use crate::mdk::{Error, N, Target};
 use log::debug;
 use std::collections::{HashMap, HashSet};
@@ -27,10 +27,10 @@ pub struct Mdd {
 }
 
 impl Mdd {
-    fn build(n: usize, k: usize, operation: Commutative, target: Target) -> Result<Self, Error> {
+    fn new(n: usize, k: usize, operator: Commutative, target: Target) -> Result<Self, Error> {
         #[allow(clippy::cast_possible_truncation)]
         let constraint = Constraint {
-            operation,
+            operation: operator,
             target,
             arity: k as N,
         };
@@ -45,23 +45,8 @@ impl Mdd {
             value: constraint.unit(),
         };
         mdd.subtree(root);
-        mdd.fills = mdd.compute_fills_or_err()?;
+        mdd.fills = fills_from_tuples(&mdd.tuples())?;
         Ok(mdd)
-    }
-
-    fn compute_fills_or_err(&self) -> Result<Vec<Fill>, Error> {
-        let tuples = self.tuples();
-        if tuples.is_empty() {
-            return Err(EmptyFills);
-        }
-        let k = tuples[0].len();
-        let fills: Vec<Fill> = (0..k)
-            .map(|i| Fill::from(&tuples.iter().map(|t| t[i]).collect::<Vec<N>>()))
-            .collect();
-        if fills.iter().any(Fill::is_empty) {
-            return Err(EmptyFills);
-        }
-        Ok(fills)
     }
 
     /// Recursively builds the MDD rooted at `head`, adding edges for all values
@@ -332,28 +317,7 @@ impl std::fmt::Display for Mdd {
     }
 }
 
-impl Memo for Mdd {
-    fn commutative(
-        n: usize,
-        k: usize,
-        operator: Commutative,
-        target: Target,
-    ) -> Result<Self, Error> {
-        Self::build(n, k, operator, target)
-    }
-
-    /// Not implemented — the MDD structure relies on monotonicity, which only holds
-    /// for commutative (add, multiply) operators. Use [`Table`](crate::mdk::table::Table)
-    /// for subtract and divide constraints.
-    #[allow(clippy::unimplemented)]
-    fn non_commutative(
-        _n: usize,
-        _operator: NonCommutative,
-        _target: Target,
-    ) -> Result<Self, Error> {
-        unimplemented!("Mdd only supports commutative constraints; use Table for subtract/divide")
-    }
-
+impl Lookup for Mdd {
     fn fill(&self, index: usize) -> Result<Fill, Error> {
         self.fills
             .get(index)
@@ -379,7 +343,7 @@ impl Narrow for Mdd {
             })
             .collect();
         let mut narrowed = self.remove_support(&forbidden);
-        narrowed.fills = narrowed.compute_fills_or_err()?;
+        narrowed.fills = fills_from_tuples(&narrowed.tuples())?;
         Ok(narrowed)
     }
 }
@@ -447,32 +411,33 @@ impl std::fmt::Display for Node {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::mdk::Error::EmptyFills;
     use crate::mdk::operation::Commutative::{Add, Multiply};
 
     // ---- Memo::commutative construction ----
 
     #[test]
     fn add_fills_are_union_of_column_values() {
-        let m = Mdd::commutative(4, 2, Add, 6).unwrap();
+        let m = Mdd::new(4, 2, Add, 6).unwrap();
         assert_eq!(m.fill(0).unwrap(), Fill::from(&[2, 3, 4]));
         assert_eq!(m.fill(1).unwrap(), Fill::from(&[2, 3, 4]));
     }
 
     #[test]
     fn multiply_fills_contain_expected_values() {
-        let m = Mdd::commutative(6, 2, Multiply, 6).unwrap();
+        let m = Mdd::new(6, 2, Multiply, 6).unwrap();
         assert_eq!(m.fill(0).unwrap(), Fill::from(&[1, 2, 3, 6]));
         assert_eq!(m.fill(1).unwrap(), Fill::from(&[1, 2, 3, 6]));
     }
 
     #[test]
     fn commutative_no_solutions_returns_empty_fills_error() {
-        assert!(matches!(Mdd::commutative(4, 2, Add, 9), Err(EmptyFills)));
+        assert!(matches!(Mdd::new(4, 2, Add, 9), Err(EmptyFills)));
     }
 
     #[test]
     fn fill_out_of_bounds_returns_index_error() {
-        let m = Mdd::commutative(4, 2, Add, 5).unwrap();
+        let m = Mdd::new(4, 2, Add, 5).unwrap();
         assert!(matches!(m.fill(2), Err(IndexOutOfBounds(2))));
     }
 
@@ -480,7 +445,7 @@ mod tests {
 
     #[test]
     fn remove_filters_tuples_and_updates_fills() {
-        let m = Mdd::commutative(4, 2, Add, 5).unwrap();
+        let m = Mdd::new(4, 2, Add, 5).unwrap();
         let narrowed = m
             .remove(vec![Fill::from(&[1, 2]), Fill::from(&[1, 2, 3, 4])])
             .unwrap();
@@ -490,7 +455,7 @@ mod tests {
 
     #[test]
     fn remove_eliminating_all_tuples_returns_empty_fills_error() {
-        let m = Mdd::commutative(4, 2, Add, 5).unwrap();
+        let m = Mdd::new(4, 2, Add, 5).unwrap();
         assert!(matches!(
             m.remove(vec![Fill::from(&[1]), Fill::from(&[1])]),
             Err(EmptyFills)
@@ -502,7 +467,7 @@ mod tests {
     #[test]
     fn sum_pair_display() {
         assert_eq!(
-            Mdd::commutative(3, 2, Add, 4).unwrap().to_string(),
+            Mdd::new(3, 2, Add, 4).unwrap().to_string(),
             "MDD(+4 [2] 4 nodes)"
         );
     }
@@ -510,7 +475,7 @@ mod tests {
     #[test]
     fn sum_triple_display() {
         assert_eq!(
-            Mdd::commutative(3, 3, Add, 5).unwrap().to_string(),
+            Mdd::new(3, 3, Add, 5).unwrap().to_string(),
             "MDD(+5 [3] 7 nodes)"
         );
     }
@@ -518,7 +483,7 @@ mod tests {
     #[test]
     fn sum_triple_larger_n_display() {
         assert_eq!(
-            Mdd::commutative(4, 3, Add, 6).unwrap().to_string(),
+            Mdd::new(4, 3, Add, 6).unwrap().to_string(),
             "MDD(+6 [3] 9 nodes)"
         );
     }
@@ -526,7 +491,7 @@ mod tests {
     #[test]
     fn product_pair_display() {
         assert_eq!(
-            Mdd::commutative(4, 2, Multiply, 6).unwrap().to_string(),
+            Mdd::new(4, 2, Multiply, 6).unwrap().to_string(),
             "MDD(×6 [2] 4 nodes)"
         );
     }
@@ -534,7 +499,7 @@ mod tests {
     #[test]
     fn product_triple_display() {
         assert_eq!(
-            Mdd::commutative(4, 3, Multiply, 4).unwrap().to_string(),
+            Mdd::new(4, 3, Multiply, 4).unwrap().to_string(),
             "MDD(×4 [3] 7 nodes)"
         );
     }
@@ -543,14 +508,14 @@ mod tests {
 
     #[test]
     fn sum_pair_fills() {
-        let m = Mdd::commutative(3, 2, Add, 4).unwrap();
+        let m = Mdd::new(3, 2, Add, 4).unwrap();
         assert_eq!(m.fill(0).unwrap(), Fill::from(&[1, 2, 3]));
         assert_eq!(m.fill(1).unwrap(), Fill::from(&[1, 2, 3]));
     }
 
     #[test]
     fn sum_triple_fills() {
-        let m = Mdd::commutative(3, 3, Add, 5).unwrap();
+        let m = Mdd::new(3, 3, Add, 5).unwrap();
         assert_eq!(m.fill(0).unwrap(), Fill::from(&[1, 2, 3]));
         assert_eq!(m.fill(1).unwrap(), Fill::from(&[1, 2, 3]));
         assert_eq!(m.fill(2).unwrap(), Fill::from(&[1, 2, 3]));
@@ -558,14 +523,14 @@ mod tests {
 
     #[test]
     fn product_pair_fills() {
-        let m = Mdd::commutative(4, 2, Multiply, 6).unwrap();
+        let m = Mdd::new(4, 2, Multiply, 6).unwrap();
         assert_eq!(m.fill(0).unwrap(), Fill::from(&[2, 3]));
         assert_eq!(m.fill(1).unwrap(), Fill::from(&[2, 3]));
     }
 
     #[test]
     fn product_triple_fills() {
-        let m = Mdd::commutative(4, 3, Multiply, 4).unwrap();
+        let m = Mdd::new(4, 3, Multiply, 4).unwrap();
         assert_eq!(m.fill(0).unwrap(), Fill::from(&[1, 2, 4]));
         assert_eq!(m.fill(1).unwrap(), Fill::from(&[1, 2, 4]));
         assert_eq!(m.fill(2).unwrap(), Fill::from(&[1, 2, 4]));
@@ -575,23 +540,20 @@ mod tests {
 
     #[test]
     fn sum_target_out_of_range_is_empty_fills() {
-        assert!(matches!(Mdd::commutative(3, 3, Add, 1), Err(EmptyFills)));
-        assert!(matches!(Mdd::commutative(3, 3, Add, 10), Err(EmptyFills)));
+        assert!(matches!(Mdd::new(3, 3, Add, 1), Err(EmptyFills)));
+        assert!(matches!(Mdd::new(3, 3, Add, 10), Err(EmptyFills)));
     }
 
     #[test]
     fn product_target_out_of_range_is_empty_fills() {
-        assert!(matches!(
-            Mdd::commutative(3, 3, Multiply, 28),
-            Err(EmptyFills)
-        ));
+        assert!(matches!(Mdd::new(3, 3, Multiply, 28), Err(EmptyFills)));
     }
 
     // ---- remove_support ----
 
     #[test]
     fn remove_support_empty_is_identity() {
-        let m = Mdd::commutative(3, 3, Add, 5).unwrap();
+        let m = Mdd::new(3, 3, Add, 5).unwrap();
         assert_eq!(
             sorted_tuples(&m.remove_support(&HashMap::new())),
             sorted_tuples(&m)
@@ -600,7 +562,7 @@ mod tests {
 
     #[test]
     fn remove_support_sum_triple_delete_var0() {
-        let m = Mdd::commutative(3, 3, Add, 5)
+        let m = Mdd::new(3, 3, Add, 5)
             .unwrap()
             .remove_support(&forbidden(&[(0, &[1])]));
         assert_eq!(
@@ -611,7 +573,7 @@ mod tests {
 
     #[test]
     fn remove_support_sum_pair_delete_var0() {
-        let m = Mdd::commutative(3, 2, Add, 4)
+        let m = Mdd::new(3, 2, Add, 4)
             .unwrap()
             .remove_support(&forbidden(&[(0, &[2])]));
         assert_eq!(sorted_tuples(&m), vec![vec![1, 3], vec![3, 1]]);
@@ -619,7 +581,7 @@ mod tests {
 
     #[test]
     fn remove_support_product_pair_delete_var0() {
-        let m = Mdd::commutative(4, 2, Multiply, 6)
+        let m = Mdd::new(4, 2, Multiply, 6)
             .unwrap()
             .remove_support(&forbidden(&[(0, &[3])]));
         assert_eq!(sorted_tuples(&m), vec![vec![2, 3]]);
@@ -627,7 +589,7 @@ mod tests {
 
     #[test]
     fn remove_support_sum_triple_reset_var1() {
-        let m = Mdd::commutative(3, 3, Add, 5)
+        let m = Mdd::new(3, 3, Add, 5)
             .unwrap()
             .remove_support(&forbidden(&[(1, &[1, 2])]));
         assert_eq!(sorted_tuples(&m), vec![vec![1, 3, 1]]);
@@ -635,7 +597,7 @@ mod tests {
 
     #[test]
     fn remove_support_sum_triple_two_layers() {
-        let m = Mdd::commutative(3, 3, Add, 5)
+        let m = Mdd::new(3, 3, Add, 5)
             .unwrap()
             .remove_support(&forbidden(&[(0, &[1]), (2, &[1])]));
         assert_eq!(sorted_tuples(&m), vec![vec![2, 1, 2]]);
@@ -643,7 +605,7 @@ mod tests {
 
     #[test]
     fn remove_support_all_removed() {
-        let m = Mdd::commutative(3, 3, Add, 5)
+        let m = Mdd::new(3, 3, Add, 5)
             .unwrap()
             .remove_support(&forbidden(&[(1, &[1, 2, 3])]));
         assert_eq!(sorted_tuples(&m), vec![] as Vec<Vec<N>>);
@@ -661,42 +623,18 @@ mod tests {
             (6, Multiply, 24, 3),
         ];
         for (n, op, target, k) in cases {
-            assert_reduced(&Mdd::commutative(n, k, op, target).unwrap());
+            assert_reduced(&Mdd::new(n, k, op, target).unwrap());
         }
     }
 
     #[test]
     fn mdd_is_reduced_after_remove_support() {
-        let m = Mdd::commutative(4, 3, Add, 6).unwrap();
+        let m = Mdd::new(4, 3, Add, 6).unwrap();
         let pruned = m.remove_support(&forbidden(&[(0, &[1])]));
         assert_reduced(&pruned);
     }
 
     // ---- brute-force oracle cross-check ----
-
-    #[test]
-    fn sum_matches_brute_force_oracle() {
-        for n in 3u32..=6 {
-            for k in 2u32..=4 {
-                let max_target = n * k + 1;
-                for target in 1..=max_target {
-                    assert_equiv(n, Add, target, k);
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn product_matches_brute_force_oracle() {
-        for n in 3u32..=6 {
-            for k in 2u32..=3 {
-                let max_target = n.pow(k) + 1;
-                for target in 1..=max_target {
-                    assert_equiv(n, Multiply, target, k);
-                }
-            }
-        }
-    }
 
     #[test]
     #[ignore = "exhaustive property test; run with --include-ignored on merge to main"]
@@ -754,7 +692,7 @@ mod tests {
 
     fn assert_equiv(n: N, op: Commutative, target: N, k: u32) {
         let expected = ref_tuples(n, op, target, k);
-        match Mdd::commutative(n as usize, k as usize, op, target) {
+        match Mdd::new(n as usize, k as usize, op, target) {
             Ok(m) => {
                 let mut actual = m.tuples();
                 actual.sort();
