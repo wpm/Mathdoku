@@ -1,8 +1,8 @@
 //! Explicit-tuple implementation of [`Lookup`] and [`Narrow`].
 use crate::mdk::Error::IndexOutOfBounds;
 use crate::mdk::fill::Fill;
-use crate::mdk::memo::{fills_from_tuples, Lookup, Narrow};
-use crate::mdk::operation::{Commutative, NonCommutative};
+use crate::mdk::memo::{Lookup, Narrow, fills_from_tuples};
+use crate::mdk::operation::{CommutativeOperation, NonCommutativeOperation};
 use crate::mdk::tuples::Tuples;
 use crate::mdk::{Error, N, Target};
 
@@ -13,7 +13,7 @@ use crate::mdk::{Error, N, Target};
 /// as the union of values appearing at each position across all tuples, and
 /// are guaranteed non-empty — construction fails with [`EmptyFills`]
 /// if no valid tuples exist.
-pub struct Table {
+pub(crate) struct Table {
     n: usize,
     tuples: Vec<Vec<N>>,
     fills: Vec<Fill>,
@@ -25,10 +25,10 @@ impl Table {
     ///
     /// # Errors
     /// Returns [`EmptyFills`] if no tuples satisfy the constraint.
-    fn commutative(
+    pub fn commutative(
         n: usize,
         k: usize,
-        operator: Commutative,
+        operator: CommutativeOperation,
         target: Target,
     ) -> Result<Self, Error> {
         Self::build(n, Tuples::commutative(n, k, operator, target).collect())
@@ -39,7 +39,11 @@ impl Table {
     ///
     /// # Errors
     /// Returns [`EmptyFills`] if no tuples satisfy the constraint.
-    fn non_commutative(n: usize, operator: NonCommutative, target: Target) -> Result<Self, Error> {
+    pub fn non_commutative(
+        n: usize,
+        operator: NonCommutativeOperation,
+        target: Target,
+    ) -> Result<Self, Error> {
         Self::build(n, Tuples::non_commutative(n, operator, target).collect())
     }
 
@@ -79,8 +83,8 @@ impl Narrow for Table {
 mod tests {
     use super::*;
     use crate::mdk::Error::EmptyFills;
-    use crate::mdk::operation::Commutative::{Add, Multiply};
-    use crate::mdk::operation::NonCommutative::{Divide, Subtract};
+    use crate::mdk::operation::CommutativeOperation::{Add, Multiply};
+    use crate::mdk::operation::NonCommutativeOperation::{Divide, Subtract};
 
     #[test]
     fn add_fills_are_union_of_column_values() {

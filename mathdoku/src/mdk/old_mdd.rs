@@ -630,30 +630,6 @@ mod tests {
     // ---- brute-force oracle cross-check ----
 
     #[test]
-    fn sum_matches_brute_force_oracle() {
-        for n in 3u32..=6 {
-            for arity in 2u32..=4 {
-                let max_target = n * arity + 1;
-                for target in 1..=max_target {
-                    assert_equiv(n, Commutative::Add, target, arity);
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn product_matches_brute_force_oracle() {
-        for n in 3u32..=6 {
-            for arity in 2u32..=3 {
-                let max_target = n.pow(arity) + 1;
-                for target in 1..=max_target {
-                    assert_equiv(n, Commutative::Multiply, target, arity);
-                }
-            }
-        }
-    }
-
-    #[test]
     #[ignore = "exhaustive property test; run with --include-ignored on merge to main"]
     fn matches_brute_force_across_n_arity_and_target() {
         for n in 3u32..=9 {
@@ -713,15 +689,15 @@ mod tests {
     // ---- helpers and fixtures ----
 
     fn pair(r0: usize, c0: usize, r1: usize, c1: usize) -> Polyomino {
-        Polyomino::from_cells([Cell(r0, c0), Cell(r1, c1)]).unwrap()
+        Polyomino::from([Cell(r0, c0), Cell(r1, c1)]).unwrap()
     }
 
     fn triple(r0: usize, c0: usize, r1: usize, c1: usize, r2: usize, c2: usize) -> Polyomino {
-        Polyomino::from_cells([Cell(r0, c0), Cell(r1, c1), Cell(r2, c2)]).unwrap()
+        Polyomino::from([Cell(r0, c0), Cell(r1, c1), Cell(r2, c2)]).unwrap()
     }
 
     fn cells_polyomino(arity: usize) -> Polyomino {
-        Polyomino::from_cells((0..arity).map(|i| Cell(1, i + 1))).unwrap()
+        Polyomino::from((0..arity).map(|i| Cell(1, i + 1))).unwrap()
     }
 
     fn mdd(n: usize, polyomino: &Polyomino, op: Commutative, target: Target) -> Mdd {

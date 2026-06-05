@@ -1,5 +1,5 @@
 //! Iterator over value tuples satisfying a cage arithmetic constraint.
-use crate::mdk::operation::{ArithmeticOperation, Commutative, NonCommutative};
+use crate::mdk::operation::{ArithmeticOperation, CommutativeOperation, NonCommutativeOperation};
 use crate::mdk::{N, Target};
 use std::collections::VecDeque;
 
@@ -17,21 +17,26 @@ pub struct Tuples {
 
 impl Tuples {
     /// Creates a `Tuples` iterator for a commutative (monotonic) operation.
-    pub fn commutative(n: usize, k: usize, operator: Commutative, target: Target) -> Self {
+    pub fn commutative(
+        n: usize,
+        k: usize,
+        operation: CommutativeOperation,
+        target: Target,
+    ) -> Self {
         Tuples {
             n,
             k,
-            constraint: ArithmeticOperation::Commutative(operator, target),
+            constraint: ArithmeticOperation::Commutative(operation, target),
             queue: VecDeque::from([vec![]]),
         }
     }
 
     /// Creates a `Tuples` iterator for a non-commutative operation over pairs (`k = 2`).
-    pub fn non_commutative(n: usize, op: NonCommutative, target: Target) -> Self {
+    pub fn non_commutative(n: usize, operation: NonCommutativeOperation, target: Target) -> Self {
         Tuples {
             n,
             k: 2,
-            constraint: ArithmeticOperation::NonCommutative(op, target),
+            constraint: ArithmeticOperation::NonCommutative(operation, target),
             queue: VecDeque::from([vec![]]),
         }
     }
@@ -41,7 +46,7 @@ impl Tuples {
     /// Prunes partial tuples whose result plus the minimum possible completion
     /// already exceeds the target, using the dual operation's identity element
     /// as the minimum-per-remaining-slot bound.
-    fn monotonic(&mut self, operator: Commutative, target: Target) -> Step {
+    fn monotonic(&mut self, operator: CommutativeOperation, target: Target) -> Step {
         let Some(tuple) = self.queue.pop_front() else {
             return Step::Exhausted;
         };
@@ -72,7 +77,7 @@ impl Tuples {
     /// Advances one step for a non-commutative operation.
     ///
     /// No pruning is possible since the operation is not monotonic.
-    fn non_monotonic(&mut self, operator: NonCommutative, target: Target) -> Step {
+    fn non_monotonic(&mut self, operator: NonCommutativeOperation, target: Target) -> Step {
         let Some(tuple) = self.queue.pop_front() else {
             return Step::Exhausted;
         };
@@ -130,8 +135,8 @@ impl Iterator for Tuples {
 #[cfg(test)]
 mod tests {
     use crate::mdk::N;
-    use crate::mdk::operation::Commutative::{Add, Multiply};
-    use crate::mdk::operation::NonCommutative::{Divide, Subtract};
+    use crate::mdk::operation::CommutativeOperation::{Add, Multiply};
+    use crate::mdk::operation::NonCommutativeOperation::{Divide, Subtract};
     use crate::mdk::tuples::Tuples;
 
     #[test]

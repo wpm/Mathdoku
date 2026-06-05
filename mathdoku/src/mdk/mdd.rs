@@ -4,8 +4,8 @@
 //! constraints (subtract, divide), use [`Table`](crate::mdk::table::Table) instead.
 use crate::mdk::Error::IndexOutOfBounds;
 use crate::mdk::fill::Fill;
-use crate::mdk::memo::{fills_from_tuples, Lookup, Narrow};
-use crate::mdk::operation::Commutative;
+use crate::mdk::memo::{Lookup, Narrow, fills_from_tuples};
+use crate::mdk::operation::CommutativeOperation;
 use crate::mdk::{Error, N, Target};
 use log::debug;
 use std::collections::{HashMap, HashSet};
@@ -19,7 +19,7 @@ use std::collections::{HashMap, HashSet};
 /// Per-position candidate sets ([`Fill`]s) are derived from the surviving paths
 /// and cached; construction fails with [`EmptyFills`] if no valid tuples exist.
 #[derive(Clone)]
-pub struct Mdd {
+pub(crate) struct Mdd {
     n: usize,
     constraint: Constraint,
     edges: HashMap<Node, Vec<(N, Node)>>,
@@ -27,7 +27,17 @@ pub struct Mdd {
 }
 
 impl Mdd {
-    fn new(n: usize, k: usize, operator: Commutative, target: Target) -> Result<Self, Error> {
+    /// Constructs an MDD for all `k`-tuples of values in `1..=n` satisfying
+    /// `operator` applied to the tuple equals `target`.
+    ///
+    /// # Errors
+    /// Returns [`Error::EmptyFills`] if no tuples satisfy the constraint.
+    pub fn new(
+        n: usize,
+        k: usize,
+        operator: CommutativeOperation,
+        target: Target,
+    ) -> Result<Self, Error> {
         #[allow(clippy::cast_possible_truncation)]
         let constraint = Constraint {
             operation: operator,
@@ -350,7 +360,7 @@ impl Narrow for Mdd {
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 struct Constraint {
-    operation: Commutative,
+    operation: CommutativeOperation,
     target: N,
     arity: N,
 }
@@ -358,22 +368,24 @@ struct Constraint {
 impl Constraint {
     const fn target_reached(self, v: N) -> bool {
         match self.operation {
-            Commutative::Add => v >= self.target,
-            Commutative::Multiply => v > self.target,
+            CommutativeOperation::Add => v >= self.target,
+            CommutativeOperation::Multiply => v > self.target,
         }
     }
 
     const fn pruned(self, acc: N, v: N, _remaining: N) -> bool {
         match self.operation {
-            Commutative::Add => acc + v > self.target,
-            Commutative::Multiply => acc * v > self.target,
+            CommutativeOperation::Add => acc + v > self.target,
+            CommutativeOperation::Multiply => acc * v > self.target,
         }
     }
 
     const fn skipped(self, acc: N, v: N, remaining: N, n: N) -> bool {
         match self.operation {
-            Commutative::Add => acc + v + remaining * n < self.target,
-            Commutative::Multiply => (acc * v) != 0 && !self.target.is_multiple_of(acc * v),
+            CommutativeOperation::Add => acc + v + remaining * n < self.target,
+            CommutativeOperation::Multiply => {
+                (acc * v) != 0 && !self.target.is_multiple_of(acc * v)
+            }
         }
     }
 
@@ -389,8 +401,8 @@ impl Constraint {
 impl std::fmt::Display for Constraint {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let symbol = match self.operation {
-            Commutative::Add => '+',
-            Commutative::Multiply => '×',
+            CommutativeOperation::Add => '+',
+            CommutativeOperation::Multiply => '×',
         };
         write!(f, "{symbol}{} [{}]", self.target, self.arity)
     }
@@ -412,7 +424,7 @@ impl std::fmt::Display for Node {
 mod tests {
     use super::*;
     use crate::mdk::Error::EmptyFills;
-    use crate::mdk::operation::Commutative::{Add, Multiply};
+    use crate::mdk::operation::CommutativeOperation::{Add, Multiply};
 
     // ---- Memo::commutative construction ----
 
@@ -668,7 +680,7 @@ mod tests {
         t
     }
 
-    fn ref_tuples(n: N, op: Commutative, target: N, k: u32) -> Vec<Vec<N>> {
+    fn ref_tuples(n: N, op: CommutativeOperation, target: N, k: u32) -> Vec<Vec<N>> {
         let k = k as usize;
         let mut out = Vec::new();
         let mut t = vec![1u32; k];
@@ -690,7 +702,7 @@ mod tests {
         out
     }
 
-    fn assert_equiv(n: N, op: Commutative, target: N, k: u32) {
+    fn assert_equiv(n: N, op: CommutativeOperation, target: N, k: u32) {
         let expected = ref_tuples(n, op, target, k);
         match Mdd::new(n as usize, k as usize, op, target) {
             Ok(m) => {

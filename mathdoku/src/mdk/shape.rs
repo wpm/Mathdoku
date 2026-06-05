@@ -17,7 +17,7 @@ impl Polyomino {
     /// # Errors
     ///
     /// Returns [`InvalidPolyomino`] if the cells are empty or not edge-connected.
-    pub(crate) fn from_cells(cells: impl IntoIterator<Item = Cell>) -> Result<Self, Error> {
+    pub fn from(cells: impl IntoIterator<Item = Cell>) -> Result<Self, Error> {
         let cells: Vec<Cell> = cells.into_iter().collect();
         match is_edge_adjacent(&cells) {
             true => Ok(Self(BTreeSet::from_iter(cells))),
@@ -86,36 +86,33 @@ mod tests {
 
     #[test]
     fn polyomino_single_cell_is_connected() {
-        assert!(Polyomino::from_cells([Cell(1, 1)]).is_ok());
+        assert!(Polyomino::from([Cell(1, 1)]).is_ok());
     }
 
     #[test]
     fn polyomino_horizontal_pair_is_connected() {
-        assert!(Polyomino::from_cells([Cell(1, 1), Cell(1, 2)]).is_ok());
+        assert!(Polyomino::from([Cell(1, 1), Cell(1, 2)]).is_ok());
     }
 
     #[test]
     fn polyomino_vertical_pair_is_connected() {
-        assert!(Polyomino::from_cells([Cell(1, 1), Cell(2, 1)]).is_ok());
+        assert!(Polyomino::from([Cell(1, 1), Cell(2, 1)]).is_ok());
     }
 
     #[test]
     fn polyomino_l_shape_is_connected() {
-        assert!(Polyomino::from_cells([Cell(1, 1), Cell(1, 2), Cell(2, 1)]).is_ok());
+        assert!(Polyomino::from([Cell(1, 1), Cell(1, 2), Cell(2, 1)]).is_ok());
     }
 
     #[test]
     fn polyomino_empty_is_disconnected() {
-        assert!(matches!(
-            Polyomino::from_cells([]),
-            Err(InvalidPolyomino(_))
-        ));
+        assert!(matches!(Polyomino::from([]), Err(InvalidPolyomino(_))));
     }
 
     #[test]
     fn polyomino_diagonal_pair_is_disconnected() {
         assert!(matches!(
-            Polyomino::from_cells([Cell(1, 1), Cell(2, 2)]),
+            Polyomino::from([Cell(1, 1), Cell(2, 2)]),
             Err(InvalidPolyomino(_))
         ));
     }
@@ -123,21 +120,21 @@ mod tests {
     #[test]
     fn polyomino_two_separate_pairs_is_disconnected() {
         assert!(matches!(
-            Polyomino::from_cells([Cell(1, 1), Cell(1, 2), Cell(3, 3), Cell(3, 4)]),
+            Polyomino::from([Cell(1, 1), Cell(1, 2), Cell(3, 3), Cell(3, 4)]),
             Err(InvalidPolyomino(_))
         ));
     }
 
     #[test]
     fn polyomino_into_iter_yields_cells_in_order() {
-        let p = Polyomino::from_cells([Cell(2, 1), Cell(1, 2), Cell(1, 1)]).unwrap();
+        let p = Polyomino::from([Cell(2, 1), Cell(1, 2), Cell(1, 1)]).unwrap();
         let cells: Vec<Cell> = p.into_iter().collect();
         assert_eq!(cells, vec![Cell(1, 1), Cell(1, 2), Cell(2, 1)]);
     }
 
     #[test]
     fn polyomino_into_iter_singleton() {
-        let p = Polyomino::from_cells([Cell(3, 4)]).unwrap();
+        let p = Polyomino::from([Cell(3, 4)]).unwrap();
         let cells: Vec<Cell> = p.into_iter().collect();
         assert_eq!(cells, vec![Cell(3, 4)]);
     }

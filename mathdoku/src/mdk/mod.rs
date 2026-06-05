@@ -3,7 +3,6 @@
 use crate::mdk::old_cage::Cage;
 use shape::Cell;
 
-mod cage;
 pub(crate) mod fill;
 mod grid;
 pub mod mdd;
@@ -17,6 +16,7 @@ pub mod puzzle;
 pub mod shape;
 pub mod table;
 pub mod tuples;
+mod cage;
 
 type N = u32;
 type Target = u32;

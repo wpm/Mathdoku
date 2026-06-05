@@ -100,19 +100,19 @@ mod tests {
     use std::cmp::Ordering;
 
     fn singleton() -> Polyomino {
-        Polyomino::from_cells([Cell(1, 1)]).unwrap()
+        Polyomino::from([Cell(1, 1)]).unwrap()
     }
 
     fn pair() -> Polyomino {
-        Polyomino::from_cells([Cell(1, 1), Cell(1, 2)]).unwrap()
+        Polyomino::from([Cell(1, 1), Cell(1, 2)]).unwrap()
     }
 
     fn col_pair() -> Polyomino {
-        Polyomino::from_cells([Cell(1, 1), Cell(2, 1)]).unwrap()
+        Polyomino::from([Cell(1, 1), Cell(2, 1)]).unwrap()
     }
 
     fn l_shape() -> Polyomino {
-        Polyomino::from_cells([Cell(1, 1), Cell(1, 2), Cell(2, 1)]).unwrap()
+        Polyomino::from([Cell(1, 1), Cell(1, 2), Cell(2, 1)]).unwrap()
     }
 
     fn cage(polyomino: Polyomino, operator: Operator, target: Target) -> Cage {

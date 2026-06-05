@@ -1,47 +1,28 @@
 //! Arithmetic operators and cage operations for Mathdoku constraints.
-use crate::mdk::cage::Memo;
-use crate::mdk::shape::Polyomino;
 use crate::mdk::{N, Target};
 use std::cmp::{max, min};
 use std::ops::Div;
-
-/// The arithmetic constraint applied to a cage's cell values.
-#[derive(Clone, Copy)]
-pub enum CageOperation {
-    /// A commutative operation (add or multiply) with a target value.
-    Commutative(Commutative, Target),
-    /// A non-commutative operation (subtract or divide) with a target value.
-    NonCommutative(NonCommutative, Target),
-    /// A single cell whose value is given directly.
-    Given(N),
-}
-
-impl CageOperation {
-    fn memo(&self, _n: usize, _polyomino: &Polyomino) -> Option<Memo> {
-        todo!()
-    }
-}
 
 /// An arithmetic operation paired with a target value.
 #[derive(Clone, Copy)]
 pub enum ArithmeticOperation {
     /// A commutative (monotonic) operation: add or multiply.
-    Commutative(Commutative, Target),
+    Commutative(CommutativeOperation, Target),
     /// A non-commutative (non-monotonic) operation: subtract or divide.
-    NonCommutative(NonCommutative, Target),
+    NonCommutative(NonCommutativeOperation, Target),
 }
 
-/// A commutative, monotonically non-decreasing cage operator.
+/// A commutative, monotonically non-decreasing cage operation.
 ///
 /// Because applying the operator to a longer tuple can only increase the result,
 /// partial results can be used to prune the search for valid tuples.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-pub enum Commutative {
+pub enum CommutativeOperation {
     Add,
     Multiply,
 }
-
-impl Commutative {
+// TODO Does CommutativeOperation need noth apply and apply_pair?
+impl CommutativeOperation {
     /// Applies this operator to `ns`, returning the result.
     pub fn apply(&self, ns: &[N]) -> Target {
         match self {
@@ -89,12 +70,12 @@ impl Commutative {
 /// difference and divide uses `max / min` — so the result is order-independent
 /// even though the operator is not commutative in the algebraic sense.
 #[derive(Clone, Copy)]
-pub enum NonCommutative {
+pub enum NonCommutativeOperation {
     Subtract,
     Divide,
 }
 
-impl NonCommutative {
+impl NonCommutativeOperation {
     /// Applies this operator to `(a, b)`, returning the result.
     ///
     /// Subtract returns `|a - b|`. Divide returns `max(a, b) / min(a, b)`
