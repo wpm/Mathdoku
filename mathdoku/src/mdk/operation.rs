@@ -21,20 +21,20 @@ pub enum CommutativeOperator {
     Add,
     Multiply,
 }
-// TODO Does CommutativeOperation need noth apply and apply_pair?
 impl CommutativeOperator {
-    /// Applies this operator to `ns`, returning the result.
+    /// Applies this operator to a tuple of values, returning the result.
     #[must_use]
-    pub fn apply(&self, ns: &[N]) -> Target {
+    pub fn apply_to_tuple(&self, ns: &[N]) -> Target {
         match self {
             Self::Add => ns.iter().sum(),
             Self::Multiply => ns.iter().product(),
         }
     }
 
+    // TODO Why isn't apply_to_pair a method in NonCommutativeOperator?
     /// Applies this operator to a single pair `(x, y)`.
     #[must_use]
-    pub const fn apply_pair(self, x: N, y: N) -> N {
+    pub const fn apply_to_pair(self, x: N, y: N) -> N {
         match self {
             Self::Add => x + y,
             Self::Multiply => x * y,
