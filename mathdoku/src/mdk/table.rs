@@ -4,7 +4,7 @@ use crate::mdk::fill::Fill;
 use crate::mdk::memo::{Memo, fills_from_tuples};
 use crate::mdk::operation::{ArithmeticConstraint, CommutativeOperator, NonCommutativeOperator};
 use crate::mdk::tuples::Tuples;
-use crate::mdk::{Error, N, Target};
+use crate::mdk::{Error, N, T};
 
 /// A cage constraint stored as an explicit list of valid value tuples.
 ///
@@ -31,7 +31,7 @@ impl Table {
         n: usize,
         k: usize,
         operator: CommutativeOperator,
-        target: Target,
+        target: T,
     ) -> Result<Self, Error> {
         let constraint = ArithmeticConstraint::CommutativeConstraint(operator, target);
         Self::build(
@@ -49,7 +49,7 @@ impl Table {
     pub fn non_commutative(
         n: usize,
         operator: NonCommutativeOperator,
-        target: Target,
+        target: T,
     ) -> Result<Self, Error> {
         let constraint = ArithmeticConstraint::NonCommutativeConstraint(operator, target);
         Self::build(

@@ -44,15 +44,15 @@ use crate::mdk::memo::Memo;
 use crate::mdk::operation::{CommutativeOperator, NonCommutativeOperator};
 use crate::mdk::polyomino::{Cell, Polyomino};
 use crate::mdk::table::Table;
-use crate::mdk::{Error, Error::EmptyFills, N, Target};
+use crate::mdk::{Error, Error::EmptyFills, N, T};
 
 /// The constraint for a cage and its backing memo.
 #[derive(Clone, PartialEq, Eq, Debug)]
 enum CageOperation {
     /// A commutative (monotonic) operation: add or multiply.
-    Commutative(CommutativeOperator, Target, Mdd),
+    Commutative(CommutativeOperator, T, Mdd),
     /// A non-commutative (non-monotonic) operation: subtract or divide.
-    NonCommutative(NonCommutativeOperator, Target, Table),
+    NonCommutative(NonCommutativeOperator, T, Table),
     /// A single cell with a fixed value.
     Given(N),
 }
@@ -84,7 +84,7 @@ impl Cage {
         n: usize,
         polyomino: Polyomino,
         operation: CommutativeOperator,
-        target: Target,
+        target: T,
     ) -> Result<Self, Error> {
         let mdd = Mdd::new(n, polyomino.len(), operation, target)?;
         let operation = CageOperation::Commutative(operation, target, mdd);
@@ -106,7 +106,7 @@ impl Cage {
         n: usize,
         polyomino: Polyomino,
         operation: NonCommutativeOperator,
-        target: Target,
+        target: T,
     ) -> Result<Self, Error> {
         let table = Table::non_commutative(n, operation, target)?;
         let operation = CageOperation::NonCommutative(operation, target, table);

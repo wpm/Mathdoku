@@ -17,8 +17,14 @@ pub(crate) mod regin;
 pub mod table;
 pub mod tuples;
 
+/// A cell value in the range `1..=9`.
 pub type N = u8;
-type Target = u32;
+
+/// The accumulated result of an arithmetic cage operation (sum or product of [`N`] values).
+///
+/// Sums and products of up to nine 9s can reach 729, which overflows `u8` and `u16`.
+/// `u32` is wide enough for any realistic Mathdoku constraint.
+type T = u32;
 
 /// Errors returned by mdk operations.
 #[derive(Debug)]

@@ -6,7 +6,7 @@ use crate::mdk::Error::InvalidCellCageIndex;
 use crate::mdk::fill::Fill;
 use crate::mdk::memo::{Memo, fills_from_tuples};
 use crate::mdk::operation::CommutativeOperator;
-use crate::mdk::{Error, N, Target};
+use crate::mdk::{Error, N, T};
 use log::debug;
 use std::collections::{HashMap, HashSet};
 
@@ -36,13 +36,13 @@ impl Mdd {
         n: usize,
         k: usize,
         operator: CommutativeOperator,
-        target: Target,
+        target: T,
     ) -> Result<Self, Error> {
         let constraint = Constraint {
             operator,
             target,
             #[allow(clippy::cast_possible_truncation)]
-            arity: k as Target,
+            arity: k as T,
         };
         let mut mdd = Self {
             n,
@@ -68,14 +68,14 @@ impl Mdd {
         debug!("{self}");
         let remaining = self.constraint.arity - head.depth - 1;
         #[allow(clippy::cast_possible_truncation)]
-        for i in 1..=self.n as Target {
+        for i in 1..=self.n as T {
             if self.constraint.pruned(head.value, i, remaining) {
                 break;
             }
             #[allow(clippy::cast_possible_truncation)]
             if self
                 .constraint
-                .skipped(head.value, i, remaining, self.n as Target)
+                .skipped(head.value, i, remaining, self.n as T)
             {
                 continue;
             }
@@ -93,7 +93,7 @@ impl Mdd {
 
     /// Returns a copy of this MDD with edges for forbidden values removed and
     /// dead nodes garbage-collected via downward and upward cascades.
-    fn remove_support(&self, forbidden: &HashMap<Target, HashSet<N>>) -> Self {
+    fn remove_support(&self, forbidden: &HashMap<T, HashSet<N>>) -> Self {
         let mut mdd = Self {
             n: self.n,
             constraint: self.constraint,
@@ -127,7 +127,7 @@ impl Mdd {
         mdd
     }
 
-    fn heads_at_depth(&self, depth: Target) -> Vec<Node> {
+    fn heads_at_depth(&self, depth: T) -> Vec<Node> {
         self.edges
             .keys()
             .filter(|n| n.depth == depth)
@@ -288,7 +288,7 @@ impl Mdd {
         )
     }
 
-    fn log_if(condition: bool, depth: Target, message: &str) -> bool {
+    fn log_if(condition: bool, depth: T, message: &str) -> bool {
         if condition {
             debug!("{:indent$}{message}", "", indent = depth as usize);
         }
@@ -339,7 +339,7 @@ impl Memo for Mdd {
 
     fn narrow(&self, support: Vec<Fill>) -> Result<Self, Error> {
         #[allow(clippy::cast_possible_truncation)]
-        let forbidden: HashMap<Target, HashSet<N>> = support
+        let forbidden: HashMap<T, HashSet<N>> = support
             .iter()
             .enumerate()
             .filter_map(|(i, fill)| {
@@ -348,7 +348,7 @@ impl Memo for Mdd {
                 if excluded.is_empty() {
                     None
                 } else {
-                    Some((i as Target, excluded))
+                    Some((i as T, excluded))
                 }
             })
             .collect();
@@ -361,37 +361,37 @@ impl Memo for Mdd {
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 struct Constraint {
     operator: CommutativeOperator,
-    target: Target,
-    arity: Target,
+    target: T,
+    arity: T,
 }
 
 impl Constraint {
-    const fn target_reached(self, v: Target) -> bool {
+    const fn target_reached(self, v: T) -> bool {
         match self.operator {
             CommutativeOperator::Add => v >= self.target,
             CommutativeOperator::Multiply => v > self.target,
         }
     }
 
-    const fn pruned(self, acc: Target, v: Target, _remaining: Target) -> bool {
+    const fn pruned(self, acc: T, v: T, _remaining: T) -> bool {
         match self.operator {
             CommutativeOperator::Add => acc + v > self.target,
             CommutativeOperator::Multiply => acc * v > self.target,
         }
     }
 
-    const fn skipped(self, acc: Target, v: Target, remaining: Target, n: Target) -> bool {
+    const fn skipped(self, acc: T, v: T, remaining: T, n: T) -> bool {
         match self.operator {
             CommutativeOperator::Add => acc + v + remaining * n < self.target,
             CommutativeOperator::Multiply => (acc * v) != 0 && !self.target.is_multiple_of(acc * v),
         }
     }
 
-    const fn operation(self, x: Target, y: Target) -> Target {
+    const fn operation(self, x: T, y: T) -> T {
         self.operator.apply_to_pair(x, y)
     }
 
-    const fn unit(self) -> Target {
+    const fn unit(self) -> T {
         self.operator.identity()
     }
 }
@@ -408,8 +408,8 @@ impl std::fmt::Display for Constraint {
 
 #[derive(Eq, PartialEq, Hash, Debug, Copy, Clone)]
 struct Node {
-    depth: Target,
-    value: Target,
+    depth: T,
+    value: T,
 }
 
 impl std::fmt::Display for Node {
@@ -575,7 +575,7 @@ mod tests {
     fn remove_support_empty_is_identity() {
         let m = Mdd::new(3, 3, Add, 5).unwrap();
         assert_eq!(
-            sorted_tuples(&m.remove_support(&HashMap::<Target, HashSet<N>>::new())),
+            sorted_tuples(&m.remove_support(&HashMap::<T, HashSet<N>>::new())),
             sorted_tuples(&m)
         );
     }
@@ -662,12 +662,12 @@ mod tests {
         for n in 3usize..=9 {
             for k in 2usize..=5 {
                 #[allow(clippy::cast_possible_truncation)]
-                let max_sum = (n * k + 1) as Target;
+                let max_sum = (n * k + 1) as T;
                 for target in 1..=max_sum {
                     assert_equiv(n, Add, target, k);
                 }
                 #[allow(clippy::cast_possible_truncation)]
-                let max_product = (n as Target).pow(k as u32) + 1;
+                let max_product = (n as T).pow(k as u32) + 1;
                 for target in 1..=max_product {
                     assert_equiv(n, Multiply, target, k);
                 }
@@ -677,7 +677,7 @@ mod tests {
 
     // ---- helpers ----
 
-    fn forbidden(pairs: &[(Target, &[N])]) -> HashMap<Target, HashSet<N>> {
+    fn forbidden(pairs: &[(T, &[N])]) -> HashMap<T, HashSet<N>> {
         pairs
             .iter()
             .map(|&(var, vals)| (var, vals.iter().copied().collect()))
@@ -690,7 +690,7 @@ mod tests {
         t
     }
 
-    fn ref_tuples(n: usize, op: CommutativeOperator, target: Target, k: usize) -> Vec<Vec<N>> {
+    fn ref_tuples(n: usize, op: CommutativeOperator, target: T, k: usize) -> Vec<Vec<N>> {
         let mut out = Vec::new();
         let mut t = vec![1u8; k];
         loop {
@@ -712,7 +712,7 @@ mod tests {
         out
     }
 
-    fn assert_equiv(n: usize, op: CommutativeOperator, target: Target, k: usize) {
+    fn assert_equiv(n: usize, op: CommutativeOperator, target: T, k: usize) {
         let expected = ref_tuples(n, op, target, k);
         match Mdd::new(n, k, op, target) {
             Ok(m) => {

@@ -6,7 +6,7 @@ use crate::mdk::csp::{Constraint, generalized_arc_consistency};
 use crate::mdk::fill::Fill;
 use crate::mdk::grid::{AllDifferent, Grid};
 use crate::mdk::polyomino::{Cell, Polyomino};
-use crate::mdk::{Error, N, Target};
+use crate::mdk::{Error, N, T};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -116,7 +116,7 @@ impl Puzzle {
         &self,
         _polyomino: &Polyomino,
         _operation: Operation,
-    ) -> Result<Vec<Target>, Error> {
+    ) -> Result<Vec<T>, Error> {
         todo!()
     }
 

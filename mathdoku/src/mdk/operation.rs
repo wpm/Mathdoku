@@ -1,5 +1,5 @@
 //! Arithmetic operators and cage operations for Mathdoku constraints.
-use crate::mdk::{N, Target};
+use crate::mdk::{N, T};
 use std::cmp::{max, min};
 use std::ops::Div;
 
@@ -7,9 +7,9 @@ use std::ops::Div;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ArithmeticConstraint {
     /// A commutative operation and a target.
-    CommutativeConstraint(CommutativeOperator, Target),
+    CommutativeConstraint(CommutativeOperator, T),
     /// A non-commutative operation and a target.
-    NonCommutativeConstraint(NonCommutativeOperator, Target),
+    NonCommutativeConstraint(NonCommutativeOperator, T),
 }
 
 /// A commutative, monotonically non-decreasing cage operation.
@@ -24,17 +24,17 @@ pub enum CommutativeOperator {
 impl CommutativeOperator {
     /// Applies this operator to a tuple of values, returning the result.
     #[must_use]
-    pub fn apply_to_tuple(&self, ns: &[N]) -> Target {
+    pub fn apply_to_tuple(&self, ns: &[N]) -> T {
         match self {
-            Self::Add => ns.iter().map(|&v| Target::from(v)).sum(),
-            Self::Multiply => ns.iter().map(|&v| Target::from(v)).product(),
+            Self::Add => ns.iter().map(|&v| T::from(v)).sum(),
+            Self::Multiply => ns.iter().map(|&v| T::from(v)).product(),
         }
     }
 
     // TODO Why isn't apply_to_pair a method in NonCommutativeOperator?
     /// Applies this operator to a single pair `(x, y)`.
     #[must_use]
-    pub const fn apply_to_pair(self, x: Target, y: Target) -> Target {
+    pub const fn apply_to_pair(self, x: T, y: T) -> T {
         match self {
             Self::Add => x + y,
             Self::Multiply => x * y,
@@ -47,7 +47,7 @@ impl CommutativeOperator {
     /// result extended by `remaining` copies of the dual identity gives the
     /// tightest reachable lower bound on the final result.
     #[must_use]
-    pub const fn identity(&self) -> Target {
+    pub const fn identity(&self) -> T {
         match self {
             Self::Add => 0,
             Self::Multiply => 1,
@@ -84,10 +84,10 @@ impl NonCommutativeOperator {
     /// Subtract returns `|a - b|`. Divide returns `max(a, b) / min(a, b)`
     /// using integer division.
     #[must_use]
-    pub fn apply(&self, a: N, b: N) -> Target {
+    pub fn apply(&self, a: N, b: N) -> T {
         match self {
-            Self::Subtract => Target::from(a.abs_diff(b)),
-            Self::Divide => Target::from(max(a, b).div(min(a, b))),
+            Self::Subtract => T::from(a.abs_diff(b)),
+            Self::Divide => T::from(max(a, b).div(min(a, b))),
         }
     }
 }
