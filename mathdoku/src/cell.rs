@@ -130,7 +130,7 @@ impl Values {
     }
 }
 
-impl crate::csp::Domain for Values {
+impl crate::mdk::csp::Domain for Values {
     fn is_empty(&self) -> bool {
         Self::is_empty(*self)
     }

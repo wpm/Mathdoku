@@ -1,9 +1,9 @@
 #![allow(dead_code)]
 //! Generic constraint satisfaction problem (CSP) abstractions.
 //!
-//! This module defines the core traits of a CSP — [`Variable`] and [`Constraint`] —
+//! This module defines the core traits of a CSP — [`State`] and [`Constraint`] —
 //! and the [`generalized_arc_consistency`] algorithm that ties them together. The
-//! concrete solver in [`crate::puzzle_csp`] implements these abstractions for the
+//! concrete solver in [`crate::grid_csp`] implements these abstractions for the
 //! Mathdoku grid.
 //!
 //! ## Structure
@@ -30,6 +30,10 @@ use std::collections::VecDeque;
 /// A state that maps variables of type `V` to domains of type `D`.
 pub trait State<V, D, E> {
     /// Get the domain of the specified variable.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `variable` is not in the state.
     fn get(&self, variable: V) -> Result<D, E>;
 }
 
@@ -102,7 +106,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::{Constraint, State, generalized_arc_consistency};
-    use crate::csp::tests::Constraints::{Equal, Sum};
+    use crate::mdk::csp::tests::Constraints::{Equal, Sum};
     use std::collections::{HashMap, HashSet};
 
     #[test]
@@ -191,7 +195,7 @@ mod tests {
 
     type TestDomain = HashSet<u8>;
 
-    impl super::Domain for HashSet<u8> {
+    impl<S: ::std::hash::BuildHasher> super::Domain for HashSet<u8, S> {
         fn is_empty(&self) -> bool {
             self.is_empty()
         }

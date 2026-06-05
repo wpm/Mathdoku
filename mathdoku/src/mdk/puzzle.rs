@@ -26,11 +26,9 @@ impl Puzzle {
         self.grid.get(cell)
     }
 
-    /// Applies `fills` as assignments and returns the updated candidate fills for all cells.
-    ///
     /// # Errors
     ///
-    /// Returns an error if any cell in `fills` is not in the puzzle.
+    /// Returns an error if `cell` is not in the puzzle or `n` is not a candidate value for it.
     #[allow(clippy::todo)]
     pub fn set(&self, cell: Cell, n: N) -> Result<Self, Error> {
         let fill = self.grid.get(cell)?;

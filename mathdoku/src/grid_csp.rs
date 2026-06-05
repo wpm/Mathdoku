@@ -4,8 +4,8 @@
 use std::sync::Arc;
 
 use crate::cage::Cage;
-use crate::csp::{Constraint, State};
 use crate::grid::Grid;
+use crate::mdk::csp::{Constraint, State};
 use crate::puzzle::Puzzle;
 use crate::regin::regin_gac;
 use crate::{Cell, Error, Values};

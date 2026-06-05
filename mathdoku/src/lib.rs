@@ -34,7 +34,7 @@
 // Test code leans on `.unwrap()`/`.expect()`/`panic!()` to assert invariants
 // that the strict workspace policy denies in production. Allow them under
 // `cfg(test)` so `cargo clippy --all-targets` stays green without scattering
-// per-module `#[allow]`s. See issue #59.
+// per-module `#[allow]`s.
 #![cfg_attr(
     test,
     allow(
@@ -48,7 +48,6 @@
 mod cage;
 mod cage_fill;
 mod cell;
-mod csp;
 mod error;
 mod generate;
 mod grid;

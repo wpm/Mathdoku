@@ -5,6 +5,7 @@ use crate::mdk::polyomino::Polyomino;
 use polyomino::Cell;
 
 mod cage;
+pub mod csp;
 pub(crate) mod fill;
 mod grid;
 pub mod mdd;

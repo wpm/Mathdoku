@@ -264,7 +264,7 @@ impl Puzzle {
     pub fn fixpoint(&self) -> Option<Self> {
         let puzzle = Arc::new(self.clone());
         let constraints = Self::constraints(&puzzle);
-        let grid = crate::csp::generalized_arc_consistency(self.grid, &constraints)?;
+        let grid = crate::mdk::csp::generalized_arc_consistency(self.grid, &constraints)?;
         Some(Self {
             grid,
             ..self.clone()
