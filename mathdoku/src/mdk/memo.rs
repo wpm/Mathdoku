@@ -44,7 +44,7 @@ pub(crate) fn fills_from_tuples(tuples: &[Tuple]) -> Result<Vec<Fill>, Error> {
     let fills: Vec<Fill> = (0..k)
         .map(|i| Fill::from(&tuples.iter().map(|t| t[i]).collect::<Tuple>()))
         .collect();
-    if fills.iter().any(Fill::is_empty) {
+    if fills.iter().any(|f| f.is_empty()) {
         return Err(EmptyFills);
     }
     Ok(fills)

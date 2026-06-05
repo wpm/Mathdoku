@@ -50,14 +50,11 @@ pub fn regin_gac(fills: &[Fill]) -> Vec<Fill> {
         return vec![];
     }
 
-    let all_values: Vec<N> = fills
+    let union = fills
         .iter()
-        .fold(std::collections::BTreeSet::new(), |mut acc, f| {
-            acc.extend(f.0.iter().copied());
-            acc
-        })
-        .into_iter()
-        .collect();
+        .copied()
+        .fold(Fill::default(), |acc, f| acc | f);
+    let all_values: Vec<N> = union.values().collect();
     let num_values = all_values.len();
     let value_index: HashMap<N, usize> = all_values
         .iter()
@@ -66,7 +63,7 @@ pub fn regin_gac(fills: &[Fill]) -> Vec<Fill> {
         .collect();
     let indexed_values: Vec<Vec<usize>> = fills
         .iter()
-        .map(|f| f.0.iter().map(|v| value_index[v]).collect())
+        .map(|f| f.values().map(|v| value_index[&v]).collect())
         .collect();
 
     // Maximum bipartite matching via augmenting paths.
@@ -294,7 +291,7 @@ mod tests {
                 }
                 return;
             }
-            for &value in &fills[i].0 {
+            for value in fills[i].values() {
                 if !used.contains(&value) {
                     current.push(value);
                     let mut used2 = used.clone();

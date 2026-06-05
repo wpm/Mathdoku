@@ -30,7 +30,7 @@ impl Grid {
     ///
     /// Returns [`MissingCell`] if `cell` is not in this grid.
     pub fn get(&self, cell: Cell) -> Result<Fill, Error> {
-        self.1.get(&cell).cloned().ok_or(MissingCell(cell))
+        self.1.get(&cell).copied().ok_or(MissingCell(cell))
     }
 
     /// Returns the grid size `n`.
@@ -67,7 +67,7 @@ impl Grid {
 impl State<Cell, Fill, Error> for Grid {
     fn get(&self, cell: Cell) -> Result<Fill, Error> {
         let fill = self.1.get(&cell).ok_or(MissingCell(cell))?;
-        Ok(fill.clone())
+        Ok(*fill)
     }
 }
 
@@ -128,7 +128,7 @@ impl Serialize for Grid {
             vec![]
         } else {
             (1..=self.0)
-                .map(|r| (1..=self.0).map(|c| self.1[&Cell(r, c)].clone()).collect())
+                .map(|r| (1..=self.0).map(|c| self.1[&Cell(r, c)]).collect())
                 .collect()
         };
         GridWire { n: self.0, fills }.serialize(s)
@@ -203,7 +203,7 @@ mod tests {
 
     fn grid_with_modified_cell(n: usize, cell: Cell, fill: Fill) -> Grid {
         let mut g = Grid::new(n);
-        drop(g.1.insert(cell, fill));
+        let _ = g.1.insert(cell, fill);
         g
     }
 
@@ -252,7 +252,7 @@ mod tests {
     #[test]
     fn state_get_returns_fill_for_present_cell() {
         let fill = Fill::from(&[2, 3]);
-        let g = grid_with_modified_cell(4, Cell(1, 1), fill.clone());
+        let g = grid_with_modified_cell(4, Cell(1, 1), fill);
         assert_eq!(
             <Grid as State<Cell, Fill, Error>>::get(&g, Cell(1, 1)).unwrap(),
             fill

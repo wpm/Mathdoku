@@ -83,7 +83,7 @@ impl Memo for Table {
     fn get(&self, index: usize) -> Result<Fill, Error> {
         self.fills
             .get(index)
-            .cloned()
+            .copied()
             .ok_or(InvalidCellCageIndex(index))
     }
 

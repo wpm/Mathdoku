@@ -1,45 +1,95 @@
 //! Candidate value sets.
 use crate::mdk::N;
-use itertools::Itertools;
-use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
+use serde::de::Error as DeError;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt::{Display, Formatter};
+use std::ops::{BitAnd, BitOr};
 
-/// The set of candidate values for a cell.
-#[derive(Eq, PartialEq, Ord, PartialOrd, Clone, Debug, Default, Serialize, Deserialize)]
-pub struct Fill(pub(crate) BTreeSet<N>);
+/// The set of candidate values for a cell, stored as a u16 bitmap.
+///
+/// Bit `v` (1 ≤ v ≤ 9) is set iff value `v` is a candidate. Bit 0 is unused.
+/// The representation is identical to [`crate::Values`]; it exists separately
+/// because this module is a clean-room reimplementation and shares no public API.
+#[derive(Eq, PartialEq, Ord, PartialOrd, Copy, Clone, Debug, Default, Hash)]
+pub struct Fill(u16);
 
 impl Fill {
     /// Creates a full candidate set `{1..=n}`.
-    pub(crate) fn new(n: usize) -> Self {
-        #[allow(clippy::cast_possible_truncation)]
-        Self((1..=n as N).collect())
+    pub(crate) const fn new(n: usize) -> Self {
+        // Set bits 1..=n: ((1 << (n+1)) - 1) & !1
+        Self(((1u16 << (n + 1)).wrapping_sub(1)) & !1)
     }
 
     /// Creates a candidate set from an explicit slice of values.
     pub(crate) fn from(ns: &[N]) -> Self {
-        Self(ns.iter().copied().collect())
+        Self(ns.iter().fold(0u16, |acc, &v| acc | (1u16 << v)))
     }
 
     /// Returns `true` if `value` is in this candidate set.
-    pub(crate) fn contains(&self, value: N) -> bool {
-        self.0.contains(&value)
+    pub(crate) const fn contains(self, value: N) -> bool {
+        self.0 & (1u16 << value) != 0
     }
 
-    pub(crate) fn is_empty(&self) -> bool {
-        self.0.is_empty()
+    pub(crate) const fn is_empty(self) -> bool {
+        self.0 == 0
+    }
+
+    /// Returns the values in ascending order.
+    pub(crate) fn values(self) -> impl Iterator<Item = N> {
+        (1u32..=9).filter(move |&v| self.0 & (1u16 << v) != 0)
+    }
+}
+
+impl BitOr for Fill {
+    type Output = Self;
+    fn bitor(self, rhs: Self) -> Self {
+        Self(self.0 | rhs.0)
+    }
+}
+
+impl BitAnd for Fill {
+    type Output = Self;
+    fn bitand(self, rhs: Self) -> Self {
+        Self(self.0 & rhs.0)
     }
 }
 
 impl crate::mdk::csp::Domain for Fill {
     fn is_empty(&self) -> bool {
-        self.0.is_empty()
+        Self::is_empty(*self)
     }
 }
 
 impl Display for Fill {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{{{}}}", self.0.iter().join(", "))
+        write!(f, "{{")?;
+        let mut first = true;
+        for v in self.values() {
+            if !first {
+                write!(f, ", ")?;
+            }
+            write!(f, "{v}")?;
+            first = false;
+        }
+        write!(f, "}}")
+    }
+}
+
+impl Serialize for Fill {
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.collect_seq(self.values())
+    }
+}
+
+impl<'de> Deserialize<'de> for Fill {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let ns = Vec::<N>::deserialize(d)?;
+        for &v in &ns {
+            if v == 0 || v > 9 {
+                return Err(DeError::custom(format!("value {v} is outside 1..=9")));
+            }
+        }
+        Ok(Self::from(&ns))
     }
 }
 
