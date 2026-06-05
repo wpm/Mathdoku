@@ -35,7 +35,7 @@ use crate::mdk::polyomino::{Cell, Polyomino};
 use crate::mdk::table::Table;
 use crate::mdk::{Error, N, Target};
 
-/// The arithmetic constraint and its backing memo for a cage.
+/// The constraint for a cage and its backing memo.
 #[derive(Clone, PartialEq, Eq, Debug)]
 enum CageOperation {
     /// A commutative (monotonic) operation: add or multiply.
