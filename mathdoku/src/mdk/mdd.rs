@@ -360,6 +360,7 @@ impl Memo for Mdd {
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 struct Constraint {
+    // TODO Can this be ArithmeticConstraint?
     operator: CommutativeOperator,
     target: T,
     arity: T,
