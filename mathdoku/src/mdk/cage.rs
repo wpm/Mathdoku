@@ -29,7 +29,7 @@
 //! There is no arithmetic constraint and no memo: the value is stored directly.
 use crate::mdk::mdd::Mdd;
 use crate::mdk::operation::{CommutativeOperation, NonCommutativeOperation};
-use crate::mdk::shape::{Cell, Polyomino};
+use crate::mdk::polyomino::{Cell, Polyomino};
 use crate::mdk::table::Table;
 use crate::mdk::{Error, N, Target};
 

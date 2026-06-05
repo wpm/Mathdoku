@@ -6,7 +6,7 @@ use crate::mdk::Target;
 use crate::mdk::fill::Fill;
 use crate::mdk::old_memo::Memo;
 use crate::mdk::operator::Commutative;
-use crate::mdk::shape::{Cell, Polyomino};
+use crate::mdk::polyomino::{Cell, Polyomino};
 use log::debug;
 use std::collections::{HashMap, HashSet};
 
@@ -402,7 +402,7 @@ impl std::fmt::Display for Node {
 mod tests {
     use super::*;
     use crate::mdk::old_memo::Memo;
-    use crate::mdk::shape::Polyomino;
+    use crate::mdk::polyomino::Polyomino;
 
     #[test]
     fn sum_pair_display() {

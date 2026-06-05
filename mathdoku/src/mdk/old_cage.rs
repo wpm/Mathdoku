@@ -1,7 +1,7 @@
 //! [`Cage`] and the operator types used to construct one.
 use crate::mdk::old_memo::CageMemo;
 use crate::mdk::operator::Operator;
-use crate::mdk::shape::{Cell, Polyomino};
+use crate::mdk::polyomino::{Cell, Polyomino};
 use crate::mdk::{N, Target};
 use std::cmp::Ordering;
 use std::fmt;
@@ -96,7 +96,7 @@ impl Display for Operation {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mdk::shape::{Cell, Polyomino};
+    use crate::mdk::polyomino::{Cell, Polyomino};
     use std::cmp::Ordering;
 
     fn singleton() -> Polyomino {

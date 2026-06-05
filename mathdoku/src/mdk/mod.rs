@@ -1,7 +1,7 @@
 //! New Mathdoku implementation — work in progress; will eventually replace the top-level crate API.
 
 use crate::mdk::old_cage::Cage;
-use shape::Cell;
+use polyomino::Cell;
 
 pub(crate) mod fill;
 mod grid;
@@ -13,7 +13,7 @@ pub mod old_memo;
 pub mod operation;
 pub mod operator;
 pub mod puzzle;
-pub mod shape;
+pub mod polyomino;
 pub mod table;
 pub mod tuples;
 mod cage;

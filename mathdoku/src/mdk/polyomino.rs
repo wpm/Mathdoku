@@ -82,7 +82,7 @@ impl IntoIterator for Polyomino {
 #[cfg(test)]
 mod tests {
     use crate::mdk::Error::InvalidPolyomino;
-    use crate::mdk::shape::{Cell, Polyomino};
+    use crate::mdk::polyomino::{Cell, Polyomino};
 
     #[test]
     fn polyomino_single_cell_is_connected() {

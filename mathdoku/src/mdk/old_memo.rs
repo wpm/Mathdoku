@@ -2,7 +2,7 @@ use crate::mdk::Error;
 use crate::mdk::fill::Fill;
 use crate::mdk::old_cage::Operation;
 use crate::mdk::old_mdd::Mdd;
-use crate::mdk::shape::{Cell, Polyomino};
+use crate::mdk::polyomino::{Cell, Polyomino};
 use std::collections::HashMap;
 
 /// Memo used to store intermediate results for [`Cage`] operations.

@@ -2,7 +2,7 @@
 use crate::mdk::Error;
 use crate::mdk::Error::MissingCell;
 use crate::mdk::fill::Fill;
-use crate::mdk::shape::Cell;
+use crate::mdk::polyomino::Cell;
 use serde::de::Error as DeError;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::BTreeMap;
