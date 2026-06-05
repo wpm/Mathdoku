@@ -322,7 +322,7 @@ impl MonotonicMDD {
             Some(edges) => {
                 for &(label, tail) in edges {
                     #[allow(clippy::cast_possible_truncation)]
-                    path.push(label as crate::Value);
+                    path.push(label as crate::N);
                     self.collect_paths(tail, path, result);
                     let _ = path.pop();
                 }
@@ -815,7 +815,7 @@ mod tests {
                 .iter()
                 .fold(constraint.unit(), |a, &v| constraint.operation(a, v));
             if acc == constraint.target() {
-                out.push(t.iter().map(|&v| v as crate::Value).collect());
+                out.push(t.iter().map(|&v| v as crate::N).collect());
             }
             let mut i = 0;
             while i < arity && t[i] == n {

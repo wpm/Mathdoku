@@ -151,9 +151,9 @@ impl Puzzle {
         let op = cage.operation();
         let target = op.target;
         #[allow(clippy::cast_possible_truncation)] // n ≤ 9
-        let n_val: crate::Value = n as crate::Value;
+        let n_val: crate::N = n as crate::N;
         let mut result = Vec::new();
-        let mut tuple: Vec<crate::Value> = vec![1; arity];
+        let mut tuple: Vec<crate::N> = vec![1; arity];
         loop {
             let satisfies = match op.operator() {
                 Operator::Given => arity == 1 && u64::from(tuple[0]) == target,
@@ -277,7 +277,7 @@ impl Puzzle {
     ///
     /// Returns `None` if the assignment makes the puzzle infeasible, or if `cell`
     /// is outside the grid.
-    pub(crate) fn set_value(&self, cell: crate::Cell, value: crate::Value) -> Option<Self> {
+    pub(crate) fn set_value(&self, cell: crate::Cell, value: crate::N) -> Option<Self> {
         let grid = self.grid.set_value(cell, value).ok()?;
         Self {
             grid,

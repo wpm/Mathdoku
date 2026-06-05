@@ -65,11 +65,12 @@ mod solutions;
 mod test_utils;
 
 pub use cage::Cage;
-pub use cell::{Cell, Target, Tuple, Value, Values};
+pub use cell::{Cell, Target, Tuple, Values};
 pub use error::Error;
 pub use generate::generate;
 pub use grid::Grid;
 pub use latin_square::generate_latin_square;
+pub use mdk::N;
 pub use operation::{Operation, Operator, operators_for};
 pub use polyomino::Polyomino;
 pub use puzzle::Puzzle;

@@ -53,7 +53,7 @@ impl PartialSolution {
 
     /// Returns the singleton solution value for `cell`, or `None` if not a singleton.
     #[must_use]
-    pub fn cell_value_singleton(&self, cell: Cell) -> Option<mathdoku::Value> {
+    pub fn cell_value_singleton(&self, cell: Cell) -> Option<mathdoku::N> {
         let grid = self.lock_grid();
         let v = grid.get_values(cell).ok()?;
         drop(grid);
@@ -70,7 +70,7 @@ impl PartialSolution {
         let cage = puzzle.cages().nth(cage_idx)?;
         let tuples = puzzle.cage_tuples(cage).ok()?;
         drop(puzzle);
-        let multisets: HashSet<Vec<mathdoku::Value>> = tuples
+        let multisets: HashSet<Vec<mathdoku::N>> = tuples
             .iter()
             .map(|t| {
                 let mut s = t.clone();
@@ -169,7 +169,7 @@ mod tests {
 
     #[test]
     fn cell_value_singleton_reads_pinned_grid() {
-        let square: Vec<Vec<mathdoku::Value>> = vec![vec![1, 2, 3], vec![2, 3, 1], vec![3, 1, 2]];
+        let square: Vec<Vec<mathdoku::N>> = vec![vec![1, 2, 3], vec![2, 3, 1], vec![3, 1, 2]];
         let grid = Grid::from_latin_square(3, &square).unwrap();
         let ps = PartialSolution::new(Puzzle::new(3).unwrap(), grid);
         assert_eq!(ps.cell_value_singleton(Cell::new(0, 0)), Some(1));

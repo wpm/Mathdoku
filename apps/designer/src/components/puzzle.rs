@@ -62,7 +62,7 @@ pub fn Puzzle(
     // values show all candidates still possible given the cages, not just the solution.
     let grid = state.puzzle.grid();
     let mut get_values = vec![vec![vec![]; n]; n];
-    let mut solution_values = vec![vec![None::<mathdoku::Value>; n]; n];
+    let mut solution_values = vec![vec![None::<mathdoku::N>; n]; n];
     for (r, row) in get_values.iter_mut().enumerate() {
         for (c, slot) in row.iter_mut().enumerate() {
             let cell_ref = Cell::new(r, c);
@@ -688,7 +688,7 @@ fn singleton_digit_commit(state: &State, key: &str) -> Result<Option<SingletonDi
     if state.solution.is_some() || key.len() != 1 {
         return Ok(None);
     }
-    let Ok(value) = key.parse::<mathdoku::Value>() else {
+    let Ok(value) = key.parse::<mathdoku::N>() else {
         return Ok(None);
     };
     let active = state.active;

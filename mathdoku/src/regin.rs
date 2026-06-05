@@ -13,7 +13,7 @@
 #![allow(clippy::similar_names)] // var/val, ip/jp/kp are standard idioms in matching/SCC algorithms
 
 use crate::Values;
-use crate::cell::Value;
+use crate::mdk::N;
 use std::collections::HashMap;
 
 /// Full Régin GAC for all-different.
@@ -28,12 +28,12 @@ pub fn regin_gac(values: &[Values]) -> Vec<Values> {
         return vec![];
     }
 
-    let all_values: Vec<Value> = values
+    let all_values: Vec<N> = values
         .iter()
         .fold(Values::default(), |acc, d| acc | *d)
         .values();
     let num_values = all_values.len();
-    let value_index: HashMap<Value, usize> = all_values
+    let value_index: HashMap<N, usize> = all_values
         .iter()
         .enumerate()
         .map(|(i, &v)| (v, i))
@@ -107,7 +107,7 @@ pub fn regin_gac(values: &[Values]) -> Vec<Values> {
     let mut result = vec![Values::default(); n];
     for var in 0..n {
         let matched = var_match[var];
-        let vals: Vec<Value> = indexed_values[var]
+        let vals: Vec<N> = indexed_values[var]
             .iter()
             .filter(|&&vi| matched == Some(vi) || scc[var] == scc[n + vi] || reachable[n + vi])
             .map(|&vi| all_values[vi])
@@ -219,7 +219,7 @@ mod tests {
             i: usize,
             values: &[Values],
             used: u16,
-            current: &mut [Value],
+            current: &mut [N],
             support: &mut [Values],
         ) {
             if i == values.len() {
@@ -237,12 +237,12 @@ mod tests {
             }
         }
         let mut support = vec![Values::default(); values.len()];
-        let mut current: Vec<Value> = vec![0; values.len()];
+        let mut current: Vec<N> = vec![0; values.len()];
         extend(0, values, 0u16, &mut current, &mut support);
         support
     }
 
-    fn sorted(fills: &[Values]) -> Vec<Vec<Value>> {
+    fn sorted(fills: &[Values]) -> Vec<Vec<N>> {
         fills.iter().map(|f| f.values()).collect()
     }
 
@@ -291,7 +291,7 @@ mod tests {
         );
     }
 
-    fn random_values(rng: &mut ChaCha8Rng, max_vars: usize, max_values: Value) -> Vec<Values> {
+    fn random_values(rng: &mut ChaCha8Rng, max_vars: usize, max_values: N) -> Vec<Values> {
         let n_vars = rng.random_range(1..=max_vars);
         let n_values = rng.random_range(1..=max_values);
         (0..n_vars)

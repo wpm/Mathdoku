@@ -495,8 +495,7 @@ mod tests {
         /// 3 1 2
         /// ```
         pub(super) fn known_3x3_solution() -> Grid {
-            let square: Vec<Vec<mathdoku::Value>> =
-                vec![vec![1, 2, 3], vec![2, 3, 1], vec![3, 1, 2]];
+            let square: Vec<Vec<mathdoku::N>> = vec![vec![1, 2, 3], vec![2, 3, 1], vec![3, 1, 2]];
             Grid::from_latin_square(3, &square).unwrap()
         }
 
@@ -1426,8 +1425,8 @@ mod tests {
         }
 
         fn is_valid_latin_square(grid: &Grid, n: usize) -> bool {
-            let expected: Vec<mathdoku::Value> = (1..=n as mathdoku::Value).collect();
-            let line_ok = |cells: Vec<mathdoku::Value>| {
+            let expected: Vec<mathdoku::N> = (1..=n as mathdoku::N).collect();
+            let line_ok = |cells: Vec<mathdoku::N>| {
                 let mut sorted = cells;
                 sorted.sort_unstable();
                 sorted == expected

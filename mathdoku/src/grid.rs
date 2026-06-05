@@ -5,7 +5,8 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt::{Display, Formatter};
 
 use crate::Error::InvalidGridSize;
-use crate::{Cell, Error, Value, Values};
+use crate::mdk::N;
+use crate::{Cell, Error, Values};
 
 // Serde wire format: flat struct with an n×n `values` array of cell value sets.
 // `values` is optional on deserialization; absent means full value sets for all cells.
@@ -67,7 +68,7 @@ impl Grid {
     ///
     /// # Errors
     /// Returns [`Error::InvalidCell`] if `cell` is outside the grid.
-    pub(crate) fn set_value(&self, cell: Cell, n: Value) -> Result<Self, Error> {
+    pub(crate) fn set_value(&self, cell: Cell, n: N) -> Result<Self, Error> {
         self.set_values(cell, Values::singleton(n))
     }
 
@@ -92,7 +93,7 @@ impl Grid {
     /// # Errors
     /// Returns [`InvalidGridSize`] if `square.len() != n` or any row has length ≠ `n`,
     /// and [`Error::InvalidValue`] if any value is outside `1..=n`.
-    pub fn from_latin_square(n: usize, square: &[Vec<Value>]) -> Result<Self, Error> {
+    pub fn from_latin_square(n: usize, square: &[Vec<N>]) -> Result<Self, Error> {
         let mut grid = Self::new(n)?;
         for (r, row) in square.iter().enumerate() {
             for (c, &v) in row.iter().enumerate() {
@@ -103,7 +104,7 @@ impl Grid {
         Ok(grid)
     }
 
-    const fn singleton_values(v: Value) -> Values {
+    const fn singleton_values(v: N) -> Values {
         Values::singleton(v)
     }
 
@@ -172,7 +173,7 @@ impl Display for Grid {
 
 #[cfg(test)]
 mod tests {
-    use crate::Value as CellValue;
+    use crate::N as CellValue;
     use serde_json::{Value, from_str, json, to_string};
 
     use super::*;

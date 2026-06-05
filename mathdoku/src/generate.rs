@@ -13,8 +13,9 @@ use rand::{Rng, RngExt};
 use crate::Cell;
 use crate::Error;
 use crate::cage::Cage;
-use crate::cell::{Target, Value};
+use crate::cell::Target;
 use crate::latin_square::generate_latin_square;
+use crate::mdk::N;
 use crate::operation::{Operation, Operator};
 use crate::polyomino::Polyomino;
 use crate::puzzle::Puzzle;
@@ -79,7 +80,7 @@ fn poisson<R: Rng>(mean: f64, rng: &mut R) -> usize {
 /// Returns [`Error::EmptyOpPolicyValues`] if `values` is empty. A cage always
 /// covers at least one cell, so callers that obtain `values` from a cage's
 /// cells will never trigger this.
-pub fn default_op_policy(values: &[Value], n: usize) -> Result<Operation, Error> {
+pub fn default_op_policy(values: &[N], n: usize) -> Result<Operation, Error> {
     let op = |operator, target| Ok(Operation::new(operator, target));
     match values.len() {
         0 => Err(Error::EmptyOpPolicyValues),
@@ -132,14 +133,14 @@ pub fn generate_with<R: Rng, F>(
     sizes: SizeDistribution,
 ) -> Result<Puzzle, Error>
 where
-    F: Fn(&[Value], usize) -> Result<Operation, Error>,
+    F: Fn(&[N], usize) -> Result<Operation, Error>,
 {
     let mut puzzle = Puzzle::new(n)?;
     let latin_square = generate_latin_square(n, rng);
     let tiling = greedy(n, sizes, rng)?;
 
     for polyomino in tiling {
-        let values: Vec<Value> = polyomino
+        let values: Vec<N> = polyomino
             .cells()
             .into_iter()
             .map(|cell| latin_square[cell.row][cell.column])

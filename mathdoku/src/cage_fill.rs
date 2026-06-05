@@ -47,14 +47,14 @@ pub(crate) trait CageFill {
 /// Cage fill for `Given` cages: a single fixed value.
 #[derive(Debug, Clone)]
 pub(crate) struct GivenFill {
-    value: crate::Value,
+    value: crate::N,
 }
 
 impl GivenFill {
     #[allow(clippy::cast_possible_truncation)] // target is always 1..=9 for Given
     pub(crate) const fn new(target: Target) -> Self {
         Self {
-            value: target as crate::Value,
+            value: target as crate::N,
         }
     }
 }
@@ -95,11 +95,11 @@ impl TrieNode {
         }
     }
 
-    fn child(&self, v: crate::Value) -> usize {
+    fn child(&self, v: crate::N) -> usize {
         self.children[v as usize - 1]
     }
 
-    fn set_child(&mut self, v: crate::Value, idx: usize) {
+    fn set_child(&mut self, v: crate::N, idx: usize) {
         self.children[v as usize - 1] = idx;
     }
 }
@@ -131,10 +131,10 @@ impl Trie {
             n,
         };
         #[allow(clippy::cast_possible_truncation)] // n ≤ 9
-        let n_val: crate::Value = n as crate::Value;
+        let n_val: crate::N = n as crate::N;
 
         // Odometer over arity-tuples of values 1..=n.
-        let mut tuple: Vec<crate::Value> = vec![1; arity];
+        let mut tuple: Vec<crate::N> = vec![1; arity];
         loop {
             if Self::satisfies(op, target, &tuple) {
                 trie.insert(&tuple);
@@ -155,7 +155,7 @@ impl Trie {
         }
     }
 
-    fn satisfies(op: NonMonotonicOp, target: Target, tuple: &[crate::Value]) -> bool {
+    fn satisfies(op: NonMonotonicOp, target: Target, tuple: &[crate::N]) -> bool {
         match op {
             NonMonotonicOp::Subtract => {
                 tuple.len() == 2
@@ -170,7 +170,7 @@ impl Trie {
         }
     }
 
-    fn insert(&mut self, tuple: &[crate::Value]) {
+    fn insert(&mut self, tuple: &[crate::N]) {
         let mut node_idx = 0;
         for &v in tuple {
             let child = self.nodes[node_idx].child(v);
@@ -196,7 +196,7 @@ impl Trie {
         node_idx: usize,
         depth: usize,
         values: &[Values],
-        path: &mut Vec<crate::Value>,
+        path: &mut Vec<crate::N>,
         support: &mut Vec<Values>,
     ) {
         if depth == self.arity {
@@ -208,7 +208,7 @@ impl Trie {
         }
         let node = &self.nodes[node_idx];
         #[allow(clippy::cast_possible_truncation)] // n ≤ 9
-        let n_val: crate::Value = self.n as crate::Value;
+        let n_val: crate::N = self.n as crate::N;
         for v in 1..=n_val {
             let child = node.child(v);
             if child == TERMINAL {
@@ -227,7 +227,7 @@ impl Trie {
 impl CageFill for Trie {
     fn support(&self, values: &[Values]) -> Vec<Values> {
         let mut support = vec![Values::default(); self.arity];
-        let mut path: Vec<crate::Value> = Vec::with_capacity(self.arity);
+        let mut path: Vec<crate::N> = Vec::with_capacity(self.arity);
         self.walk(0, 0, values, &mut path, &mut support);
         support
     }
@@ -407,7 +407,7 @@ mod tests {
     #[test]
     fn trie_subtract_matches_brute_force() {
         // Cross-check Trie::support against independent enumeration for n=4, target=1.
-        let n: crate::Value = 4;
+        let n: crate::N = 4;
         let trie = Trie::new(n, NonMonotonicOp::Subtract, 1, 2);
         let domains = [full_domain(n as usize), full_domain(n as usize)];
         let trie_result = trie.support(&domains);
@@ -429,7 +429,7 @@ mod tests {
     #[test]
     fn trie_divide_matches_brute_force() {
         // Cross-check Trie::support against independent enumeration for n=4, target=2.
-        let n: crate::Value = 4;
+        let n: crate::N = 4;
         let trie = Trie::new(n, NonMonotonicOp::Divide, 2, 2);
         let domains = [full_domain(n as usize), full_domain(n as usize)];
         let trie_result = trie.support(&domains);

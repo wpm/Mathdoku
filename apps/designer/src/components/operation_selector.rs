@@ -600,7 +600,7 @@ mod tests {
     /// 3 1 2
     /// ```
     fn pinned_3x3() -> PartialSolution {
-        let square: Vec<Vec<mathdoku::Value>> = vec![vec![1, 2, 3], vec![2, 3, 1], vec![3, 1, 2]];
+        let square: Vec<Vec<mathdoku::N>> = vec![vec![1, 2, 3], vec![2, 3, 1], vec![3, 1, 2]];
         let grid = Grid::from_latin_square(3, &square).unwrap();
         PartialSolution::new(Puzzle::new(3).unwrap(), grid)
     }
@@ -649,7 +649,7 @@ mod tests {
         // A 6×6 grid pinning (0,0)=2 and (0,1)=6 so that 6 / 2 = 3.
         // `from_latin_square` validates only the value range and dimensions, so
         // the remaining filler values need not form a real Latin square.
-        let square: Vec<Vec<mathdoku::Value>> = vec![
+        let square: Vec<Vec<mathdoku::N>> = vec![
             vec![2, 6, 1, 3, 4, 5],
             vec![1, 2, 3, 4, 5, 6],
             vec![3, 4, 5, 6, 1, 2],

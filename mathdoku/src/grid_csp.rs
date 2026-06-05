@@ -146,7 +146,7 @@ fn propagate_cage(
 mod tests {
     use super::*;
 
-    fn grid_with_values(values: &[(&(usize, usize), &[crate::Value])]) -> Grid {
+    fn grid_with_values(values: &[(&(usize, usize), &[crate::N])]) -> Grid {
         let n = values.iter().map(|((r, c), _)| r.max(c) + 1).max().unwrap();
         let mut g = Grid::new(n).unwrap();
         for ((r, c), vals) in values {

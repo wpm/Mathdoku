@@ -1,6 +1,7 @@
 //! The primitive grid types: [`Cell`], [`Values`], and numeric types.
 
 use crate::Error;
+use crate::mdk::N;
 use serde::de::Error as DeError;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt::{Debug, Display, Formatter};
@@ -9,12 +10,10 @@ use std::{
     ops::{BitAnd, BitOr},
 };
 
-/// Possible cell value, a number in the range `1..=9`.
-pub type Value = u32;
 /// A cage target (sum, product, difference, ratio, or given value).
 pub type Target = u64;
 /// An ordered assignment of values to the cells of a cage, one value per cell.
-pub type Tuple = Vec<Value>;
+pub type Tuple = Vec<N>;
 
 /// A cell in a Mathdoku grid, identified by 0-based row and column index values
 /// in row-major order.
@@ -66,7 +65,7 @@ impl Values {
     ///
     /// # Errors
     /// Returns [`Error::InvalidValue`] if any value is not in `1..=9`.
-    pub fn new(ns: &[Value]) -> Result<Self, Error> {
+    pub fn new(ns: &[N]) -> Result<Self, Error> {
         for &n in ns {
             if !(1..=9).contains(&n) {
                 return Err(Error::InvalidValue(n));
@@ -76,20 +75,20 @@ impl Values {
     }
 
     /// Returns the full set `{1, ..., n}`.
-    #[allow(clippy::cast_possible_truncation)] // n ≤ 9 always fits in Value
+    #[allow(clippy::cast_possible_truncation)] // n ≤ 9 always fits in N
     pub fn all(n: usize) -> Self {
-        Self((1..=(n as Value)).fold(0u16, |acc, n| acc | (1u16 << n)))
+        Self((1..=(n as N)).fold(0u16, |acc, n| acc | (1u16 << n)))
     }
 
     /// Creates a `Values` set from a single value, bypassing validation.
     /// Callers must guarantee `n` is in `1..=9`.
-    pub(crate) const fn singleton(n: Value) -> Self {
+    pub(crate) const fn singleton(n: N) -> Self {
         Self(1u16 << n)
     }
 
     /// Returns the values in ascending order.
     #[must_use]
-    pub fn values(self) -> Vec<Value> {
+    pub fn values(self) -> Vec<N> {
         (1u32..=9).filter(|&v| self.0 & (1u16 << v) != 0).collect()
     }
 
@@ -117,13 +116,13 @@ impl Values {
 
     /// Returns `true` if `value` is in this set.
     #[must_use]
-    pub const fn contains(self, value: Value) -> bool {
+    pub const fn contains(self, value: N) -> bool {
         self.0 & (1u16 << value) != 0
     }
 
     /// Returns a copy of this set with `value` removed.
     #[allow(dead_code)]
-    pub(crate) const fn remove(self, value: Value) -> Self {
+    pub(crate) const fn remove(self, value: N) -> Self {
         Self(self.0 & !(1u16 << value))
     }
 }
@@ -160,7 +159,7 @@ impl Serialize for Values {
 
 impl<'de> Deserialize<'de> for Values {
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        let values = Vec::<Value>::deserialize(d)?;
+        let values = Vec::<N>::deserialize(d)?;
         Self::new(&values).map_err(|e| DeError::custom(fmt::format(format_args!("{e}"))))
     }
 }
