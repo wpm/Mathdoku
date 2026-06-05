@@ -87,7 +87,7 @@ impl Memo for Table {
             .ok_or(InvalidCellCageIndex(index))
     }
 
-    fn narrow(&self, support: Vec<Fill>) -> Result<Self, Error> {
+    fn narrow(&self, support: &[Fill]) -> Result<Self, Error> {
         let tuples = self
             .tuples
             .iter()
@@ -163,7 +163,7 @@ mod tests {
         // support that includes every value leaves all tuples intact
         let t = Table::commutative(4, 2, Add, 5).unwrap();
         let full = vec![Fill::all(4), Fill::all(4)];
-        assert_eq!(t.narrow(full).unwrap(), t);
+        assert_eq!(t.narrow(&full).unwrap(), t);
     }
 
     #[test]
@@ -172,7 +172,7 @@ mod tests {
         let t = Table::commutative(4, 2, Add, 5).unwrap();
         // restrict position 0 to {1,2}, position 1 to {1,2,3,4}
         let narrowed = t
-            .narrow(vec![Fill::from(&[1, 2]), Fill::from(&[1, 2, 3, 4])])
+            .narrow(&[Fill::from(&[1, 2]), Fill::from(&[1, 2, 3, 4])])
             .unwrap();
         assert_eq!(narrowed.get(0).unwrap(), Fill::from(&[1, 2]));
         assert_eq!(narrowed.get(1).unwrap(), Fill::from(&[3, 4]));
@@ -183,7 +183,7 @@ mod tests {
         let t = Table::commutative(4, 2, Add, 5).unwrap();
         // restrict both positions to {1} — no tuple (1,1) sums to 5
         assert!(matches!(
-            t.narrow(vec![Fill::from(&[1]), Fill::from(&[1])]),
+            t.narrow(&[Fill::from(&[1]), Fill::from(&[1])]),
             Err(EmptyFills)
         ));
     }

@@ -30,7 +30,7 @@ pub trait Memo: Sized {
     ///
     /// # Errors
     /// Returns [`EmptyFills`] if no tuples survive the filter.
-    fn narrow(&self, support: Vec<Fill>) -> Result<Self, Error>;
+    fn narrow(&self, support: &[Fill]) -> Result<Self, Error>;
 }
 
 /// Derives per-position fills from a non-empty tuple list.

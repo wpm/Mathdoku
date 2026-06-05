@@ -337,7 +337,7 @@ impl Memo for Mdd {
             .ok_or(InvalidCellCageIndex(index))
     }
 
-    fn narrow(&self, support: Vec<Fill>) -> Result<Self, Error> {
+    fn narrow(&self, support: &[Fill]) -> Result<Self, Error> {
         #[allow(clippy::cast_possible_truncation)]
         let forbidden: HashMap<T, HashSet<N>> = support
             .iter()
@@ -457,7 +457,7 @@ mod tests {
     #[test]
     fn narrow_with_full_support_is_identity() {
         let m = Mdd::new(4, 2, Add, 5).unwrap();
-        assert_eq!(m.narrow(vec![Fill::all(4), Fill::all(4)]).unwrap(), m);
+        assert_eq!(m.narrow(&[Fill::all(4), Fill::all(4)]).unwrap(), m);
     }
 
     #[test]
@@ -466,7 +466,7 @@ mod tests {
         // restrict pos 0 to {1,2} → surviving: (1,4),(2,3)
         let m = Mdd::new(4, 2, Add, 5).unwrap();
         let narrowed = m
-            .narrow(vec![Fill::from(&[1, 2]), Fill::from(&[1, 2, 3, 4])])
+            .narrow(&[Fill::from(&[1, 2]), Fill::from(&[1, 2, 3, 4])])
             .unwrap();
         assert_eq!(narrowed.get(0).unwrap(), Fill::from(&[1, 2]));
         assert_eq!(narrowed.get(1).unwrap(), Fill::from(&[3, 4]));
@@ -476,7 +476,7 @@ mod tests {
     fn narrow_eliminating_all_tuples_returns_empty_fills_error() {
         let m = Mdd::new(4, 2, Add, 5).unwrap();
         assert!(matches!(
-            m.narrow(vec![Fill::from(&[1]), Fill::from(&[1])]),
+            m.narrow(&[Fill::from(&[1]), Fill::from(&[1])]),
             Err(EmptyFills)
         ));
     }

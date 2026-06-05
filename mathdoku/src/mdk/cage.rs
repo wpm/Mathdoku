@@ -151,7 +151,7 @@ impl Cage {
     }
 }
 
-fn narrow_fills<M: Memo>(memo: &M, old_fills: Vec<Fill>, n: usize) -> Result<Vec<Fill>, Error> {
+fn narrow_fills<M: Memo>(memo: &M, old_fills: &[Fill], n: usize) -> Result<Vec<Fill>, Error> {
     match memo.narrow(old_fills) {
         Ok(narrowed) => Ok((0..n)
             .map(|i| narrowed.get(i).unwrap_or_default())
@@ -178,12 +178,8 @@ impl Constraint<Grid, Cell, Fill, Error> for Cage {
                     Fill::default()
                 }]
             }
-            CageSupport::Commutative(_, _, memo) => {
-                narrow_fills(memo, old_fills.clone(), cells.len())?
-            }
-            CageSupport::NonCommutative(_, _, memo) => {
-                narrow_fills(memo, old_fills.clone(), cells.len())?
-            }
+            CageSupport::Commutative(_, _, memo) => narrow_fills(memo, &old_fills, cells.len())?,
+            CageSupport::NonCommutative(_, _, memo) => narrow_fills(memo, &old_fills, cells.len())?,
         };
         Ok(state.apply_fills(&cells, &old_fills, new_fills))
     }
