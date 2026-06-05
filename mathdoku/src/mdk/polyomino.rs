@@ -2,10 +2,17 @@ use crate::mdk::Error;
 use crate::mdk::Error::InvalidPolyomino;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
+use std::fmt;
 
 /// A grid position identified by `(row, column)`, both 1-indexed.
 #[derive(Ord, Eq, PartialEq, Hash, PartialOrd, Copy, Clone, Debug, Serialize, Deserialize)]
 pub struct Cell(pub usize, pub usize);
+
+impl fmt::Display for Cell {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "({}, {})", self.0, self.1)
+    }
+}
 
 /// A set of edge-adjacent cells.
 #[derive(Eq, PartialEq, Ord, PartialOrd, Clone, Hash, Debug)]
@@ -92,6 +99,11 @@ impl IntoIterator for Polyomino {
 mod tests {
     use crate::mdk::Error::InvalidPolyomino;
     use crate::mdk::polyomino::{Cell, Polyomino};
+
+    #[test]
+    fn cell_display_formats_as_row_column() {
+        assert_eq!(Cell(2, 3).to_string(), "(2, 3)");
+    }
 
     #[test]
     fn polyomino_single_cell_is_connected() {

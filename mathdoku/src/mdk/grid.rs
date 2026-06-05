@@ -1,6 +1,6 @@
 //! Grid and cell types internal to the mdk implementation.
 use crate::mdk::Error;
-use crate::mdk::Error::MissingCell;
+use crate::mdk::Error::{InvalidGridSize, MissingCell};
 use crate::mdk::csp::{Constraint, State};
 use crate::mdk::fill::Fill;
 use crate::mdk::polyomino::Cell;
@@ -16,12 +16,15 @@ pub struct Grid(usize, BTreeMap<Cell, Fill>);
 impl Grid {
     /// Creates a new grid of size `n` with every cell initialised to the full
     /// candidate set `{1..=n}`.
-    pub fn new(n: usize) -> Self {
+    pub fn new(n: usize) -> Result<Self, Error> {
+        if !(1..=9).contains(&n) {
+            return Err(InvalidGridSize(n));
+        }
         let fills = (1..=n)
             .flat_map(|i| (1..=n).map(move |j| Cell(i, j)))
             .map(|cell| (cell, Fill::all(n)))
             .collect();
-        Self(n, fills)
+        Ok(Self(n, fills))
     }
 
     /// Returns the [`Fill`] for `cell`.
@@ -139,11 +142,8 @@ impl<'de> Deserialize<'de> for Grid {
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         let wire = GridWire::deserialize(d)?;
         let n = wire.n;
-        if !(1..=9).contains(&n) {
-            return Err(DeError::custom(format!("invalid grid size {n}")));
-        }
         if wire.fills.is_empty() {
-            return Ok(Self::new(n));
+            return Self::new(n).map_err(|e| DeError::custom(e.to_string()));
         }
         if wire.fills.len() != n {
             return Err(DeError::custom(format!(
@@ -196,20 +196,21 @@ mod tests {
     // After AllDifferent: {1}, {2}, {3}.
     fn forced_chain_row1() -> Grid {
         Grid::new(3)
+            .unwrap()
             .set(Cell(1, 1), Fill::from(&[1, 2]))
             .set(Cell(1, 2), Fill::from(&[2]))
             .set(Cell(1, 3), Fill::from(&[1, 3]))
     }
 
     fn grid_with_modified_cell(n: usize, cell: Cell, fill: Fill) -> Grid {
-        let mut g = Grid::new(n);
+        let mut g = Grid::new(n).unwrap();
         let _ = g.1.insert(cell, fill);
         g
     }
 
     #[test]
     fn all_different_propagate_full_values_unchanged() {
-        let g = Grid::new(3);
+        let g = Grid::new(3).unwrap();
         let (new_g, changed) = AllDifferent::row(3, 1).propagate(&g).unwrap();
         assert_eq!(new_g.1, g.1);
         assert!(changed.is_empty());
@@ -232,6 +233,7 @@ mod tests {
     fn all_different_propagate_infeasible_empties_values() {
         // 2×2 grid: both column-1 cells pinned to {1} — infeasible.
         let g = Grid::new(2)
+            .unwrap()
             .set(Cell(1, 1), Fill::from(&[1]))
             .set(Cell(2, 1), Fill::from(&[1]));
         let (new_g, changed) = AllDifferent::column(2, 1).propagate(&g).unwrap();
@@ -261,7 +263,7 @@ mod tests {
 
     #[test]
     fn state_get_returns_missing_cell_for_absent_cell() {
-        let g = Grid::new(3);
+        let g = Grid::new(3).unwrap();
         assert!(matches!(
             <Grid as State<Cell, Fill, Error>>::get(&g, Cell(4, 1)),
             Err(MissingCell(_))
@@ -271,26 +273,36 @@ mod tests {
     #[test]
     fn new_valid_sizes_succeed() {
         for n in 1..=9 {
-            let g = Grid::new(n);
+            let g = Grid::new(n).unwrap();
             assert_eq!(g.0, n);
         }
     }
 
     #[test]
+    fn new_rejects_zero() {
+        assert!(matches!(Grid::new(0), Err(InvalidGridSize(0))));
+    }
+
+    #[test]
+    fn new_rejects_ten() {
+        assert!(matches!(Grid::new(10), Err(InvalidGridSize(10))));
+    }
+
+    #[test]
     fn new_values_are_full() {
-        assert_all_full(&Grid::new(4), 4);
+        assert_all_full(&Grid::new(4).unwrap(), 4);
     }
 
     #[test]
     fn get_values_out_of_bounds_returns_err() {
-        let g = Grid::new(3);
+        let g = Grid::new(3).unwrap();
         assert!(matches!(g.get(Cell(4, 1)), Err(MissingCell(_))));
         assert!(matches!(g.get(Cell(1, 4)), Err(MissingCell(_))));
     }
 
     #[test]
     fn display_shows_dimensions() {
-        assert_eq!(Grid::new(4).to_string(), "4×4 grid");
+        assert_eq!(Grid::new(4).unwrap().to_string(), "4×4 grid");
     }
 
     #[test]
@@ -333,13 +345,13 @@ mod tests {
 
     #[test]
     fn grid_full_serializes_without_values() {
-        let v: Value = from_str(&to_string(&Grid::new(3)).unwrap()).unwrap();
+        let v: Value = from_str(&to_string(&Grid::new(3).unwrap()).unwrap()).unwrap();
         assert!(v.get("fills").is_none() || v["fills"] == json!([]));
     }
 
     #[test]
     fn grid_full_round_trips_through_json() {
-        let restored: Grid = from_str(&to_string(&Grid::new(3)).unwrap()).unwrap();
+        let restored: Grid = from_str(&to_string(&Grid::new(3).unwrap()).unwrap()).unwrap();
         assert_all_full(&restored, 3);
     }
 }

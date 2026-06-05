@@ -1,8 +1,7 @@
 //! New Mathdoku implementation — work in progress; will eventually replace the top-level crate API.
 
 use crate::mdk::fill::Fill;
-use crate::mdk::polyomino::Polyomino;
-use polyomino::Cell;
+use crate::mdk::polyomino::{Cell, Polyomino};
 
 mod cage;
 pub mod csp;
@@ -43,4 +42,85 @@ pub enum Error {
     InvalidCellCageIndex(usize),
     /// Value not permitted in this [`Cell`].
     InvalidCellValue(Cell, N),
+}
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidGridSize(n) => write!(f, "invalid grid size: {n}"),
+            Self::InvalidPolyomino(cells) => write!(f, "cells do not form a polyomino: {cells:?}"),
+            Self::MissingCell(cell) => write!(f, "cell not in grid or polyomino: {cell}"),
+            Self::InvalidCageFill(poly, fill) => {
+                write!(f, "invalid fill {fill} for cage {poly:?}")
+            }
+            Self::EmptyFills => write!(f, "no candidate fills for cage"),
+            Self::InvalidCellCageIndex(i) => write!(f, "cell cage index out of bounds: {i}"),
+            Self::InvalidCellValue(cell, n) => {
+                write!(f, "value {n} not a candidate for cell {cell}")
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mdk::fill::Fill;
+    use crate::mdk::polyomino::{Cell, Polyomino};
+
+    #[test]
+    fn error_display_invalid_grid_size() {
+        assert_eq!(
+            Error::InvalidGridSize(0).to_string(),
+            "invalid grid size: 0"
+        );
+    }
+
+    #[test]
+    fn error_display_missing_cell() {
+        assert_eq!(
+            Error::MissingCell(Cell(2, 3)).to_string(),
+            "cell not in grid or polyomino: (2, 3)"
+        );
+    }
+
+    #[test]
+    fn error_display_empty_fills() {
+        assert_eq!(Error::EmptyFills.to_string(), "no candidate fills for cage");
+    }
+
+    #[test]
+    fn error_display_invalid_cell_value() {
+        assert_eq!(
+            Error::InvalidCellValue(Cell(1, 1), 5).to_string(),
+            "value 5 not a candidate for cell (1, 1)"
+        );
+    }
+
+    #[test]
+    fn error_display_invalid_cell_cage_index() {
+        assert_eq!(
+            Error::InvalidCellCageIndex(3).to_string(),
+            "cell cage index out of bounds: 3"
+        );
+    }
+
+    #[test]
+    fn error_display_invalid_polyomino() {
+        assert_eq!(
+            Error::InvalidPolyomino(vec![Cell(1, 1), Cell(3, 3)]).to_string(),
+            "cells do not form a polyomino: [Cell(1, 1), Cell(3, 3)]"
+        );
+    }
+
+    #[test]
+    fn error_display_invalid_cage_fill() {
+        let poly = Polyomino::from([Cell(1, 1)]).unwrap();
+        let fill = Fill::from(&[1, 2]);
+        assert!(
+            Error::InvalidCageFill(poly, fill)
+                .to_string()
+                .contains("invalid fill")
+        );
+    }
 }

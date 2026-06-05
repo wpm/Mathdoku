@@ -65,27 +65,27 @@ impl Puzzle {
         })
     }
 
-    /// Adds `cage` to the puzzle.
+    /// Returns a copy of the puzzle with `cage` added.
     ///
     /// # Errors
     ///
     /// Returns an error if `cage` overlaps with an existing cage.
     #[allow(clippy::todo)]
-    pub fn insert(&self, _cage: Cage) -> Result<(), Error> {
+    pub fn insert(&self, _cage: &Cage) -> Result<Option<Self>, Error> {
         todo!()
     }
 
-    /// Removes `cage` from the puzzle.
+    /// Returns a copy of the puzzle with `cage` removed.
     ///
     /// # Errors
     ///
     /// Returns an error if `cage` is not in the puzzle.
-    pub fn remove(&self, cage: &Cage) -> Result<(), Error> {
+    pub fn remove(&self, cage: &Cage) -> Result<Option<Self>, Error> {
         let mut cages = self.cages.clone();
         for cell in cage.polyomino.iter() {
             let _ = cages.remove(cell).ok_or(MissingCell(*cell));
         }
-        Ok(())
+        Ok(self.fixpoint())
     }
 
     /// Returns the operations that are feasible for `polyomino` given the current grid state.
@@ -173,7 +173,7 @@ mod tests {
     #[test]
     fn fixpoint_no_cages_full_grid_unchanged() {
         // With no cages and a full grid, AllDifferent has nothing to prune.
-        let p = Puzzle::from_parts(Grid::new(2), vec![]);
+        let p = Puzzle::from_parts(Grid::new(2).unwrap(), vec![]);
         let fp = p.fixpoint().unwrap();
         assert_eq!(fp.get(Cell(1, 1)).unwrap(), Fill::all(2));
         assert_eq!(fp.get(Cell(1, 2)).unwrap(), Fill::all(2));
@@ -183,7 +183,7 @@ mod tests {
     fn fixpoint_given_cage_pins_cell() {
         // A given cage for value 3 must narrow cell(1,1) to {3}.
         let cage = Cage::given(Cell(1, 1), 4, 3).unwrap();
-        let p = Puzzle::from_parts(Grid::new(4), vec![cage]);
+        let p = Puzzle::from_parts(Grid::new(4).unwrap(), vec![cage]);
         let fp = p.fixpoint().unwrap();
         assert_eq!(fp.get(Cell(1, 1)).unwrap(), Fill::from(&[3]));
     }
@@ -193,7 +193,7 @@ mod tests {
         // Given cage pins cell(1,1)={2}; AllDifferent for row 1 must then remove
         // 2 from every other cell in that row.
         let cage = Cage::given(Cell(1, 1), 3, 2).unwrap();
-        let p = Puzzle::from_parts(Grid::new(3), vec![cage]);
+        let p = Puzzle::from_parts(Grid::new(3).unwrap(), vec![cage]);
         let fp = p.fixpoint().unwrap();
         assert_eq!(fp.get(Cell(1, 1)).unwrap(), Fill::from(&[2]));
         assert!(!fp.get(Cell(1, 2)).unwrap().contains(2));
@@ -207,7 +207,7 @@ mod tests {
     fn fixpoint_add_cage_prunes_both_cells() {
         // Add 3 in a 4×4: only pairs (1,2),(2,1) satisfy it, so both cells narrow to {1,2}.
         let cage = Cage::commutative(4, domino(1, 1, 1, 2), Add, 3).unwrap();
-        let p = Puzzle::from_parts(Grid::new(4), vec![cage]);
+        let p = Puzzle::from_parts(Grid::new(4).unwrap(), vec![cage]);
         let fp = p.fixpoint().unwrap();
         assert_eq!(fp.get(Cell(1, 1)).unwrap(), Fill::from(&[1, 2]));
         assert_eq!(fp.get(Cell(1, 2)).unwrap(), Fill::from(&[1, 2]));
@@ -218,7 +218,7 @@ mod tests {
         // 2×2 grid: subtract cage on column 1 with target 1 allows (1,2),(2,1).
         // Both cells can be 1 or 2. AllDifferent on each row then pins the partner cells.
         let cage = Cage::non_commutative(2, domino(1, 1, 2, 1), Subtract, 1).unwrap();
-        let p = Puzzle::from_parts(Grid::new(2), vec![cage]);
+        let p = Puzzle::from_parts(Grid::new(2).unwrap(), vec![cage]);
         // Should be feasible and not panic.
         assert!(p.fixpoint().is_some());
     }
@@ -228,7 +228,7 @@ mod tests {
         // Two given cages both claiming value 1 in the same row: infeasible.
         let c1 = Cage::given(Cell(1, 1), 2, 1).unwrap();
         let c2 = Cage::given(Cell(1, 2), 2, 1).unwrap();
-        let p = Puzzle::from_parts(Grid::new(2), vec![c1, c2]);
+        let p = Puzzle::from_parts(Grid::new(2).unwrap(), vec![c1, c2]);
         assert!(p.fixpoint().is_none());
     }
 }

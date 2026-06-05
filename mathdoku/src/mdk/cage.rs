@@ -273,7 +273,7 @@ mod tests {
     // ---- Constraint::propagate ----
 
     fn full_grid(n: usize) -> Grid {
-        Grid::new(n)
+        Grid::new(n).unwrap()
     }
 
     #[test]
