@@ -144,16 +144,22 @@ impl Cage {
     pub fn set(&self, cell: Cell, fill: Fill) -> Result<Self, Error> {
         let index = self.polyomino_index(cell)?;
         let operation = match &self.operation {
-            CageOperation::Commutative(op, target, memo) => CageOperation::Commutative(
-                *op,
-                *target,
-                memo.narrow(self.fills_with(memo, index, fill)?)?,
-            ),
-            CageOperation::NonCommutative(op, target, memo) => CageOperation::NonCommutative(
-                *op,
-                *target,
-                memo.narrow(self.fills_with(memo, index, fill)?)?,
-            ),
+            CageOperation::Commutative(op, target, memo) => {
+                let reset = memo.reset();
+                CageOperation::Commutative(
+                    *op,
+                    *target,
+                    reset.narrow(self.fills_with(&reset, index, fill)?)?,
+                )
+            }
+            CageOperation::NonCommutative(op, target, memo) => {
+                let reset = memo.reset();
+                CageOperation::NonCommutative(
+                    *op,
+                    *target,
+                    reset.narrow(self.fills_with(&reset, index, fill)?)?,
+                )
+            }
             CageOperation::Given(v) => {
                 if fill.contains(*v) {
                     self.operation.clone()
@@ -320,14 +326,26 @@ mod tests {
     }
 
     #[test]
-    fn set_commutative_incompatible_fill_returns_empty_fills() {
-        // no tuple summing to 5 has pos 0 ∈ {3} and pos 1 ∈ {3}
+    fn set_commutative_empty_fill_returns_empty_fills() {
+        // no tuple summing to 5 has pos 0 ∈ {}
         let cage = Cage::commutative(4, domino(1, 1, 1, 2), Add, 5).unwrap();
-        let narrowed = cage.set(Cell(1, 1), Fill::from(4, &[3])).unwrap();
         assert!(matches!(
-            narrowed.set(Cell(1, 2), Fill::from(4, &[3])),
+            cage.set(Cell(1, 1), Fill::from(4, &[])),
             Err(Error::EmptyFills)
         ));
+    }
+
+    #[test]
+    fn set_widens_after_narrowing() {
+        // narrow to pos 0 = {1}, then widen back to {1,2} — must restore full support
+        // add to 5 in n=4: pos 0 = {1} → only (1,4) survives
+        // widen to {1,2} → (1,4) and (2,3) both survive, pos 1 = {3,4}
+        let cage = Cage::commutative(4, domino(1, 1, 1, 2), Add, 5).unwrap();
+        let narrowed = cage.set(Cell(1, 1), Fill::from(4, &[1])).unwrap();
+        assert_eq!(narrowed.get(Cell(1, 2)).unwrap(), Fill::from(4, &[4]));
+        let widened = narrowed.set(Cell(1, 1), Fill::from(4, &[1, 2])).unwrap();
+        assert_eq!(widened.get(Cell(1, 1)).unwrap(), Fill::from(4, &[1, 2]));
+        assert_eq!(widened.get(Cell(1, 2)).unwrap(), Fill::from(4, &[3, 4]));
     }
 
     #[test]
