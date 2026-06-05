@@ -397,7 +397,7 @@ impl Constraint {
     }
 
     const fn operation(self, x: N, y: N) -> N {
-        self.operator.apply_pair(x, y)
+        self.operator.apply_to_pair(x, y)
     }
 
     const fn unit(self) -> N {
@@ -737,7 +737,7 @@ mod tests {
         let mut out = Vec::new();
         let mut t = vec![1u32; k];
         loop {
-            if op.apply(&t) == target {
+            if op.apply_to_tuple(&t) == target {
                 out.push(t.clone());
             }
             let mut i = 0;

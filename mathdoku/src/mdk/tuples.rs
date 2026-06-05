@@ -50,7 +50,7 @@ impl Tuples {
             return Step::Exhausted;
         };
         if tuple.len() == self.k {
-            if operator.apply(&tuple) == target {
+            if operator.apply_to_tuple(&tuple) == target {
                 Step::Yield(tuple)
             } else {
                 Step::Continue
@@ -60,7 +60,7 @@ impl Tuples {
                 let mut new_tuple = tuple.clone();
                 #[allow(clippy::cast_possible_truncation)]
                 new_tuple.push(i as N);
-                let s = operator.apply(&new_tuple);
+                let s = operator.apply_to_tuple(&new_tuple);
                 #[allow(clippy::cast_possible_truncation)]
                 let remaining = (self.k - new_tuple.len()) as N;
                 let residual = operator.dual().identity() * remaining;

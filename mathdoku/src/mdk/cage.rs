@@ -127,14 +127,55 @@ impl Cage {
         let fill = match &self.operation {
             CageOperation::Commutative(_, _, memo) => memo.get(index)?,
             CageOperation::NonCommutative(_, _, memo) => memo.get(index)?,
-            CageOperation::Given(v) => Fill::from(self.n, &[*v]),
+            CageOperation::Given(n) => Fill::from(self.n, &[*n]),
         };
         Ok(fill)
     }
 
-    #[allow(clippy::todo)]
-    pub fn set(&self, _cell: Cell, _fill: Fill) -> Result<Self, Error> {
-        todo!()
+    /// Assigns `fill` as the candidate set for `cell`, narrowing the memo.
+    ///
+    /// Returns a new `Cage` with the updated constraint. For a `Given` cage,
+    /// succeeds only if `fill` contains the given value.
+    ///
+    /// # Errors
+    /// - [`Error::MissingCell`] if `cell` is not in this cage.
+    /// - [`Error::InvalidCageFill`] if `fill` is incompatible with the constraint.
+    /// - [`Error::EmptyFills`] if no tuples survive after narrowing.
+    pub fn set(&self, cell: Cell, fill: Fill) -> Result<Self, Error> {
+        let index = self.polyomino_index(cell)?;
+        let operation = match &self.operation {
+            CageOperation::Commutative(op, target, memo) => CageOperation::Commutative(
+                *op,
+                *target,
+                memo.narrow(self.fills_with(memo, index, fill)?)?,
+            ),
+            CageOperation::NonCommutative(op, target, memo) => CageOperation::NonCommutative(
+                *op,
+                *target,
+                memo.narrow(self.fills_with(memo, index, fill)?)?,
+            ),
+            CageOperation::Given(v) => {
+                if fill.contains(*v) {
+                    self.operation.clone()
+                } else {
+                    return Err(Error::InvalidCageFill(self.polyomino.clone(), fill));
+                }
+            }
+        };
+        Ok(Self {
+            n: self.n,
+            polyomino: self.polyomino.clone(),
+            operation,
+        })
+    }
+
+    /// Builds a fills vector from `memo`, replacing position `index` with `fill`.
+    fn fills_with<M: Memo>(&self, memo: &M, index: usize, fill: Fill) -> Result<Vec<Fill>, Error> {
+        let mut fills: Vec<Fill> = (0..self.polyomino.len())
+            .map(|i| memo.get(i))
+            .collect::<Result<_, _>>()?;
+        fills[index] = fill;
+        Ok(fills)
     }
 
     /// Returns the index of `cell` in its containing [`Cage`].
@@ -241,5 +282,76 @@ mod tests {
     fn given_stores_target_as_value() {
         let cage = Cage::given(Cell(1, 1), 4, 7).unwrap();
         assert_eq!(cage.operation, CageOperation::Given(7));
+    }
+
+    // ---- get ----
+
+    #[test]
+    fn get_missing_cell_returns_error() {
+        let cage = Cage::commutative(4, domino(1, 1, 1, 2), Add, 5).unwrap();
+        assert!(matches!(cage.get(Cell(9, 9)), Err(Error::MissingCell(_))));
+    }
+
+    #[test]
+    fn get_given_returns_singleton_fill() {
+        let cage = Cage::given(Cell(1, 1), 4, 3).unwrap();
+        assert_eq!(cage.get(Cell(1, 1)).unwrap(), Fill::from(4, &[3]));
+    }
+
+    // ---- set ----
+
+    #[test]
+    fn set_missing_cell_returns_error() {
+        let cage = Cage::commutative(4, domino(1, 1, 1, 2), Add, 5).unwrap();
+        assert!(matches!(
+            cage.set(Cell(9, 9), Fill::from(4, &[1])),
+            Err(Error::MissingCell(_))
+        ));
+    }
+
+    #[test]
+    fn set_commutative_narrows_fills() {
+        // add to 5 in n=4: (1,4),(2,3),(3,2),(4,1)
+        // assign pos 0 = {1,2} → remaining tuples (1,4),(2,3) → pos 1 = {3,4}
+        let cage = Cage::commutative(4, domino(1, 1, 1, 2), Add, 5).unwrap();
+        let narrowed = cage.set(Cell(1, 1), Fill::from(4, &[1, 2])).unwrap();
+        assert_eq!(narrowed.get(Cell(1, 1)).unwrap(), Fill::from(4, &[1, 2]));
+        assert_eq!(narrowed.get(Cell(1, 2)).unwrap(), Fill::from(4, &[3, 4]));
+    }
+
+    #[test]
+    fn set_commutative_incompatible_fill_returns_empty_fills() {
+        // no tuple summing to 5 has pos 0 ∈ {3} and pos 1 ∈ {3}
+        let cage = Cage::commutative(4, domino(1, 1, 1, 2), Add, 5).unwrap();
+        let narrowed = cage.set(Cell(1, 1), Fill::from(4, &[3])).unwrap();
+        assert!(matches!(
+            narrowed.set(Cell(1, 2), Fill::from(4, &[3])),
+            Err(Error::EmptyFills)
+        ));
+    }
+
+    #[test]
+    fn set_non_commutative_narrows_fills() {
+        // subtract 1 in n=4: (1,2),(2,1),(2,3),(3,2),(3,4),(4,3)
+        // assign pos 0 = {1} → remaining tuples (1,2) → pos 1 = {2}
+        let cage = Cage::non_commutative(4, domino(1, 1, 1, 2), Subtract, 1).unwrap();
+        let narrowed = cage.set(Cell(1, 1), Fill::from(4, &[1])).unwrap();
+        assert_eq!(narrowed.get(Cell(1, 1)).unwrap(), Fill::from(4, &[1]));
+        assert_eq!(narrowed.get(Cell(1, 2)).unwrap(), Fill::from(4, &[2]));
+    }
+
+    #[test]
+    fn set_given_compatible_fill_succeeds() {
+        let cage = Cage::given(Cell(1, 1), 4, 3).unwrap();
+        assert!(cage.set(Cell(1, 1), Fill::from(4, &[2, 3])).is_ok());
+    }
+
+    #[test]
+    fn set_given_incompatible_fill_returns_invalid_cage_fill() {
+        let cage = Cage::given(Cell(1, 1), 4, 3).unwrap();
+        assert!(matches!(
+            cage.set(Cell(1, 1), Fill::from(4, &[1, 2])),
+            Err(Error::InvalidCageFill(_, _))
+        ));
     }
 }
