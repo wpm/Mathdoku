@@ -151,6 +151,16 @@ impl Cage {
     }
 }
 
+fn narrow_fills<M: Memo>(memo: &M, old_fills: Vec<Fill>, n: usize) -> Result<Vec<Fill>, Error> {
+    match memo.narrow(old_fills) {
+        Ok(narrowed) => Ok((0..n)
+            .map(|i| narrowed.get(i).unwrap_or_default())
+            .collect()),
+        Err(EmptyFills) => Ok(vec![Fill::default(); n]),
+        Err(e) => Err(e),
+    }
+}
+
 impl Constraint<Grid, Cell, Fill, Error> for Cage {
     fn propagate(&self, state: &Grid) -> Result<(Grid, Vec<Cell>), Error> {
         let cells: Vec<Cell> = self.polyomino.iter().copied().collect();
@@ -168,20 +178,12 @@ impl Constraint<Grid, Cell, Fill, Error> for Cage {
                     Fill::default()
                 }]
             }
-            CageSupport::Commutative(_, _, memo) => match memo.narrow(old_fills.clone()) {
-                Ok(narrowed) => (0..cells.len())
-                    .map(|i| narrowed.get(i).unwrap_or_default())
-                    .collect(),
-                Err(EmptyFills) => vec![Fill::default(); cells.len()],
-                Err(e) => return Err(e),
-            },
-            CageSupport::NonCommutative(_, _, memo) => match memo.narrow(old_fills.clone()) {
-                Ok(narrowed) => (0..cells.len())
-                    .map(|i| narrowed.get(i).unwrap_or_default())
-                    .collect(),
-                Err(EmptyFills) => vec![Fill::default(); cells.len()],
-                Err(e) => return Err(e),
-            },
+            CageSupport::Commutative(_, _, memo) => {
+                narrow_fills(memo, old_fills.clone(), cells.len())?
+            }
+            CageSupport::NonCommutative(_, _, memo) => {
+                narrow_fills(memo, old_fills.clone(), cells.len())?
+            }
         };
         Ok(state.apply_fills(&cells, &old_fills, new_fills))
     }
