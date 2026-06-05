@@ -256,12 +256,7 @@ pub fn new_latin_square<R: Rng>(
 ) -> Result<State, Error> {
     let puzzle = Puzzle::new(n)?;
     let latin = generate_latin_square(n, rng);
-    #[allow(clippy::cast_possible_truncation)] // latin values are always 1..=n ≤ 9
-    let latin_u8: Vec<Vec<u8>> = latin
-        .iter()
-        .map(|r| r.iter().map(|&v| v as u8).collect())
-        .collect();
-    let solution = Grid::from_latin_square(n, &latin_u8)?;
+    let solution = Grid::from_latin_square(n, &latin)?;
     state.puzzle = Some(puzzle);
     state.solution = Some(solution);
     state.path = None;
@@ -500,7 +495,8 @@ mod tests {
         /// 3 1 2
         /// ```
         pub(super) fn known_3x3_solution() -> Grid {
-            let square = vec![vec![1u8, 2, 3], vec![2, 3, 1], vec![3, 1, 2]];
+            let square: Vec<Vec<mathdoku::Value>> =
+                vec![vec![1, 2, 3], vec![2, 3, 1], vec![3, 1, 2]];
             Grid::from_latin_square(3, &square).unwrap()
         }
 
@@ -1430,8 +1426,8 @@ mod tests {
         }
 
         fn is_valid_latin_square(grid: &Grid, n: usize) -> bool {
-            let expected: Vec<u8> = (1..=n as u8).collect();
-            let line_ok = |cells: Vec<u8>| {
+            let expected: Vec<mathdoku::Value> = (1..=n as mathdoku::Value).collect();
+            let line_ok = |cells: Vec<mathdoku::Value>| {
                 let mut sorted = cells;
                 sorted.sort_unstable();
                 sorted == expected

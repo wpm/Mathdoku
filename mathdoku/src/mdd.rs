@@ -815,8 +815,7 @@ mod tests {
                 .iter()
                 .fold(constraint.unit(), |a, &v| constraint.operation(a, v));
             if acc == constraint.target() {
-                #[allow(clippy::cast_possible_truncation)]
-                out.push(t.iter().map(|&v| v as u8).collect());
+                out.push(t.iter().map(|&v| v as crate::Value).collect());
             }
             let mut i = 0;
             while i < arity && t[i] == n {

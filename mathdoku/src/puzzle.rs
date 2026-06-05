@@ -150,9 +150,10 @@ impl Puzzle {
         let arity = cells.len();
         let op = cage.operation();
         let target = op.target;
-        let n_u8 = u8::try_from(n).unwrap_or(u8::MAX);
+        #[allow(clippy::cast_possible_truncation)] // n ≤ 9
+        let n_val: crate::Value = n as crate::Value;
         let mut result = Vec::new();
-        let mut tuple = vec![1u8; arity];
+        let mut tuple: Vec<crate::Value> = vec![1; arity];
         loop {
             let satisfies = match op.operator() {
                 Operator::Given => arity == 1 && u64::from(tuple[0]) == target,
@@ -173,7 +174,7 @@ impl Puzzle {
             let mut pos = arity - 1;
             loop {
                 tuple[pos] += 1;
-                if tuple[pos] <= n_u8 {
+                if tuple[pos] <= n_val {
                     break;
                 }
                 tuple[pos] = 1;

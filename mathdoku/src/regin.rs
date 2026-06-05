@@ -237,7 +237,7 @@ mod tests {
             }
         }
         let mut support = vec![Values::default(); values.len()];
-        let mut current = vec![0u8; values.len()];
+        let mut current: Vec<Value> = vec![0; values.len()];
         extend(0, values, 0u16, &mut current, &mut support);
         support
     }
@@ -291,7 +291,7 @@ mod tests {
         );
     }
 
-    fn random_values(rng: &mut ChaCha8Rng, max_vars: usize, max_values: u8) -> Vec<Values> {
+    fn random_values(rng: &mut ChaCha8Rng, max_vars: usize, max_values: Value) -> Vec<Values> {
         let n_vars = rng.random_range(1..=max_vars);
         let n_values = rng.random_range(1..=max_values);
         (0..n_vars)

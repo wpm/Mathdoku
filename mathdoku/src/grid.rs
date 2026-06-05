@@ -103,7 +103,7 @@ impl Grid {
         Ok(grid)
     }
 
-    fn singleton_values(v: Value) -> Values {
+    const fn singleton_values(v: Value) -> Values {
         Values::singleton(v)
     }
 
@@ -172,6 +172,7 @@ impl Display for Grid {
 
 #[cfg(test)]
 mod tests {
+    use crate::Value as CellValue;
     use serde_json::{Value, from_str, json, to_string};
 
     use super::*;
@@ -401,7 +402,7 @@ mod tests {
             assert!(sol.is_solution());
             for r in 0..3 {
                 let row_sum: u32 = (0..3)
-                    .map(|c| u32::from(sol.get_values(Cell::new(r, c)).unwrap().values()[0]))
+                    .map(|c| sol.get_values(Cell::new(r, c)).unwrap().values()[0])
                     .sum();
                 assert_eq!(row_sum, 6, "row {r} should sum to 6");
             }
@@ -443,11 +444,11 @@ mod tests {
             .unwrap()
             .unwrap();
 
-        let mut actual: Vec<[[u8; 4]; 4]> = puzzle
+        let mut actual: Vec<[[CellValue; 4]; 4]> = puzzle
             .solutions()
             .map(Result::unwrap)
             .map(|g| {
-                let mut m = [[0u8; 4]; 4];
+                let mut m: [[CellValue; 4]; 4] = [[0; 4]; 4];
                 for (r, row) in m.iter_mut().enumerate() {
                     for (c, slot) in row.iter_mut().enumerate() {
                         *slot = g.get_values(Cell::new(r, c)).unwrap().values()[0];
@@ -463,7 +464,7 @@ mod tests {
         for m in &actual {
             for (i, row) in m.iter().enumerate() {
                 let mut row = row.to_vec();
-                let mut col: Vec<u8> = (0..4).map(|r| m[r][i]).collect();
+                let mut col: Vec<CellValue> = (0..4).map(|r| m[r][i]).collect();
                 row.sort_unstable();
                 col.sort_unstable();
                 assert_eq!(row, vec![1, 2, 3, 4], "row {i} is not a permutation");

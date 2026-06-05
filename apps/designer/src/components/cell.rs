@@ -17,7 +17,7 @@ pub fn Cell(
     x: f64,
     y: f64,
     cell: f64,
-    values: Vec<u8>,
+    values: Vec<mathdoku::Value>,
     fill: &'static str,
     /// Top margin reserved for the cage op label.
     top_margin: f64,
@@ -25,7 +25,7 @@ pub fn Cell(
     n: usize,
     /// The correct solution value for this cell, if known. When present and the
     /// cell has multiple candidate values, this value is rendered larger and in green.
-    solution_value: Option<u8>,
+    solution_value: Option<mathdoku::Value>,
 ) -> impl IntoView {
     let glyphs = cell_glyphs(x, y, cell, &values, top_margin, n, solution_value);
 
@@ -59,10 +59,10 @@ fn cell_glyphs(
     x: f64,
     y: f64,
     cell: f64,
-    values: &[u8],
+    values: &[mathdoku::Value],
     top_margin: f64,
     n: usize,
-    solution_value: Option<u8>,
+    solution_value: Option<mathdoku::Value>,
 ) -> Vec<Glyph> {
     let zone_w = 2.0f64.mul_add(-VALUE_EDGE, cell);
     let zone_h = cell - top_margin - VALUE_EDGE;
@@ -268,7 +268,7 @@ mod tests {
 
     #[test]
     fn glyphs_more_than_nine_use_square_fallback() {
-        let values: Vec<u8> = (1..=10).collect();
+        let values: Vec<mathdoku::Value> = (1..=10).collect();
         let glyphs = cell_glyphs(0.0, 0.0, 120.0, &values, 16.0, 10, None);
         // The fallback grid renders every candidate.
         assert_eq!(glyphs.len(), 10);

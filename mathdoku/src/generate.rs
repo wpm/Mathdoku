@@ -142,7 +142,7 @@ where
         let values: Vec<Value> = polyomino
             .cells()
             .into_iter()
-            .map(|cell| latin_square[cell.row][cell.column] as Value)
+            .map(|cell| latin_square[cell.row][cell.column])
             .collect();
         let operation = op(&values, n)?;
         let cage = Cage::new(polyomino, operation)?;

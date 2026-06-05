@@ -10,7 +10,7 @@ use std::{
 };
 
 /// Possible cell value, a number in the range `1..=9`.
-pub type Value = u8;
+pub type Value = u32;
 /// A cage target (sum, product, difference, ratio, or given value).
 pub type Target = u64;
 /// An ordered assignment of values to the cells of a cage, one value per cell.
@@ -72,27 +72,25 @@ impl Values {
                 return Err(Error::InvalidValue(n));
             }
         }
-        Ok(Self(
-            ns.iter().fold(0u16, |acc, &n| acc | (1u16 << u32::from(n))),
-        ))
+        Ok(Self(ns.iter().fold(0u16, |acc, &n| acc | (1u16 << n))))
     }
 
     /// Returns the full set `{1, ..., n}`.
-    #[allow(clippy::cast_possible_truncation)]
+    #[allow(clippy::cast_possible_truncation)] // n ≤ 9 always fits in Value
     pub fn all(n: usize) -> Self {
-        Self((1..=(n as Value)).fold(0u16, |acc, n| acc | (1u16 << u32::from(n))))
+        Self((1..=(n as Value)).fold(0u16, |acc, n| acc | (1u16 << n)))
     }
 
     /// Creates a `Values` set from a single value, bypassing validation.
     /// Callers must guarantee `n` is in `1..=9`.
-    pub(crate) fn singleton(n: Value) -> Self {
-        Self(1u16 << u32::from(n))
+    pub(crate) const fn singleton(n: Value) -> Self {
+        Self(1u16 << n)
     }
 
     /// Returns the values in ascending order.
     #[must_use]
     pub fn values(self) -> Vec<Value> {
-        (1u8..=9).filter(|&v| self.0 & (1u16 << v) != 0).collect()
+        (1u32..=9).filter(|&v| self.0 & (1u16 << v) != 0).collect()
     }
 
     /// Returns true if the set contains no values.
