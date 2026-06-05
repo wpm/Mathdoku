@@ -409,7 +409,7 @@ mod tests {
     fn trie_subtract_matches_brute_force() {
         // Cross-check Trie::support against independent enumeration for n=4, target=1.
         let n: crate::N = 4;
-        let trie = Trie::new(n, NonMonotonicOp::Subtract, 1, 2);
+        let trie = Trie::new(n.into(), NonMonotonicOp::Subtract, 1, 2);
         let domains = [full_domain(n as usize), full_domain(n as usize)];
         let trie_result = trie.support(&domains);
 
@@ -431,7 +431,7 @@ mod tests {
     fn trie_divide_matches_brute_force() {
         // Cross-check Trie::support against independent enumeration for n=4, target=2.
         let n: crate::N = 4;
-        let trie = Trie::new(n, NonMonotonicOp::Divide, 2, 2);
+        let trie = Trie::new(n.into(), NonMonotonicOp::Divide, 2, 2);
         let domains = [full_domain(n as usize), full_domain(n as usize)];
         let trie_result = trie.support(&domains);
 

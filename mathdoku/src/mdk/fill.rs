@@ -71,7 +71,7 @@ impl Fill {
     /// Returns the values in ascending order.
     #[must_use]
     pub fn values(self) -> Vec<N> {
-        (1u32..=9).filter(|&v| self.0 & (1u16 << v) != 0).collect()
+        (1u8..=9).filter(|&v| self.0 & (1u16 << v) != 0).collect()
     }
 }
 

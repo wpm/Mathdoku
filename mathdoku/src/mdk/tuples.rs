@@ -63,7 +63,7 @@ impl Tuples {
                 let s = operator.apply_to_tuple(&new_tuple);
                 #[allow(clippy::cast_possible_truncation)]
                 let remaining = (self.k - new_tuple.len()) as N;
-                let residual = operator.dual().identity() * remaining;
+                let residual = operator.dual().identity() * Target::from(remaining);
                 if s + residual <= target {
                     self.queue.push_back(new_tuple);
                 }

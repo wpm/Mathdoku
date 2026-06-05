@@ -402,7 +402,7 @@ mod tests {
             assert!(sol.is_solution());
             for r in 0..3 {
                 let row_sum: u32 = (0..3)
-                    .map(|c| sol.get_values(Cell::new(r, c)).unwrap().values()[0])
+                    .map(|c| u32::from(sol.get_values(Cell::new(r, c)).unwrap().values()[0]))
                     .sum();
                 assert_eq!(row_sum, 6, "row {r} should sum to 6");
             }
