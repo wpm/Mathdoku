@@ -19,7 +19,7 @@ impl Grid {
     pub fn new(n: usize) -> Self {
         let fills = (1..=n)
             .flat_map(|i| (1..=n).map(move |j| Cell(i, j)))
-            .map(|cell| (cell, Fill::new(n)))
+            .map(|cell| (cell, Fill::all(n)))
             .collect();
         Self(n, fills)
     }
@@ -122,8 +122,8 @@ struct GridWire {
 
 impl Serialize for Grid {
     fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        let full = Fill::new(self.0);
-        let is_full = self.1.values().all(|f| f == &full);
+        let full = Fill::all(self.0);
+        let is_full = self.1.values().all(|f| *f == full);
         let fills = if is_full {
             vec![]
         } else {
@@ -187,7 +187,7 @@ mod tests {
     fn assert_all_full(g: &Grid, n: usize) {
         for r in 1..=n {
             for c in 1..=n {
-                assert_eq!(g.get(Cell(r, c)).unwrap(), Fill::new(n));
+                assert_eq!(g.get(Cell(r, c)).unwrap(), Fill::all(n));
             }
         }
     }

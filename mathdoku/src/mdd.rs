@@ -330,18 +330,18 @@ impl MonotonicMDD {
         }
     }
 
-    /// Computes per-cell GAC support given one `Values` set per variable.
+    /// Computes per-cell GAC support given one [`Fill`](crate::Fill) set per variable.
     ///
     /// Returns the subset of each domain that appears in at least one solution
-    /// tuple where every position's value lies in the corresponding `Values` set.
+    /// tuple where every position's value lies in the corresponding `Fill` set.
     #[must_use]
-    pub fn support(&self, values: &[crate::Values]) -> Vec<crate::Values> {
+    pub fn support(&self, values: &[crate::Fill]) -> Vec<crate::Fill> {
         let arity = self.constraint.arity() as usize;
-        let mut support = vec![crate::Values::default(); arity];
+        let mut support = vec![crate::Fill::default(); arity];
         for tuple in self.tuples() {
             if tuple.iter().zip(values).all(|(&v, d)| d.contains(v)) {
                 for (i, &v) in tuple.iter().enumerate() {
-                    support[i] = support[i] | crate::Values::singleton(v);
+                    support[i] = support[i] | crate::Fill::singleton(v);
                 }
             }
         }

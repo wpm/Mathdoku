@@ -12,35 +12,36 @@
 
 #![allow(clippy::similar_names)] // var/val, ip/jp/kp are standard idioms in matching/SCC algorithms
 
-use crate::Values;
+use crate::Fill;
 use crate::mdk::N;
 use std::collections::HashMap;
 
 /// Full Régin GAC for all-different.
 ///
-/// Given one value set per variable, returns the pruned value sets in the same order.
+/// Given one fill per variable, returns the pruned fills in the same order.
 /// A value survives for a variable iff some assignment of distinct values (one
-/// per variable, each within its value set) uses it; if no such complete
-/// assignment exists, every value set empties.
-pub fn regin_gac(values: &[Values]) -> Vec<Values> {
-    let n = values.len();
+/// per variable, each within its fill) uses it; if no such complete assignment
+/// exists, every fill empties.
+pub fn regin_gac(fills: &[Fill]) -> Vec<Fill> {
+    let n = fills.len();
     if n == 0 {
         return vec![];
     }
 
-    let all_values: Vec<N> = values
+    let union = fills
         .iter()
-        .fold(Values::default(), |acc, d| acc | *d)
-        .values();
+        .copied()
+        .fold(Fill::default(), |acc, f| acc | f);
+    let all_values: Vec<N> = union.values();
     let num_values = all_values.len();
     let value_index: HashMap<N, usize> = all_values
         .iter()
         .enumerate()
         .map(|(i, &v)| (v, i))
         .collect();
-    let indexed_values: Vec<Vec<usize>> = values
+    let indexed_values: Vec<Vec<usize>> = fills
         .iter()
-        .map(|d| d.values().iter().map(|v| value_index[v]).collect())
+        .map(|f| f.values().iter().map(|v| value_index[v]).collect())
         .collect();
 
     // Maximum bipartite matching via augmenting paths.
@@ -59,9 +60,9 @@ pub fn regin_gac(values: &[Values]) -> Vec<Values> {
     }
 
     // An unmatched variable means no system of distinct representatives exists:
-    // the constraint is unsatisfiable, so every value set empties.
+    // the constraint is unsatisfiable, so every fill empties.
     if var_match.iter().any(Option::is_none) {
-        return vec![Values::default(); n];
+        return vec![Fill::default(); n];
     }
 
     // Residual digraph. Node layout: variables 0..n, values n..n+num_values.
@@ -82,9 +83,7 @@ pub fn regin_gac(values: &[Values]) -> Vec<Values> {
 
     let scc = kosaraju_scc(&adj, total);
 
-    // Mark every node reachable from a free (unmatched) value. An unmatched edge
-    // (var, val) lies on an alternating path from a free value iff its value node
-    // is reachable here — the step an SCC-only filter omits.
+    // Mark every node reachable from a free (unmatched) value.
     let mut reachable = vec![false; total];
     let mut stack: Vec<usize> = (0..num_values)
         .filter(|&vi| val_match[vi].is_none())
@@ -104,17 +103,15 @@ pub fn regin_gac(values: &[Values]) -> Vec<Values> {
 
     // Keep edge (var, val) iff matched, in an alternating cycle (same SCC), or on
     // an alternating path from a free value.
-    let mut result = vec![Values::default(); n];
+    let mut result = vec![Fill::default(); n];
     for var in 0..n {
         let matched = var_match[var];
-        let vals: Vec<N> = indexed_values[var]
+        result[var] = indexed_values[var]
             .iter()
             .filter(|&&vi| matched == Some(vi) || scc[var] == scc[n + vi] || reachable[n + vi])
-            .map(|&vi| all_values[vi])
-            .collect();
-        result[var] = vals
-            .iter()
-            .fold(Values::default(), |acc, &v| acc | Values::singleton(v));
+            .fold(Fill::default(), |acc, &vi| {
+                acc | Fill::singleton(all_values[vi])
+            });
     }
     result
 }
@@ -210,39 +207,29 @@ mod tests {
 
     use super::*;
 
-    // --- Régin vs the brute-force oracle ---
-
-    /// Exhaustive GAC oracle: a value is kept for a variable iff some complete
-    /// assignment of distinct allowed values uses it.
-    fn brute_force_gac(values: &[Values]) -> Vec<Values> {
-        fn extend(
-            i: usize,
-            values: &[Values],
-            used: u16,
-            current: &mut [N],
-            support: &mut [Values],
-        ) {
-            if i == values.len() {
+    fn brute_force_gac(fills: &[Fill]) -> Vec<Fill> {
+        fn extend(i: usize, fills: &[Fill], used: u16, current: &mut [N], support: &mut [Fill]) {
+            if i == fills.len() {
                 for (slot, &value) in support.iter_mut().zip(current.iter()) {
-                    *slot = *slot | Values::new(&[value]).unwrap();
+                    *slot = *slot | Fill::singleton(value);
                 }
                 return;
             }
-            for value in values[i].values() {
+            for value in fills[i].values() {
                 let bit = 1u16 << value;
                 if used & bit == 0 {
                     current[i] = value;
-                    extend(i + 1, values, used | bit, current, support);
+                    extend(i + 1, fills, used | bit, current, support);
                 }
             }
         }
-        let mut support = vec![Values::default(); values.len()];
-        let mut current: Vec<N> = vec![0; values.len()];
-        extend(0, values, 0u16, &mut current, &mut support);
+        let mut support = vec![Fill::default(); fills.len()];
+        let mut current: Vec<N> = vec![0; fills.len()];
+        extend(0, fills, 0u16, &mut current, &mut support);
         support
     }
 
-    fn sorted(fills: &[Values]) -> Vec<Vec<N>> {
+    fn sorted(fills: &[Fill]) -> Vec<Vec<N>> {
         fills.iter().map(|f| f.values()).collect()
     }
 
@@ -253,28 +240,24 @@ mod tests {
 
     #[test]
     fn regin_prunes_forced_chain() {
-        let values = vec![
-            Values::new(&[1, 2]).unwrap(),
-            Values::new(&[2]).unwrap(),
-            Values::new(&[1, 3]).unwrap(),
+        let fills = vec![
+            Fill::new(&[1, 2]).unwrap(),
+            Fill::new(&[2]).unwrap(),
+            Fill::new(&[1, 3]).unwrap(),
         ];
-        assert_eq!(sorted(&regin_gac(&values)), vec![vec![1], vec![2], vec![3]]);
+        assert_eq!(sorted(&regin_gac(&fills)), vec![vec![1], vec![2], vec![3]]);
     }
 
     #[test]
     fn regin_infeasible_empties_all() {
-        let values = vec![Values::new(&[1]).unwrap(), Values::new(&[1]).unwrap()];
-        assert_eq!(
-            regin_gac(&values),
-            vec![Values::default(), Values::default()]
-        );
+        let fills = vec![Fill::new(&[1]).unwrap(), Fill::new(&[1]).unwrap()];
+        assert_eq!(regin_gac(&fills), vec![Fill::default(), Fill::default()]);
     }
 
     #[test]
     fn regin_keeps_free_value() {
-        // One variable, two candidate values: full Régin keeps both.
         assert_eq!(
-            sorted(&regin_gac(&[Values::new(&[1, 2]).unwrap()])),
+            sorted(&regin_gac(&[Fill::new(&[1, 2]).unwrap()])),
             vec![vec![1, 2]]
         );
     }
@@ -284,23 +267,23 @@ mod tests {
         assert!(brute_force_gac(&[]).is_empty());
         assert_eq!(
             sorted(&brute_force_gac(&[
-                Values::new(&[1, 2]).unwrap(),
-                Values::new(&[2]).unwrap()
+                Fill::new(&[1, 2]).unwrap(),
+                Fill::new(&[2]).unwrap()
             ])),
             vec![vec![1], vec![2]]
         );
     }
 
-    fn random_values(rng: &mut ChaCha8Rng, max_vars: usize, max_values: N) -> Vec<Values> {
+    fn random_fills(rng: &mut ChaCha8Rng, max_vars: usize, max_values: N) -> Vec<Fill> {
         let n_vars = rng.random_range(1..=max_vars);
         let n_values = rng.random_range(1..=max_values);
         (0..n_vars)
             .map(|_| {
                 loop {
-                    let mut fill = Values::default();
+                    let mut fill = Fill::default();
                     for value in 1..=n_values {
                         if rng.random_range(0u8..2) == 1 {
-                            fill = fill | Values::new(&[value]).unwrap();
+                            fill = fill | Fill::singleton(value);
                         }
                     }
                     if !fill.is_empty() {
@@ -311,23 +294,20 @@ mod tests {
             .collect()
     }
 
-    /// Across thousands of random instances spanning the full ≤8-variable /
-    /// ≤8-value regime (including value > variable), full Régin must agree with
-    /// the brute-force GAC oracle.
     #[test]
     fn regin_matches_brute_force_oracle() {
         let mut rng = ChaCha8Rng::seed_from_u64(0x5151_2026);
         let mut saw_free_value_case = false;
         for _ in 0..5000 {
-            let values = random_values(&mut rng, 8, 8);
-            let union: Values = values.iter().fold(Values::default(), |acc, d| acc | *d);
-            if union.len() > values.len() {
+            let fills = random_fills(&mut rng, 8, 8);
+            let union: Fill = fills.iter().copied().fold(Fill::default(), |a, f| a | f);
+            if union.len() > fills.len() {
                 saw_free_value_case = true;
             }
             assert_eq!(
-                regin_gac(&values),
-                brute_force_gac(&values),
-                "Régin and brute force disagree on {values:?}"
+                regin_gac(&fills),
+                brute_force_gac(&fills),
+                "Régin and brute force disagree on {fills:?}"
             );
         }
         assert!(saw_free_value_case);

@@ -1,8 +1,9 @@
 //! The [`Solutions`] iterator: MAC search over a [`Puzzle`]'s constraint graph.
 
+use crate::Fill;
 use crate::grid::Grid;
 use crate::puzzle::Puzzle;
-use crate::{Cell, Error, Values};
+use crate::{Cell, Error};
 
 /// An iterator over all solutions for a [`Puzzle`].
 ///
@@ -26,9 +27,9 @@ impl Solutions {
     }
 
     /// Finds the cell with the fewest values of size ≥ 2 (the most constrained variable).
-    fn branch_cell(grid: &Grid) -> Option<(Cell, Values)> {
+    fn branch_cell(grid: &Grid) -> Option<(Cell, Fill)> {
         let n = grid.n();
-        let mut best: Option<(Cell, Values)> = None;
+        let mut best: Option<(Cell, Fill)> = None;
         for r in 0..n {
             for c in 0..n {
                 let cell = Cell::new(r, c);
@@ -57,7 +58,7 @@ impl Iterator for Solutions {
             // Check for success: all cells' values are singletons.
             let solved = (0..n)
                 .flat_map(|r| (0..n).map(move |c| Cell::new(r, c)))
-                .all(|cell| grid.get_values(cell).is_ok_and(Values::is_singleton));
+                .all(|cell| grid.get_values(cell).is_ok_and(Fill::is_singleton));
             if solved {
                 return Some(Ok(grid));
             }

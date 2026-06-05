@@ -3,17 +3,18 @@
 
 use std::sync::Arc;
 
+use crate::Fill;
 use crate::cage::Cage;
 use crate::grid::Grid;
 use crate::mdk::csp::{Constraint, State};
 use crate::puzzle::Puzzle;
 use crate::regin::regin_gac;
-use crate::{Cell, Error, Values};
+use crate::{Cell, Error};
 
 // ---- State impl ----
 
-impl State<Cell, Values, Error> for Grid {
-    fn get(&self, cell: Cell) -> Result<Values, Error> {
+impl State<Cell, Fill, Error> for Grid {
+    fn get(&self, cell: Cell) -> Result<Fill, Error> {
         self.get_values(cell)
     }
 }
@@ -43,10 +44,10 @@ impl AllDifferent {
     }
 }
 
-impl Constraint<Grid, Cell, Values, Error> for AllDifferent {
+impl Constraint<Grid, Cell, Fill, Error> for AllDifferent {
     fn propagate(&self, state: &Grid) -> Result<(Grid, Vec<Cell>), Error> {
         let cells = &self.cells;
-        let old_values: Vec<Values> = cells
+        let old_values: Vec<Fill> = cells
             .iter()
             .map(|&c| state.get_values(c))
             .collect::<Result<_, _>>()?;
@@ -68,7 +69,7 @@ pub(crate) struct CageConstraint {
     pub(crate) puzzle: Arc<Puzzle>,
 }
 
-impl Constraint<Grid, Cell, Values, Error> for CageConstraint {
+impl Constraint<Grid, Cell, Fill, Error> for CageConstraint {
     fn propagate(&self, state: &Grid) -> Result<(Grid, Vec<Cell>), Error> {
         propagate_cage(&self.cage, &self.puzzle, state)
     }
@@ -87,7 +88,7 @@ pub(crate) enum PuzzleConstraint {
     Cage(CageConstraint),
 }
 
-impl Constraint<Grid, Cell, Values, Error> for PuzzleConstraint {
+impl Constraint<Grid, Cell, Fill, Error> for PuzzleConstraint {
     fn propagate(&self, state: &Grid) -> Result<(Grid, Vec<Cell>), Error> {
         match self {
             Self::AllDifferent(c) => c.propagate(state),
@@ -109,8 +110,8 @@ fn apply_values(
     state: &Grid,
     puzzle: &Arc<Puzzle>,
     cells: &[Cell],
-    old_values: &[Values],
-    new_values: &[Values],
+    old_values: &[Fill],
+    new_values: &[Fill],
 ) -> Result<(Grid, Vec<Cell>), Error> {
     let _ = puzzle; // puzzle carried for future use (e.g. cage MDD invalidation)
     let mut new_state = *state;
@@ -131,12 +132,12 @@ fn propagate_cage(
 ) -> Result<(Grid, Vec<Cell>), Error> {
     use crate::cage_fill::CageFill;
     let cells = cage.cells();
-    let old_values: Vec<Values> = cells
+    let old_values: Vec<Fill> = cells
         .iter()
         .map(|&c| state.get_values(c))
         .collect::<Result<_, _>>()?;
     let new_values = puzzle.fill(cage).map_or_else(
-        || vec![Values::default(); cells.len()],
+        || vec![Fill::default(); cells.len()],
         |f| f.support(&old_values),
     );
     apply_values(state, puzzle, &cells, &old_values, &new_values)
@@ -151,7 +152,7 @@ mod tests {
         let mut g = Grid::new(n).unwrap();
         for ((r, c), vals) in values {
             g = g
-                .set_values(Cell::new(*r, *c), Values::new(vals).unwrap())
+                .set_values(Cell::new(*r, *c), Fill::new(vals).unwrap())
                 .unwrap();
         }
         g
@@ -215,15 +216,15 @@ mod tests {
             .unwrap();
         assert_eq!(
             new_g.get_values(Cell::new(0, 0)).unwrap(),
-            Values::new(&[1]).unwrap()
+            Fill::new(&[1]).unwrap()
         );
         assert_eq!(
             new_g.get_values(Cell::new(0, 1)).unwrap(),
-            Values::new(&[2]).unwrap()
+            Fill::new(&[2]).unwrap()
         );
         assert_eq!(
             new_g.get_values(Cell::new(0, 2)).unwrap(),
-            Values::new(&[3]).unwrap()
+            Fill::new(&[3]).unwrap()
         );
         assert_eq!(changed.len(), 2);
         assert!(changed.contains(&Cell::new(0, 0)));
@@ -253,11 +254,11 @@ mod tests {
         let (new_g, _) = all_different_column(3, 1).propagate(&g).unwrap();
         assert_eq!(
             new_g.get_values(Cell::new(1, 1)).unwrap(),
-            Values::new(&[2]).unwrap()
+            Fill::new(&[2]).unwrap()
         );
         assert_eq!(
             new_g.get_values(Cell::new(2, 1)).unwrap(),
-            Values::new(&[3]).unwrap()
+            Fill::new(&[3]).unwrap()
         );
     }
 
@@ -270,7 +271,7 @@ mod tests {
         let (new_g, changed) = propagate_cage(&c, &puzzle_with(4, &c), &g).unwrap();
         assert_eq!(
             new_g.get_values(Cell::new(0, 0)).unwrap(),
-            Values::new(&[3]).unwrap()
+            Fill::new(&[3]).unwrap()
         );
         assert_eq!(changed, vec![Cell::new(0, 0)]);
     }
@@ -282,11 +283,11 @@ mod tests {
         let (new_g, _) = propagate_cage(&c, &puzzle_with(4, &c), &g).unwrap();
         assert_eq!(
             new_g.get_values(Cell::new(0, 0)).unwrap(),
-            Values::new(&[1, 2]).unwrap()
+            Fill::new(&[1, 2]).unwrap()
         );
         assert_eq!(
             new_g.get_values(Cell::new(0, 1)).unwrap(),
-            Values::new(&[1, 2]).unwrap()
+            Fill::new(&[1, 2]).unwrap()
         );
     }
 
@@ -304,17 +305,17 @@ mod tests {
     fn cage_propagate_values_constrain_tuples() {
         let g = Grid::new(4)
             .unwrap()
-            .set_values(Cell::new(0, 1), Values::new(&[1, 2]).unwrap())
+            .set_values(Cell::new(0, 1), Fill::new(&[1, 2]).unwrap())
             .unwrap();
         let c = cage_fixture(&[(0, 0), (0, 1)], crate::Operator::Add, 5);
         let (new_g, _) = propagate_cage(&c, &puzzle_with(4, &c), &g).unwrap();
         assert_eq!(
             new_g.get_values(Cell::new(0, 0)).unwrap(),
-            Values::new(&[3, 4]).unwrap()
+            Fill::new(&[3, 4]).unwrap()
         );
         assert_eq!(
             new_g.get_values(Cell::new(0, 1)).unwrap(),
-            Values::new(&[1, 2]).unwrap()
+            Fill::new(&[1, 2]).unwrap()
         );
     }
 
@@ -329,11 +330,11 @@ mod tests {
         let (new_g, changed) = propagate_cage(&c, &puzzle_with(4, &c), &g).unwrap();
         assert_eq!(
             new_g.get_values(Cell::new(0, 0)).unwrap(),
-            Values::new(&[1, 2, 3, 4]).unwrap()
+            Fill::new(&[1, 2, 3, 4]).unwrap()
         );
         assert_eq!(
             new_g.get_values(Cell::new(0, 1)).unwrap(),
-            Values::new(&[1, 2, 3, 4]).unwrap()
+            Fill::new(&[1, 2, 3, 4]).unwrap()
         );
         assert!(changed.is_empty());
     }
@@ -343,13 +344,13 @@ mod tests {
         // Subtract 1, pin pos0 to {4}: only (4,3) survives → pos1={3}.
         let g = Grid::new(4)
             .unwrap()
-            .set_values(Cell::new(0, 0), Values::new(&[4]).unwrap())
+            .set_values(Cell::new(0, 0), Fill::new(&[4]).unwrap())
             .unwrap();
         let c = cage_fixture(&[(0, 0), (0, 1)], crate::Operator::Subtract, 1);
         let (new_g, changed) = propagate_cage(&c, &puzzle_with(4, &c), &g).unwrap();
         assert_eq!(
             new_g.get_values(Cell::new(0, 1)).unwrap(),
-            Values::new(&[3]).unwrap()
+            Fill::new(&[3]).unwrap()
         );
         assert_eq!(changed, vec![Cell::new(0, 1)]);
     }
@@ -373,11 +374,11 @@ mod tests {
         let (new_g, _) = propagate_cage(&c, &puzzle_with(4, &c), &g).unwrap();
         assert_eq!(
             new_g.get_values(Cell::new(0, 0)).unwrap(),
-            Values::new(&[1, 2, 4]).unwrap()
+            Fill::new(&[1, 2, 4]).unwrap()
         );
         assert_eq!(
             new_g.get_values(Cell::new(0, 1)).unwrap(),
-            Values::new(&[1, 2, 4]).unwrap()
+            Fill::new(&[1, 2, 4]).unwrap()
         );
     }
 
@@ -386,13 +387,13 @@ mod tests {
         // Divide 2, pin pos0 to {4}: only (4,2) survives → pos1={2}.
         let g = Grid::new(4)
             .unwrap()
-            .set_values(Cell::new(0, 0), Values::new(&[4]).unwrap())
+            .set_values(Cell::new(0, 0), Fill::new(&[4]).unwrap())
             .unwrap();
         let c = cage_fixture(&[(0, 0), (0, 1)], crate::Operator::Divide, 2);
         let (new_g, changed) = propagate_cage(&c, &puzzle_with(4, &c), &g).unwrap();
         assert_eq!(
             new_g.get_values(Cell::new(0, 1)).unwrap(),
-            Values::new(&[2]).unwrap()
+            Fill::new(&[2]).unwrap()
         );
         assert_eq!(changed, vec![Cell::new(0, 1)]);
     }
@@ -405,11 +406,11 @@ mod tests {
         let (new_g, _) = propagate_cage(&c, &puzzle_with(4, &c), &g).unwrap();
         assert_eq!(
             new_g.get_values(Cell::new(0, 0)).unwrap(),
-            Values::new(&[2, 3]).unwrap()
+            Fill::new(&[2, 3]).unwrap()
         );
         assert_eq!(
             new_g.get_values(Cell::new(0, 1)).unwrap(),
-            Values::new(&[2, 3]).unwrap()
+            Fill::new(&[2, 3]).unwrap()
         );
     }
 

@@ -454,7 +454,7 @@ mod tests {
     #[test]
     fn narrow_with_full_support_is_identity() {
         let m = Mdd::new(4, 2, Add, 5).unwrap();
-        assert_eq!(m.narrow(vec![Fill::new(4), Fill::new(4)]).unwrap(), m);
+        assert_eq!(m.narrow(vec![Fill::all(4), Fill::all(4)]).unwrap(), m);
     }
 
     #[test]

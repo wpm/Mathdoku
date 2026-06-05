@@ -162,7 +162,7 @@ mod tests {
     fn narrow_with_full_support_is_identity() {
         // support that includes every value leaves all tuples intact
         let t = Table::commutative(4, 2, Add, 5).unwrap();
-        let full = vec![Fill::new(4), Fill::new(4)];
+        let full = vec![Fill::all(4), Fill::all(4)];
         assert_eq!(t.narrow(full).unwrap(), t);
     }
 

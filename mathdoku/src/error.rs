@@ -49,7 +49,7 @@ pub enum Error {
     InvalidCage(Cage),
     /// A tuple index is out of range for the cage. Carries `(index, len)`.
     InvalidTupleIndex(usize, usize),
-    /// A value passed to `Values::new` is outside the valid range `1..=9`.
+    /// A value passed to `Fill::new` is outside the valid range `1..=9`.
     InvalidValue(crate::N),
     /// The grid and puzzle dimensions do not match.
     GridPuzzleMismatch(Box<Grid>, Box<Puzzle>),

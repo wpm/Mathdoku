@@ -953,7 +953,7 @@ mod tests {
         use crate::{
             AppState, fix, insert_cage, new_empty, new_latin_square, remove_cage_at, unfix,
         };
-        use mathdoku::{Cell, Polyomino, Values};
+        use mathdoku::{Cell, Fill, Polyomino};
         use rand::{SeedableRng, rngs::StdRng};
 
         #[test]
@@ -988,7 +988,7 @@ mod tests {
             // current is unconstrained: every cell holds the full value set.
             let current = st.current().unwrap();
             for cell in all_cells(4) {
-                assert_eq!(current.get_values(cell).unwrap(), Values::all(4));
+                assert_eq!(current.get_values(cell).unwrap(), Fill::all(4));
             }
             assert!(state.path.is_none());
             assert!(state.dirty);
@@ -1080,7 +1080,7 @@ mod tests {
             let sol = state.solution.as_ref().unwrap();
             assert_eq!(
                 sol.get_values(Cell::new(0, 0)).unwrap(),
-                Values::new(&[1]).unwrap()
+                Fill::new(&[1]).unwrap()
             );
         }
 

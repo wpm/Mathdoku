@@ -6,7 +6,8 @@ use std::fmt::{Display, Formatter};
 
 use crate::Error::InvalidGridSize;
 use crate::mdk::N;
-use crate::{Cell, Error, Values};
+use crate::mdk::fill::Fill;
+use crate::{Cell, Error};
 
 // Serde wire format: flat struct with an n×n `values` array of cell value sets.
 // `values` is optional on deserialization; absent means full value sets for all cells.
@@ -14,23 +15,23 @@ use crate::{Cell, Error, Values};
 struct GridWire {
     n: usize,
     #[serde(default)]
-    values: Vec<Vec<Values>>,
+    values: Vec<Vec<Fill>>,
 }
 
 /// An `n×n` grid of cell values.
 ///
-/// Each cell has a [`Values`] set — the candidate values `1..=n` still
+/// Each cell has a [`Fill`] set — the candidate values `1..=n` still
 /// consistent with the constraints applied so far. Use [`crate::Puzzle::grid`]
 /// to get the propagated grid from a [`crate::Puzzle`].
 ///
-/// `values` is a flat `[Values; 81]` array stored inline (no heap allocation).
-/// Only the first `n*n` entries are used; the rest are `Values::default()`.
+/// `values` is a flat `[Fill; 81]` array stored inline (no heap allocation).
+/// Only the first `n*n` entries are used; the rest are `Fill::default()`.
 /// Cloning a `Grid` is a plain stack copy — no allocator involvement.
 #[must_use]
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct Grid {
     n: usize,
-    values: [Values; 81],
+    values: [Fill; 81],
 }
 
 impl Grid {
@@ -42,8 +43,8 @@ impl Grid {
         if !(1..=9).contains(&n) {
             return Err(InvalidGridSize(n));
         }
-        let full = Values::all(n);
-        let mut values = [Values::default(); 81];
+        let full = Fill::all(n);
+        let mut values = [Fill::default(); 81];
         for slot in values.iter_mut().take(n * n) {
             *slot = full;
         }
@@ -56,11 +57,11 @@ impl Grid {
         self.n
     }
 
-    /// Returns the current values of `cell`.
+    /// Returns the current fill of `cell`.
     ///
     /// # Errors
     /// Returns [`Error::InvalidCell`] if `cell` is outside the grid.
-    pub fn get_values(&self, cell: Cell) -> Result<Values, Error> {
+    pub fn get_values(&self, cell: Cell) -> Result<Fill, Error> {
         Ok(self.values[self.index(cell)?])
     }
 
@@ -69,14 +70,14 @@ impl Grid {
     /// # Errors
     /// Returns [`Error::InvalidCell`] if `cell` is outside the grid.
     pub(crate) fn set_value(&self, cell: Cell, n: N) -> Result<Self, Error> {
-        self.set_values(cell, Values::singleton(n))
+        self.set_values(cell, Fill::singleton(n))
     }
 
-    /// Returns a new grid with `cell`'s values replaced by `values`.
+    /// Returns a new grid with `cell`'s fill replaced by `values`.
     ///
     /// # Errors
     /// Returns [`Error::InvalidCell`] if `cell` is outside the grid.
-    pub(crate) fn set_values(&self, cell: Cell, values: Values) -> Result<Self, Error> {
+    pub(crate) fn set_values(&self, cell: Cell, values: Fill) -> Result<Self, Error> {
         let i = self.index(cell)?;
         let mut new_values = self.values;
         new_values[i] = values;
@@ -98,14 +99,10 @@ impl Grid {
         for (r, row) in square.iter().enumerate() {
             for (c, &v) in row.iter().enumerate() {
                 let cell = Cell::new(r, c);
-                grid = grid.set_values(cell, Self::singleton_values(v))?;
+                grid = grid.set_values(cell, Fill::singleton(v))?;
             }
         }
         Ok(grid)
-    }
-
-    const fn singleton_values(v: N) -> Values {
-        Values::singleton(v)
     }
 
     pub(crate) const fn index(&self, cell: Cell) -> Result<usize, Error> {
@@ -119,7 +116,7 @@ impl Grid {
 
 impl Serialize for Grid {
     fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        let rows: Vec<Vec<Values>> = (0..self.n)
+        let rows: Vec<Vec<Fill>> = (0..self.n)
             .map(|r| (0..self.n).map(|c| self.values[r * self.n + c]).collect())
             .collect();
         GridWire {
@@ -137,9 +134,9 @@ impl<'de> Deserialize<'de> for Grid {
         if !(1..=9).contains(&n) {
             return Err(DeError::custom(format!("invalid grid size {n}")));
         }
-        let mut values = [Values::default(); 81];
+        let mut values = [Fill::default(); 81];
         if wire.values.is_empty() {
-            let full = Values::all(n);
+            let full = Fill::all(n);
             for slot in values.iter_mut().take(n * n) {
                 *slot = full;
             }
@@ -165,6 +162,7 @@ impl<'de> Deserialize<'de> for Grid {
         Ok(Self { n, values })
     }
 }
+
 impl Display for Grid {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}×{} grid", self.n, self.n)
@@ -177,6 +175,7 @@ mod tests {
     use serde_json::{Value, from_str, json, to_string};
 
     use super::*;
+    use crate::Fill;
     use crate::Target;
     use crate::operation::Operator;
     use crate::operation::Operator::{Add, Given};
@@ -215,7 +214,7 @@ mod tests {
     #[test]
     fn new_values_are_full() {
         let g = Grid::new(4).unwrap();
-        let expected = Values::all(4);
+        let expected = Fill::all(4);
         for r in 0..4 {
             for c in 0..4 {
                 assert_eq!(
@@ -249,7 +248,7 @@ mod tests {
         let g = Grid::new(4).unwrap();
         let cell = Cell::new(1, 2);
         let g2 = g.set_value(cell, 3).unwrap();
-        assert_eq!(g2.get_values(cell).unwrap(), Values::new(&[3]).unwrap());
+        assert_eq!(g2.get_values(cell).unwrap(), Fill::new(&[3]).unwrap());
     }
 
     #[test]
@@ -258,7 +257,7 @@ mod tests {
         let cell = Cell::new(0, 0);
         let _ = g.set_value(cell, 2).unwrap();
         // Original grid is unchanged.
-        assert_eq!(g.get_values(cell).unwrap(), Values::all(4));
+        assert_eq!(g.get_values(cell).unwrap(), Fill::all(4));
     }
 
     #[test]
@@ -318,19 +317,19 @@ mod tests {
         let sol = &solutions[0];
         assert_eq!(
             sol.get_values(Cell::new(0, 0)).unwrap(),
-            Values::new(&[1]).unwrap()
+            Fill::new(&[1]).unwrap()
         );
         assert_eq!(
             sol.get_values(Cell::new(0, 1)).unwrap(),
-            Values::new(&[2]).unwrap()
+            Fill::new(&[2]).unwrap()
         );
         assert_eq!(
             sol.get_values(Cell::new(1, 0)).unwrap(),
-            Values::new(&[2]).unwrap()
+            Fill::new(&[2]).unwrap()
         );
         assert_eq!(
             sol.get_values(Cell::new(1, 1)).unwrap(),
-            Values::new(&[1]).unwrap()
+            Fill::new(&[1]).unwrap()
         );
     }
 
@@ -368,19 +367,19 @@ mod tests {
         let sol = &solutions[0];
         assert_eq!(
             sol.get_values(Cell::new(0, 0)).unwrap(),
-            Values::new(&[1]).unwrap()
+            Fill::new(&[1]).unwrap()
         );
         assert_eq!(
             sol.get_values(Cell::new(0, 1)).unwrap(),
-            Values::new(&[2]).unwrap()
+            Fill::new(&[2]).unwrap()
         );
         assert_eq!(
             sol.get_values(Cell::new(1, 0)).unwrap(),
-            Values::new(&[2]).unwrap()
+            Fill::new(&[2]).unwrap()
         );
         assert_eq!(
             sol.get_values(Cell::new(1, 1)).unwrap(),
-            Values::new(&[1]).unwrap()
+            Fill::new(&[1]).unwrap()
         );
     }
 
@@ -412,12 +411,6 @@ mod tests {
 
     #[test]
     fn solutions_4x4_mixed_cages_match_expected_set() {
-        // End-to-end regression for the MDD cutover. A fully caged 4×4 puzzle
-        // mixing cage shapes (givens, row pairs, a column pair, horizontal
-        // triominoes) and operators (Given / Add / Subtract / Multiply). The
-        // puzzle is intentionally under-determined: MDD-based cage propagation
-        // must reproduce *exactly* the same three-solution set the old
-        // multiset → permute → filter pipeline produced.
         let puzzle = Puzzle::new(4)
             .unwrap()
             .insert_cage(cage_at(&[(0, 0)], Given, 1))
@@ -460,8 +453,6 @@ mod tests {
             .collect();
         actual.sort_unstable();
 
-        // Independent of the expected set below, every returned grid must be a
-        // genuine Latin square (each row and column a permutation of 1..=4).
         for m in &actual {
             for (i, row) in m.iter().enumerate() {
                 let mut row = row.to_vec();
@@ -486,18 +477,16 @@ mod tests {
 
     #[test]
     fn set_cage_tuple_pins_cells_in_lexicographic_order() {
-        // Add cage over (0,0),(0,1) with target 3: the lexicographically first
-        // valid tuple is [1, 2], so index 0 pins (0,0)=1 and (0,1)=2.
         let puzzle = puzzle_with_cage(4, &[(0, 0), (0, 1)], Add, 3);
         let cage = puzzle.cages().next().unwrap().clone();
         let set = puzzle.set_cage_tuple(&cage, 0).unwrap().unwrap().grid();
         assert_eq!(
             set.get_values(Cell::new(0, 0)).unwrap(),
-            Values::new(&[1]).unwrap()
+            Fill::new(&[1]).unwrap()
         );
         assert_eq!(
             set.get_values(Cell::new(0, 1)).unwrap(),
-            Values::new(&[2]).unwrap()
+            Fill::new(&[2]).unwrap()
         );
     }
 
@@ -557,7 +546,7 @@ mod tests {
         assert_eq!(g.n(), 3);
         for r in 0..3 {
             for c in 0..3 {
-                assert_eq!(g.get_values(Cell::new(r, c)).unwrap(), Values::all(3));
+                assert_eq!(g.get_values(Cell::new(r, c)).unwrap(), Fill::all(3));
             }
         }
     }
@@ -571,7 +560,7 @@ mod tests {
         pub(crate) fn is_solution(&self) -> bool {
             (0..self.n)
                 .flat_map(|r| (0..self.n).map(move |c| Cell::new(r, c)))
-                .all(|cell| self.get_values(cell).is_ok_and(Values::is_singleton))
+                .all(|cell| self.get_values(cell).is_ok_and(Fill::is_singleton))
         }
     }
 }

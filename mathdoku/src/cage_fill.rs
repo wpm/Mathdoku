@@ -14,8 +14,9 @@
 
 #![allow(clippy::redundant_pub_crate)] // pub(crate) items in a private module
 
+use crate::Fill;
+use crate::Target;
 use crate::mdd::{Constraint, MonotonicConstraint, MonotonicMDD};
-use crate::{Target, Values};
 
 /// Operators whose constraint is non-monotonic — valid tuples are enumerated
 /// by odometer and stored in a trie. Given is handled by [`GivenFill`] instead.
@@ -36,7 +37,7 @@ pub(crate) trait CageFill {
     /// Each entry in the returned `Vec` is the subset of the corresponding
     /// input domain that appears in at least one valid tuple consistent with
     /// all current domains.
-    fn support(&self, values: &[Values]) -> Vec<Values>;
+    fn support(&self, values: &[Fill]) -> Vec<Fill>;
 
     /// Returns `true` if no valid tuple exists (cage is infeasible).
     fn is_empty(&self) -> bool;
@@ -60,13 +61,13 @@ impl GivenFill {
 }
 
 impl CageFill for GivenFill {
-    fn support(&self, values: &[Values]) -> Vec<Values> {
+    fn support(&self, values: &[Fill]) -> Vec<Fill> {
         debug_assert_eq!(values.len(), 1);
         let v = self.value;
         if values.first().is_some_and(|d| d.contains(v)) {
-            vec![Values::singleton(v)]
+            vec![Fill::singleton(v)]
         } else {
-            vec![Values::default()]
+            vec![Fill::default()]
         }
     }
 
@@ -195,14 +196,14 @@ impl Trie {
         &self,
         node_idx: usize,
         depth: usize,
-        values: &[Values],
+        values: &[Fill],
         path: &mut Vec<crate::N>,
-        support: &mut Vec<Values>,
+        support: &mut Vec<Fill>,
     ) {
         if depth == self.arity {
             // Complete path — add all collected values to support.
             for (i, &v) in path.iter().enumerate() {
-                support[i] = support[i] | Values::singleton(v);
+                support[i] = support[i] | Fill::singleton(v);
             }
             return;
         }
@@ -225,8 +226,8 @@ impl Trie {
 }
 
 impl CageFill for Trie {
-    fn support(&self, values: &[Values]) -> Vec<Values> {
-        let mut support = vec![Values::default(); self.arity];
+    fn support(&self, values: &[Fill]) -> Vec<Fill> {
+        let mut support = vec![Fill::default(); self.arity];
         let mut path: Vec<crate::N> = Vec::with_capacity(self.arity);
         self.walk(0, 0, values, &mut path, &mut support);
         support
@@ -241,7 +242,7 @@ impl CageFill for Trie {
 // ---- MonotonicMDD as CageFill ----
 
 impl CageFill for MonotonicMDD {
-    fn support(&self, values: &[Values]) -> Vec<Values> {
+    fn support(&self, values: &[Fill]) -> Vec<Fill> {
         self.support(values)
     }
 
@@ -261,7 +262,7 @@ pub(crate) enum CageFillKind {
 }
 
 impl CageFill for CageFillKind {
-    fn support(&self, values: &[Values]) -> Vec<Values> {
+    fn support(&self, values: &[Fill]) -> Vec<Fill> {
         match self {
             Self::Mdd(m) => m.support(values),
             Self::Trie(t) => t.support(values),
@@ -313,10 +314,10 @@ pub(crate) fn build_fill(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Operator, Values};
+    use crate::Operator;
 
-    fn full_domain(n: usize) -> Values {
-        Values::all(n)
+    fn full_domain(n: usize) -> Fill {
+        Fill::all(n)
     }
 
     // ---- GivenFill ----
@@ -325,13 +326,13 @@ mod tests {
     fn given_fill_support_returns_singleton() {
         let fill = GivenFill::new(3);
         let result = fill.support(&[full_domain(4)]);
-        assert_eq!(result, vec![Values::singleton(3)]);
+        assert_eq!(result, vec![Fill::singleton(3)]);
     }
 
     #[test]
     fn given_fill_not_in_domain_returns_empty() {
         let fill = GivenFill::new(5);
-        let result = fill.support(&[Values::new(&[1, 2, 3]).unwrap()]);
+        let result = fill.support(&[Fill::new(&[1, 2, 3]).unwrap()]);
         assert!(result[0].is_empty());
     }
 
@@ -359,8 +360,8 @@ mod tests {
     fn subtract_trie_respects_domain_constraints() {
         // Subtract 1, pin pos0 to {3}: only (3,2) survives, so pos1={2}.
         let trie = Trie::new(3, NonMonotonicOp::Subtract, 1, 2);
-        let result = trie.support(&[Values::new(&[3]).unwrap(), full_domain(3)]);
-        assert_eq!(result[1], Values::new(&[2]).unwrap());
+        let result = trie.support(&[Fill::new(&[3]).unwrap(), full_domain(3)]);
+        assert_eq!(result[1], Fill::new(&[2]).unwrap());
     }
 
     #[test]
@@ -413,12 +414,12 @@ mod tests {
         let trie_result = trie.support(&domains);
 
         // Brute-force oracle.
-        let mut oracle = [Values::default(); 2];
+        let mut oracle = [Fill::default(); 2];
         for a in 1..=n {
             for b in 1..=n {
                 if u64::from(a).abs_diff(u64::from(b)) == 1 {
-                    oracle[0] = oracle[0] | Values::singleton(a);
-                    oracle[1] = oracle[1] | Values::singleton(b);
+                    oracle[0] = oracle[0] | Fill::singleton(a);
+                    oracle[1] = oracle[1] | Fill::singleton(b);
                 }
             }
         }
@@ -435,13 +436,13 @@ mod tests {
         let trie_result = trie.support(&domains);
 
         // Brute-force oracle.
-        let mut oracle = [Values::default(); 2];
+        let mut oracle = [Fill::default(); 2];
         for a in 1..=n {
             for b in 1..=n {
                 let (va, vb) = (u64::from(a), u64::from(b));
                 if va == vb * 2 || vb == va * 2 {
-                    oracle[0] = oracle[0] | Values::singleton(a);
-                    oracle[1] = oracle[1] | Values::singleton(b);
+                    oracle[0] = oracle[0] | Fill::singleton(a);
+                    oracle[1] = oracle[1] | Fill::singleton(b);
                 }
             }
         }

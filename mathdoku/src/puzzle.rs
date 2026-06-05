@@ -10,9 +10,10 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use crate::Error::CageConflict;
 use crate::Error::InfeasibleCage;
 use crate::Error::InvalidGridSize;
+use crate::Fill;
 use crate::cage::Cage;
 use crate::cage_fill::CageFill as _;
-use crate::{Error, Grid, Polyomino, Values};
+use crate::{Error, Grid, Polyomino};
 
 // Serde wire format. Two variants are accepted on deserialization:
 // - `{"grid": {...}, "cages": [...]}` — full grid state
@@ -109,7 +110,7 @@ impl Puzzle {
     ///
     /// # Errors
     /// Returns [`Error::InvalidCell`] if `cell` is outside the grid.
-    pub fn get_values(&self, cell: crate::Cell) -> Result<Values, Error> {
+    pub fn get_values(&self, cell: crate::Cell) -> Result<Fill, Error> {
         self.grid.get_values(cell)
     }
 
@@ -234,7 +235,7 @@ impl Puzzle {
         let n = self.n();
         let mut grid = self.grid;
         for cell in cage.cells() {
-            grid = grid.set_values(cell, Values::all(n))?;
+            grid = grid.set_values(cell, Fill::all(n))?;
         }
         Ok(Self { grid, cages }.fixpoint())
     }
@@ -534,11 +535,11 @@ mod tests {
         let p2 = p.insert_cage(cage).unwrap().unwrap();
         assert_eq!(
             p2.get_values(Cell::new(0, 0)).unwrap(),
-            Values::new(&[1, 4]).unwrap()
+            Fill::new(&[1, 4]).unwrap()
         );
         assert_eq!(
             p2.get_values(Cell::new(0, 1)).unwrap(),
-            Values::new(&[1, 4]).unwrap()
+            Fill::new(&[1, 4]).unwrap()
         );
     }
 
@@ -550,7 +551,7 @@ mod tests {
         let p2 = p.insert_cage(cage).unwrap().unwrap();
         assert_eq!(
             p2.get_values(Cell::new(0, 0)).unwrap(),
-            Values::new(&[1, 3]).unwrap()
+            Fill::new(&[1, 3]).unwrap()
         );
     }
 
@@ -712,19 +713,19 @@ mod tests {
         let p = puzzle.fixpoint().unwrap();
         assert_eq!(
             p.get_values(Cell::new(0, 0)).unwrap(),
-            Values::new(&[1]).unwrap()
+            Fill::new(&[1]).unwrap()
         );
         assert_eq!(
             p.get_values(Cell::new(0, 1)).unwrap(),
-            Values::new(&[2]).unwrap()
+            Fill::new(&[2]).unwrap()
         );
         assert_eq!(
             p.get_values(Cell::new(1, 0)).unwrap(),
-            Values::new(&[2]).unwrap()
+            Fill::new(&[2]).unwrap()
         );
         assert_eq!(
             p.get_values(Cell::new(1, 1)).unwrap(),
-            Values::new(&[1]).unwrap()
+            Fill::new(&[1]).unwrap()
         );
     }
 
@@ -746,7 +747,7 @@ mod tests {
         let p = puzzle.fixpoint().unwrap();
         for r in 0..3 {
             for c in 0..3 {
-                assert_eq!(p.get_values(Cell::new(r, c)).unwrap(), Values::all(3));
+                assert_eq!(p.get_values(Cell::new(r, c)).unwrap(), Fill::all(3));
             }
         }
     }
@@ -763,7 +764,7 @@ mod tests {
             .unwrap()
             .unwrap();
         let p = puzzle.fixpoint().unwrap();
-        let expected = Values::new(&[1, 2]).unwrap();
+        let expected = Fill::new(&[1, 2]).unwrap();
         for r in 0..2 {
             for c in 0..2 {
                 assert_eq!(

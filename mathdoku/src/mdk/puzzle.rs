@@ -176,8 +176,8 @@ mod tests {
         // With no cages and a full grid, AllDifferent has nothing to prune.
         let p = Puzzle::from_parts(Grid::new(2), vec![]);
         let fp = p.fixpoint().unwrap();
-        assert_eq!(fp.get(Cell(1, 1)).unwrap(), Fill::new(2));
-        assert_eq!(fp.get(Cell(1, 2)).unwrap(), Fill::new(2));
+        assert_eq!(fp.get(Cell(1, 1)).unwrap(), Fill::all(2));
+        assert_eq!(fp.get(Cell(1, 2)).unwrap(), Fill::all(2));
     }
 
     #[test]

@@ -5,7 +5,7 @@
 //! | Type | Role |
 //! |------|------|
 //! | [`Cell`] | A grid position identified by `(row, column)`. |
-//! | [`Values`] | A bitmap set of candidate values `1..=9` for a cell. |
+//! | [`Fill`] | A bitmap set of candidate values `1..=9` for a cell. |
 //! | [`Cage`] | A polyomino paired with an [`Operation`]. |
 //! | [`Puzzle`] | An `n×n` cage structure (no cell values). |
 //! | [`Grid`] | An `n×n` grid of cell values. |
@@ -65,12 +65,13 @@ mod solutions;
 mod test_utils;
 
 pub use cage::Cage;
-pub use cell::{Cell, Target, Tuple, Values};
+pub use cell::{Cell, Target, Tuple};
 pub use error::Error;
 pub use generate::generate;
 pub use grid::Grid;
 pub use latin_square::generate_latin_square;
 pub use mdk::N;
+pub use mdk::fill::Fill;
 pub use operation::{Operation, Operator, operators_for};
 pub use polyomino::Polyomino;
 pub use puzzle::Puzzle;

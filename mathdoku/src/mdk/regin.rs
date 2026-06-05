@@ -54,7 +54,7 @@ pub fn regin_gac(fills: &[Fill]) -> Vec<Fill> {
         .iter()
         .copied()
         .fold(Fill::default(), |acc, f| acc | f);
-    let all_values: Vec<N> = union.values().collect();
+    let all_values: Vec<N> = union.values();
     let num_values = all_values.len();
     let value_index: HashMap<N, usize> = all_values
         .iter()
@@ -63,7 +63,7 @@ pub fn regin_gac(fills: &[Fill]) -> Vec<Fill> {
         .collect();
     let indexed_values: Vec<Vec<usize>> = fills
         .iter()
-        .map(|f| f.values().map(|v| value_index[&v]).collect())
+        .map(|f| f.values().iter().map(|v| value_index[v]).collect())
         .collect();
 
     // Maximum bipartite matching via augmenting paths.
