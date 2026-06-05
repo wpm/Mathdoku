@@ -1,5 +1,17 @@
 //! Cage representation pairing a polyomino with its arithmetic constraint.
 //!
+//! # Invariant: complete tuple support
+//!
+//! A `Cage` always stores the *complete* set of value tuples consistent with
+//! both its arithmetic constraint and the current per-cell candidate fills.
+//! Concretely: if a cell's candidate fill is `{a, b}`, then every tuple in
+//! the backing memo has a value in `{a, b}` at that position, and every value
+//! in `{a, b}` appears at that position in at least one tuple.
+//!
+//! This means [`Cage::set`] always recalculates from the full original tuple
+//! set rather than narrowing incrementally. Widening a cell's fill therefore
+//! restores tuples that were previously excluded, and narrowing it removes them.
+//!
 //! # Constraint kinds
 //!
 //! ## Commutative (add, multiply)
@@ -9,10 +21,7 @@
 //! monotonicity enables aggressive pruning during construction — branches whose
 //! partial result already exceeds the target, or can no longer reach it, are cut
 //! immediately. The result is stored as a [`Mdd`]: a DAG whose paths are exactly
-//! the valid tuples, compressed by sharing common prefixes and suffixes. The MDD
-//! also supports efficient incremental narrowing via [`Narrow::remove`]: forbidden
-//! values at a given depth are removed and dead nodes are garbage-collected
-//! without rebuilding the diagram from scratch.
+//! the valid tuples, compressed by sharing common prefixes and suffixes.
 //!
 //! ## Non-commutative (subtract, divide)
 //!
