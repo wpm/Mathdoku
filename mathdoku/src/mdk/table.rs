@@ -87,14 +87,19 @@ impl Memo for Table {
             .ok_or(InvalidCellCageIndex(index))
     }
 
-    #[allow(clippy::todo)]
-    fn set(&self, _fills: Vec<Fill>) -> Result<Self, Error> {
-        todo!()
-    }
-
-    #[allow(clippy::todo)]
     fn reset(&self) -> Self {
-        todo!()
+        match self.constraint {
+            ArithmeticConstraint::CommutativeConstraint(op, target) => {
+                Self::commutative(self.n, self.fills.len(), op, target).unwrap_or_else(|_| {
+                    unreachable!("reset reconstructs a constraint that was already valid")
+                })
+            }
+            ArithmeticConstraint::NonCommutativeConstraint(op, target) => {
+                Self::non_commutative(self.n, op, target).unwrap_or_else(|_| {
+                    unreachable!("reset reconstructs a constraint that was already valid")
+                })
+            }
+        }
     }
 
     fn narrow(&self, support: Vec<Fill>) -> Result<Self, Error> {
@@ -119,6 +124,8 @@ mod tests {
     use crate::mdk::Error::EmptyFills;
     use crate::mdk::operation::CommutativeOperator::{Add, Multiply};
     use crate::mdk::operation::NonCommutativeOperator::{Divide, Subtract};
+
+    // ---- get ----
 
     #[test]
     fn add_fills_are_union_of_column_values() {
@@ -164,8 +171,18 @@ mod tests {
         assert!(matches!(t.get(2), Err(InvalidCellCageIndex(2))));
     }
 
+    // ---- narrow ----
+
     #[test]
-    fn remove_filters_tuples_and_updates_fills() {
+    fn narrow_with_full_support_is_identity() {
+        // support that includes every value leaves all tuples intact
+        let t = Table::commutative(4, 2, Add, 5).unwrap();
+        let full = vec![Fill::new(4), Fill::new(4)];
+        assert_eq!(t.narrow(full).unwrap(), t);
+    }
+
+    #[test]
+    fn narrow_filters_tuples_and_updates_fills() {
         // add to 5 in n=4: (1,4),(2,3),(3,2),(4,1)
         let t = Table::commutative(4, 2, Add, 5).unwrap();
         // restrict position 0 to {1,2}, position 1 to {1,2,3,4}
@@ -177,11 +194,58 @@ mod tests {
     }
 
     #[test]
-    fn remove_eliminating_all_tuples_returns_empty_fills_error() {
+    fn narrow_eliminating_all_tuples_returns_empty_fills_error() {
         let t = Table::commutative(4, 2, Add, 5).unwrap();
         // restrict both positions to {1} — no tuple (1,1) sums to 5
         assert!(matches!(
             t.narrow(vec![Fill::from(4, &[1]), Fill::from(4, &[1])]),
+            Err(EmptyFills)
+        ));
+    }
+
+    // ---- reset ----
+
+    #[test]
+    fn reset_commutative_equals_fresh_construction() {
+        let t = Table::commutative(4, 2, Add, 5).unwrap();
+        let narrowed = t
+            .narrow(vec![Fill::from(4, &[1, 2]), Fill::from(4, &[1, 2, 3, 4])])
+            .unwrap();
+        assert_eq!(narrowed.reset(), t);
+    }
+
+    #[test]
+    fn reset_non_commutative_equals_fresh_construction() {
+        let t = Table::non_commutative(4, Subtract, 1).unwrap();
+        let narrowed = t
+            .narrow(vec![Fill::from(4, &[1, 2]), Fill::from(4, &[1, 2, 3, 4])])
+            .unwrap();
+        assert_eq!(narrowed.reset(), t);
+    }
+
+    // ---- set ----
+
+    #[test]
+    fn set_restricts_to_compliment_of_assigned_fills() {
+        // add to 5 in n=4: tuples (1,4),(2,3),(3,2),(4,1)
+        // assign pos 0 = {1,2} → compliment = {3,4}
+        // assign pos 1 = {3,4} → compliment = {1,2}
+        // surviving tuples where pos-0 ∈ {3,4} and pos-1 ∈ {1,2}: (3,2),(4,1)
+        // resulting fills: pos 0 = {3,4}, pos 1 = {1,2}
+        let t = Table::commutative(4, 2, Add, 5).unwrap();
+        let result = t
+            .set(vec![Fill::from(4, &[1, 2]), Fill::from(4, &[3, 4])])
+            .unwrap();
+        assert_eq!(result.get(0).unwrap(), Fill::from(4, &[3, 4]));
+        assert_eq!(result.get(1).unwrap(), Fill::from(4, &[1, 2]));
+    }
+
+    #[test]
+    fn set_eliminating_all_tuples_returns_empty_fills_error() {
+        // assign position 0 = {1,2,3,4} → compliment = {} → no tuples survive
+        let t = Table::commutative(4, 2, Add, 5).unwrap();
+        assert!(matches!(
+            t.set(vec![Fill::new(4), Fill::new(4)]),
             Err(EmptyFills)
         ));
     }

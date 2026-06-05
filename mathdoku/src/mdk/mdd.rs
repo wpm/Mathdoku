@@ -336,11 +336,6 @@ impl Memo for Mdd {
     }
 
     #[allow(clippy::todo)]
-    fn set(&self, _fills: Vec<Fill>) -> Result<Self, Error> {
-        todo!()
-    }
-
-    #[allow(clippy::todo)]
     fn reset(&self) -> Self {
         todo!()
     }
