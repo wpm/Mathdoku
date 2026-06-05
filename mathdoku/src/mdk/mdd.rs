@@ -335,12 +335,17 @@ impl Memo for Mdd {
             .ok_or(InvalidCellCageIndex(index))
     }
 
-    #[allow(clippy::todo)]
     fn reset(&self) -> Self {
-        todo!()
+        #[allow(clippy::cast_possible_truncation)]
+        Self::new(
+            self.n,
+            self.constraint.arity as usize,
+            self.constraint.operator,
+            self.constraint.target,
+        )
+        .unwrap_or_else(|_| unreachable!("reset reconstructs a constraint that was already valid"))
     }
 
-    // TODO Is Mdd.narrow written for its support or its support's compliment?
     fn narrow(&self, support: Vec<Fill>) -> Result<Self, Error> {
         #[allow(clippy::cast_possible_truncation)]
         let forbidden: HashMap<N, HashSet<N>> = support
@@ -428,7 +433,7 @@ mod tests {
     use crate::mdk::Error::EmptyFills;
     use crate::mdk::operation::CommutativeOperator::{Add, Multiply};
 
-    // ---- Memo::commutative construction ----
+    // ---- get ----
 
     #[test]
     fn add_fills_are_union_of_column_values() {
@@ -455,10 +460,18 @@ mod tests {
         assert!(matches!(m.get(2), Err(InvalidCellCageIndex(2))));
     }
 
-    // ---- Narrow::remove ----
+    // ---- narrow ----
 
     #[test]
-    fn remove_filters_tuples_and_updates_fills() {
+    fn narrow_with_full_support_is_identity() {
+        let m = Mdd::new(4, 2, Add, 5).unwrap();
+        assert_eq!(m.narrow(vec![Fill::new(4), Fill::new(4)]).unwrap(), m);
+    }
+
+    #[test]
+    fn narrow_filters_tuples_and_updates_fills() {
+        // add to 5 in n=4: (1,4),(2,3),(3,2),(4,1)
+        // restrict pos 0 to {1,2} → surviving: (1,4),(2,3)
         let m = Mdd::new(4, 2, Add, 5).unwrap();
         let narrowed = m
             .narrow(vec![Fill::from(4, &[1, 2]), Fill::from(4, &[1, 2, 3, 4])])
@@ -468,10 +481,47 @@ mod tests {
     }
 
     #[test]
-    fn remove_eliminating_all_tuples_returns_empty_fills_error() {
+    fn narrow_eliminating_all_tuples_returns_empty_fills_error() {
         let m = Mdd::new(4, 2, Add, 5).unwrap();
         assert!(matches!(
             m.narrow(vec![Fill::from(4, &[1]), Fill::from(4, &[1])]),
+            Err(EmptyFills)
+        ));
+    }
+
+    // ---- reset ----
+
+    #[test]
+    fn reset_equals_fresh_construction() {
+        let m = Mdd::new(4, 2, Add, 5).unwrap();
+        let narrowed = m
+            .narrow(vec![Fill::from(4, &[1, 2]), Fill::from(4, &[1, 2, 3, 4])])
+            .unwrap();
+        assert_eq!(narrowed.reset(), m);
+    }
+
+    // ---- set ----
+
+    #[test]
+    fn set_restricts_to_compliment_of_assigned_fills() {
+        // add to 5 in n=4: tuples (1,4),(2,3),(3,2),(4,1)
+        // assign pos 0 = {1,2} → compliment = {3,4}
+        // assign pos 1 = {3,4} → compliment = {1,2}
+        // surviving tuples where pos-0 ∈ {3,4} and pos-1 ∈ {1,2}: (3,2),(4,1)
+        let m = Mdd::new(4, 2, Add, 5).unwrap();
+        let result = m
+            .set(vec![Fill::from(4, &[1, 2]), Fill::from(4, &[3, 4])])
+            .unwrap();
+        assert_eq!(result.get(0).unwrap(), Fill::from(4, &[3, 4]));
+        assert_eq!(result.get(1).unwrap(), Fill::from(4, &[1, 2]));
+    }
+
+    #[test]
+    fn set_eliminating_all_tuples_returns_empty_fills_error() {
+        // assign both positions the full fill → compliment = {} → no tuples survive
+        let m = Mdd::new(4, 2, Add, 5).unwrap();
+        assert!(matches!(
+            m.set(vec![Fill::new(4), Fill::new(4)]),
             Err(EmptyFills)
         ));
     }
