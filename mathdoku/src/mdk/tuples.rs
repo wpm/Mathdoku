@@ -3,6 +3,8 @@ use crate::mdk::operation::{ArithmeticOperation, CommutativeOperation, NonCommut
 use crate::mdk::{N, Target};
 use std::collections::VecDeque;
 
+pub type Tuple = Vec<N>;
+
 /// Iterator over all `k`-tuples of values in `1..=n` that satisfy an arithmetic constraint.
 ///
 /// Tuples are yielded in lexicographic order via BFS. Commutative operations
@@ -12,7 +14,7 @@ pub struct Tuples {
     n: usize,
     k: usize,
     constraint: ArithmeticOperation,
-    queue: VecDeque<Vec<N>>,
+    queue: VecDeque<Tuple>,
 }
 
 impl Tuples {
@@ -104,7 +106,7 @@ impl Tuples {
 /// Result of one BFS step.
 enum Step {
     /// A complete tuple that satisfies the target — yield it.
-    Yield(Vec<N>),
+    Yield(Tuple),
     /// Partial tuple extended or complete tuple rejected — keep going.
     Continue,
     /// Queue is empty — iteration is finished.
@@ -112,7 +114,7 @@ enum Step {
 }
 
 impl Iterator for Tuples {
-    type Item = Vec<N>;
+    type Item = Tuple;
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             let step = match self.constraint {
@@ -134,15 +136,14 @@ impl Iterator for Tuples {
 
 #[cfg(test)]
 mod tests {
-    use crate::mdk::N;
     use crate::mdk::operation::CommutativeOperation::{Add, Multiply};
     use crate::mdk::operation::NonCommutativeOperation::{Divide, Subtract};
-    use crate::mdk::tuples::Tuples;
+    use crate::mdk::tuples::{Tuple, Tuples};
 
     #[test]
     fn sum_to_6() {
         let tuples = Tuples::commutative(7, 3, Add, 6);
-        let actual: Vec<Vec<N>> = tuples.collect();
+        let actual: Vec<Tuple> = tuples.collect();
         assert_eq!(
             actual,
             vec![
@@ -163,7 +164,7 @@ mod tests {
     #[test]
     fn multiply_to_24() {
         let tuples = Tuples::commutative(7, 3, Multiply, 24);
-        let actual: Vec<Vec<N>> = tuples.collect();
+        let actual: Vec<Tuple> = tuples.collect();
         // n=7 excludes e.g. [1, 3, 8] and [1, 2, 12]
         assert_eq!(
             actual,
@@ -190,7 +191,7 @@ mod tests {
     #[test]
     fn subtract_to_2() {
         let tuples = Tuples::non_commutative(4, Subtract, 2);
-        let actual: Vec<Vec<N>> = tuples.collect();
+        let actual: Vec<Tuple> = tuples.collect();
         assert_eq!(
             actual,
             vec![vec![1, 3], vec![2, 4], vec![3, 1], vec![4, 2],]
@@ -200,7 +201,7 @@ mod tests {
     #[test]
     fn divide_to_2() {
         let tuples = Tuples::non_commutative(6, Divide, 2);
-        let actual: Vec<Vec<N>> = tuples.collect();
+        let actual: Vec<Tuple> = tuples.collect();
         // includes integer-division pairs e.g. [2, 5] since max(2,5)/min(2,5) = 5/2 = 2
         assert_eq!(
             actual,

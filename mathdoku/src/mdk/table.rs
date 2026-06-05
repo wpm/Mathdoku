@@ -13,6 +13,7 @@ use crate::mdk::{Error, N, Target};
 /// as the union of values appearing at each position across all tuples, and
 /// are guaranteed non-empty — construction fails with [`EmptyFills`]
 /// if no valid tuples exist.
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub(crate) struct Table {
     n: usize,
     tuples: Vec<Vec<N>>,

@@ -69,7 +69,7 @@ impl CommutativeOperation {
 /// Applied to a pair `(a, b)` without regard to order — subtract uses absolute
 /// difference and divide uses `max / min` — so the result is order-independent
 /// even though the operator is not commutative in the algebraic sense.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum NonCommutativeOperation {
     Subtract,
     Divide,

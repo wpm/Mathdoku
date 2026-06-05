@@ -3,6 +3,7 @@
 use crate::mdk::old_cage::Cage;
 use polyomino::Cell;
 
+mod cage;
 pub(crate) mod fill;
 mod grid;
 pub mod mdd;
@@ -12,11 +13,10 @@ pub(crate) mod old_mdd;
 pub mod old_memo;
 pub mod operation;
 pub mod operator;
-pub mod puzzle;
 pub mod polyomino;
+pub mod puzzle;
 pub mod table;
 pub mod tuples;
-mod cage;
 
 type N = u32;
 type Target = u32;

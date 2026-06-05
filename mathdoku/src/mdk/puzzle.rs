@@ -1,17 +1,19 @@
 //! [`Puzzle`]: the top-level constraint-solving interface.
+use crate::Operation;
 use crate::mdk::Error::MissingCell;
+use crate::mdk::cage::Cage;
 use crate::mdk::fill::Fill;
 use crate::mdk::grid::Grid;
-use crate::mdk::old_cage::{Cage, Operation};
 use crate::mdk::polyomino::{Cell, Polyomino};
 use crate::mdk::{Error, Target};
 use std::collections::HashMap;
+use std::sync::Arc;
 
 /// An n×n Mathdoku puzzle: a grid partitioned into cages, each with an arithmetic constraint.
 #[derive(Clone)]
 pub struct Puzzle {
     grid: Grid,
-    cages: HashMap<Cell, Cage>,
+    cages: HashMap<Cell, Arc<Cage>>,
 }
 
 impl Puzzle {

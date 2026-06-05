@@ -9,7 +9,7 @@
 //! them as a multivalued decision diagram.
 use crate::mdk::Error::{self, EmptyFills};
 use crate::mdk::fill::Fill;
-use crate::mdk::N;
+use crate::mdk::tuples::Tuple;
 
 /// A cage constraint representation that can be constructed from an arithmetic operation.
 ///
@@ -29,13 +29,13 @@ pub trait Lookup {
 /// Derives per-position fills from a non-empty tuple list.
 ///
 /// Returns `Err(EmptyFills)` if `tuples` is empty or any column's fill is empty.
-pub(crate) fn fills_from_tuples(tuples: &[Vec<N>]) -> Result<Vec<Fill>, Error> {
+pub(crate) fn fills_from_tuples(tuples: &[Tuple]) -> Result<Vec<Fill>, Error> {
     if tuples.is_empty() {
         return Err(EmptyFills);
     }
     let k = tuples[0].len();
     let fills: Vec<Fill> = (0..k)
-        .map(|i| Fill::from(&tuples.iter().map(|t| t[i]).collect::<Vec<N>>()))
+        .map(|i| Fill::from(&tuples.iter().map(|t| t[i]).collect::<Tuple>()))
         .collect();
     if fills.iter().any(Fill::is_empty) {
         return Err(EmptyFills);
@@ -49,6 +49,6 @@ pub trait Narrow: Sized {
     /// position's value is present in the corresponding [`Fill`].
     ///
     /// # Errors
-    /// Returns [`Error::EmptyFills`] if no tuples survive the filter.
+    /// Returns [`EmptyFills`] if no tuples survive the filter.
     fn remove(&self, fills: Vec<Fill>) -> Result<Self, Error>;
 }

@@ -27,30 +27,35 @@
 //!
 //! A given cage is a singleton cell whose value is fixed by the puzzle author.
 //! There is no arithmetic constraint and no memo: the value is stored directly.
+use crate::mdk::fill::Fill;
 use crate::mdk::mdd::Mdd;
+use crate::mdk::memo::Lookup;
 use crate::mdk::operation::{CommutativeOperation, NonCommutativeOperation};
 use crate::mdk::polyomino::{Cell, Polyomino};
 use crate::mdk::table::Table;
 use crate::mdk::{Error, N, Target};
 
 /// The arithmetic constraint and its backing memo for a cage.
+#[derive(Clone, PartialEq, Eq, Debug)]
 enum CageOperation {
     /// A commutative (monotonic) operation: add or multiply.
     Commutative(CommutativeOperation, Target, Mdd),
     /// A non-commutative (non-monotonic) operation: subtract or divide.
     NonCommutative(NonCommutativeOperation, Target, Table),
     /// A single cell with a fixed value; no arithmetic constraint.
-    Given(N),
+    Given(Fill),
 }
 
 /// A cage: a connected group of cells subject to an arithmetic constraint.
 ///
 /// The constraint is one of:
 /// - **Commutative** (`Add`, `Multiply`): backed by an [`Mdd`] for efficient narrowing.
-/// - **NonCommutative** (`Subtract`, `Divide`): backed by a [`Table`] of explicit pairs.
+/// - **`NonCommutative`** (`Subtract`, `Divide`): backed by a [`Table`] of explicit pairs.
 /// - **Given**: a singleton cell whose value is fixed.
-struct Cage {
-    polyomino: Polyomino,
+#[derive(Clone)]
+pub struct Cage {
+    /// The cells belonging to this cage.
+    pub polyomino: Polyomino,
     operation: CageOperation,
 }
 
@@ -99,14 +104,31 @@ impl Cage {
 
     /// Constructs a given cage: a single cell whose value is fixed to `target`.
     ///
-    /// # Errors
-    /// Returns [`Error::InvalidPolyomino`] if `cell` cannot form a polyomino
-    /// (should never happen for a valid cell).
+    /// Always succeeds for a valid `cell`; returns `Err` only if the cell cannot
+    /// form a polyomino, which cannot happen for a single non-empty cell.
     pub fn given(cell: Cell, target: N) -> Result<Self, Error> {
         Ok(Self {
             polyomino: Polyomino::from(vec![cell])?,
-            operation: CageOperation::Given(target),
+            operation: CageOperation::Given(Fill::from(&[target])),
         })
+    }
+
+    /// Returns the candidate [`Fill`] for `cell`.
+    ///
+    /// # Errors
+    /// Returns [`Error::MissingCell`] if `cell` is not in this cage's polyomino.
+    pub fn fill(&self, cell: Cell) -> Result<Fill, Error> {
+        let index = self
+            .polyomino
+            .iter()
+            .position(|c| *c == cell)
+            .ok_or(Error::MissingCell(cell))?;
+        let fill = match &self.operation {
+            CageOperation::Commutative(_, _, memo) => memo.fill(index)?,
+            CageOperation::NonCommutative(_, _, memo) => memo.fill(index)?,
+            CageOperation::Given(fill) => fill.clone(),
+        };
+        Ok(fill)
     }
 }
 
@@ -201,6 +223,6 @@ mod tests {
     #[test]
     fn given_stores_target_as_value() {
         let cage = Cage::given(Cell(1, 1), 7).unwrap();
-        assert!(matches!(cage.operation, CageOperation::Given(7)));
+        assert_eq!(cage.operation, CageOperation::Given(Fill::from(&[7])));
     }
 }
