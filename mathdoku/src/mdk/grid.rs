@@ -1,5 +1,7 @@
 //! Grid and cell types internal to the mdk implementation.
-use crate::mdk::Error::{self, MissingCell};
+use crate::mdk::Error;
+use crate::mdk::Error::MissingCell;
+use crate::mdk::csp::State;
 use crate::mdk::fill::Fill;
 use crate::mdk::polyomino::Cell;
 use serde::de::Error as DeError;
@@ -22,15 +24,27 @@ impl Grid {
         Self(n, fills)
     }
 
-    /// Returns the [`Fill`] for `cell`, or an error if the cell is not in this grid.
+    /// Returns the [`Fill`] for `cell`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MissingCell`] if `cell` is not in this grid.
     pub fn get(&self, cell: Cell) -> Result<Fill, Error> {
         self.1.get(&cell).cloned().ok_or(MissingCell(cell))
     }
 
+    /// Returns a new grid with `cell` updated to `fill`.
     pub fn set(&self, cell: Cell, fill: Fill) -> Self {
         let mut grid = self.clone();
         let _ = grid.1.insert(cell, fill);
         grid
+    }
+}
+
+impl State<Cell, Fill, Error> for Grid {
+    fn get(&self, cell: Cell) -> Result<Fill, Error> {
+        let fill = self.1.get(&cell).ok_or(MissingCell(cell))?;
+        Ok(fill.clone())
     }
 }
 
@@ -119,6 +133,25 @@ mod tests {
         let mut g = Grid::new(n);
         drop(g.1.insert(cell, fill));
         g
+    }
+
+    #[test]
+    fn state_get_returns_fill_for_present_cell() {
+        let fill = Fill::from(&[2, 3]);
+        let g = grid_with_modified_cell(4, Cell(1, 1), fill.clone());
+        assert_eq!(
+            <Grid as State<Cell, Fill, Error>>::get(&g, Cell(1, 1)).unwrap(),
+            fill
+        );
+    }
+
+    #[test]
+    fn state_get_returns_missing_cell_for_absent_cell() {
+        let g = Grid::new(3);
+        assert!(matches!(
+            <Grid as State<Cell, Fill, Error>>::get(&g, Cell(4, 1)),
+            Err(MissingCell(_))
+        ));
     }
 
     #[test]
