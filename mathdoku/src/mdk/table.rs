@@ -69,7 +69,7 @@ impl Table {
         constraint: ArithmeticConstraint,
         tuples: Vec<Vec<N>>,
     ) -> Result<Self, Error> {
-        let fills = fills_from_tuples(n, &tuples)?;
+        let fills = fills_from_tuples(&tuples)?;
         Ok(Self {
             n,
             constraint,
@@ -116,32 +116,32 @@ mod tests {
     fn add_fills_are_union_of_column_values() {
         // 3+3=6, 2+4=6, 4+2=6 — position 0 is {2,3,4}, position 1 is {2,3,4}
         let t = Table::commutative(4, 2, Add, 6).unwrap();
-        assert_eq!(t.get(0).unwrap(), Fill::from(4, &[2, 3, 4]));
-        assert_eq!(t.get(1).unwrap(), Fill::from(4, &[2, 3, 4]));
+        assert_eq!(t.get(0).unwrap(), Fill::from(&[2, 3, 4]));
+        assert_eq!(t.get(1).unwrap(), Fill::from(&[2, 3, 4]));
     }
 
     #[test]
     fn multiply_fills_contain_expected_values() {
         // 2*3=6, 3*2=6, 1*6=6, 6*1=6 within n=6
         let t = Table::commutative(6, 2, Multiply, 6).unwrap();
-        assert_eq!(t.get(0).unwrap(), Fill::from(6, &[1, 2, 3, 6]));
-        assert_eq!(t.get(1).unwrap(), Fill::from(6, &[1, 2, 3, 6]));
+        assert_eq!(t.get(0).unwrap(), Fill::from(&[1, 2, 3, 6]));
+        assert_eq!(t.get(1).unwrap(), Fill::from(&[1, 2, 3, 6]));
     }
 
     #[test]
     fn subtract_fills_contain_expected_values() {
         // pairs with |a-b|=1 in n=4: (1,2),(2,1),(2,3),(3,2),(3,4),(4,3)
         let t = Table::non_commutative(4, Subtract, 1).unwrap();
-        assert_eq!(t.get(0).unwrap(), Fill::from(4, &[1, 2, 3, 4]));
-        assert_eq!(t.get(1).unwrap(), Fill::from(4, &[1, 2, 3, 4]));
+        assert_eq!(t.get(0).unwrap(), Fill::from(&[1, 2, 3, 4]));
+        assert_eq!(t.get(1).unwrap(), Fill::from(&[1, 2, 3, 4]));
     }
 
     #[test]
     fn divide_fills_contain_expected_values() {
         // pairs with max/min=2 in n=4: (1,2),(2,1),(2,4),(4,2)
         let t = Table::non_commutative(4, Divide, 2).unwrap();
-        assert_eq!(t.get(0).unwrap(), Fill::from(4, &[1, 2, 4]));
-        assert_eq!(t.get(1).unwrap(), Fill::from(4, &[1, 2, 4]));
+        assert_eq!(t.get(0).unwrap(), Fill::from(&[1, 2, 4]));
+        assert_eq!(t.get(1).unwrap(), Fill::from(&[1, 2, 4]));
     }
 
     #[test]
@@ -172,10 +172,10 @@ mod tests {
         let t = Table::commutative(4, 2, Add, 5).unwrap();
         // restrict position 0 to {1,2}, position 1 to {1,2,3,4}
         let narrowed = t
-            .narrow(vec![Fill::from(4, &[1, 2]), Fill::from(4, &[1, 2, 3, 4])])
+            .narrow(vec![Fill::from(&[1, 2]), Fill::from(&[1, 2, 3, 4])])
             .unwrap();
-        assert_eq!(narrowed.get(0).unwrap(), Fill::from(4, &[1, 2]));
-        assert_eq!(narrowed.get(1).unwrap(), Fill::from(4, &[3, 4]));
+        assert_eq!(narrowed.get(0).unwrap(), Fill::from(&[1, 2]));
+        assert_eq!(narrowed.get(1).unwrap(), Fill::from(&[3, 4]));
     }
 
     #[test]
@@ -183,7 +183,7 @@ mod tests {
         let t = Table::commutative(4, 2, Add, 5).unwrap();
         // restrict both positions to {1} — no tuple (1,1) sums to 5
         assert!(matches!(
-            t.narrow(vec![Fill::from(4, &[1]), Fill::from(4, &[1])]),
+            t.narrow(vec![Fill::from(&[1]), Fill::from(&[1])]),
             Err(EmptyFills)
         ));
     }

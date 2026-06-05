@@ -136,7 +136,7 @@ impl Cage {
         let fill = match &self.operation {
             CageOperation::Commutative(_, _, memo) => memo.get(index)?,
             CageOperation::NonCommutative(_, _, memo) => memo.get(index)?,
-            CageOperation::Given(n) => Fill::from(self.n, &[*n]),
+            CageOperation::Given(n) => Fill::from(&[*n]),
         };
         Ok(fill)
     }
@@ -258,6 +258,6 @@ mod tests {
     #[test]
     fn get_given_returns_singleton_fill() {
         let cage = Cage::given(Cell(1, 1), 4, 3).unwrap();
-        assert_eq!(cage.get(Cell(1, 1)).unwrap(), Fill::from(4, &[3]));
+        assert_eq!(cage.get(Cell(1, 1)).unwrap(), Fill::from(&[3]));
     }
 }

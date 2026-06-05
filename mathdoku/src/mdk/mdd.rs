@@ -55,7 +55,7 @@ impl Mdd {
             value: constraint.unit(),
         };
         mdd.subtree(root);
-        mdd.fills = fills_from_tuples(n, &mdd.tuples())?;
+        mdd.fills = fills_from_tuples(&mdd.tuples())?;
         Ok(mdd)
     }
 
@@ -351,7 +351,7 @@ impl Memo for Mdd {
             })
             .collect();
         let mut narrowed = self.remove_support(&forbidden);
-        narrowed.fills = fills_from_tuples(self.n, &narrowed.tuples())?;
+        narrowed.fills = fills_from_tuples(&narrowed.tuples())?;
         Ok(narrowed)
     }
 }
@@ -427,15 +427,15 @@ mod tests {
     #[test]
     fn add_fills_are_union_of_column_values() {
         let m = Mdd::new(4, 2, Add, 6).unwrap();
-        assert_eq!(m.get(0).unwrap(), Fill::from(4, &[2, 3, 4]));
-        assert_eq!(m.get(1).unwrap(), Fill::from(4, &[2, 3, 4]));
+        assert_eq!(m.get(0).unwrap(), Fill::from(&[2, 3, 4]));
+        assert_eq!(m.get(1).unwrap(), Fill::from(&[2, 3, 4]));
     }
 
     #[test]
     fn multiply_fills_contain_expected_values() {
         let m = Mdd::new(6, 2, Multiply, 6).unwrap();
-        assert_eq!(m.get(0).unwrap(), Fill::from(6, &[1, 2, 3, 6]));
-        assert_eq!(m.get(1).unwrap(), Fill::from(6, &[1, 2, 3, 6]));
+        assert_eq!(m.get(0).unwrap(), Fill::from(&[1, 2, 3, 6]));
+        assert_eq!(m.get(1).unwrap(), Fill::from(&[1, 2, 3, 6]));
     }
 
     #[test]
@@ -463,17 +463,17 @@ mod tests {
         // restrict pos 0 to {1,2} → surviving: (1,4),(2,3)
         let m = Mdd::new(4, 2, Add, 5).unwrap();
         let narrowed = m
-            .narrow(vec![Fill::from(4, &[1, 2]), Fill::from(4, &[1, 2, 3, 4])])
+            .narrow(vec![Fill::from(&[1, 2]), Fill::from(&[1, 2, 3, 4])])
             .unwrap();
-        assert_eq!(narrowed.get(0).unwrap(), Fill::from(4, &[1, 2]));
-        assert_eq!(narrowed.get(1).unwrap(), Fill::from(4, &[3, 4]));
+        assert_eq!(narrowed.get(0).unwrap(), Fill::from(&[1, 2]));
+        assert_eq!(narrowed.get(1).unwrap(), Fill::from(&[3, 4]));
     }
 
     #[test]
     fn narrow_eliminating_all_tuples_returns_empty_fills_error() {
         let m = Mdd::new(4, 2, Add, 5).unwrap();
         assert!(matches!(
-            m.narrow(vec![Fill::from(4, &[1]), Fill::from(4, &[1])]),
+            m.narrow(vec![Fill::from(&[1]), Fill::from(&[1])]),
             Err(EmptyFills)
         ));
     }
@@ -527,31 +527,31 @@ mod tests {
     #[test]
     fn sum_pair_fills() {
         let m = Mdd::new(3, 2, Add, 4).unwrap();
-        assert_eq!(m.get(0).unwrap(), Fill::from(3, &[1, 2, 3]));
-        assert_eq!(m.get(1).unwrap(), Fill::from(3, &[1, 2, 3]));
+        assert_eq!(m.get(0).unwrap(), Fill::from(&[1, 2, 3]));
+        assert_eq!(m.get(1).unwrap(), Fill::from(&[1, 2, 3]));
     }
 
     #[test]
     fn sum_triple_fills() {
         let m = Mdd::new(3, 3, Add, 5).unwrap();
-        assert_eq!(m.get(0).unwrap(), Fill::from(3, &[1, 2, 3]));
-        assert_eq!(m.get(1).unwrap(), Fill::from(3, &[1, 2, 3]));
-        assert_eq!(m.get(2).unwrap(), Fill::from(3, &[1, 2, 3]));
+        assert_eq!(m.get(0).unwrap(), Fill::from(&[1, 2, 3]));
+        assert_eq!(m.get(1).unwrap(), Fill::from(&[1, 2, 3]));
+        assert_eq!(m.get(2).unwrap(), Fill::from(&[1, 2, 3]));
     }
 
     #[test]
     fn product_pair_fills() {
         let m = Mdd::new(4, 2, Multiply, 6).unwrap();
-        assert_eq!(m.get(0).unwrap(), Fill::from(4, &[2, 3]));
-        assert_eq!(m.get(1).unwrap(), Fill::from(4, &[2, 3]));
+        assert_eq!(m.get(0).unwrap(), Fill::from(&[2, 3]));
+        assert_eq!(m.get(1).unwrap(), Fill::from(&[2, 3]));
     }
 
     #[test]
     fn product_triple_fills() {
         let m = Mdd::new(4, 3, Multiply, 4).unwrap();
-        assert_eq!(m.get(0).unwrap(), Fill::from(4, &[1, 2, 4]));
-        assert_eq!(m.get(1).unwrap(), Fill::from(4, &[1, 2, 4]));
-        assert_eq!(m.get(2).unwrap(), Fill::from(4, &[1, 2, 4]));
+        assert_eq!(m.get(0).unwrap(), Fill::from(&[1, 2, 4]));
+        assert_eq!(m.get(1).unwrap(), Fill::from(&[1, 2, 4]));
+        assert_eq!(m.get(2).unwrap(), Fill::from(&[1, 2, 4]));
     }
 
     // ---- infeasibility ----
