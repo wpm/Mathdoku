@@ -56,7 +56,7 @@ impl Puzzle {
     pub fn remove(&self, cage: &Cage) -> Result<(), Error> {
         let mut cages = self.cages.clone();
         for cell in cage.polyomino.iter() {
-            let _ = cages.remove(cell).ok_or_else(|| MissingCell(*cell));
+            let _ = cages.remove(cell).ok_or(MissingCell(*cell));
         }
         Ok(())
     }

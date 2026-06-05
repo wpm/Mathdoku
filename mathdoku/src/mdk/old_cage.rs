@@ -15,21 +15,14 @@ pub struct Cage {
     pub polyomino: Polyomino,
     /// The arithmetic constraint that the cage's cell values must satisfy.
     operation: Operation,
-    /// Memoization of the possible [`Fill`]s.
+    /// Memoization of the possible fills.
     pub memo: Option<CageMemo>,
 }
 
 impl Cage {
-    /// Creates a new `operation` cage in `polyomino` on a [`Grid`] of size `n`.
-    pub fn new(_n: N, polyomino: Polyomino, operation: Operation) -> Self {
+    /// Creates a new `operation` cage in `polyomino` on a grid of size `n`.
+    pub const fn new(_n: N, polyomino: Polyomino, operation: Operation) -> Self {
         // todo!("Create the appropriate memo for the operator.");
-        match operation.0 {
-            Operator::Add => {}
-            Operator::Multiply => {}
-            Operator::Subtract => {}
-            Operator::Divide => {}
-            Operator::Given => {}
-        }
         Self {
             polyomino,
             operation,

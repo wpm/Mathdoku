@@ -4,7 +4,7 @@
 //! arithmetic constraint. [`Narrow`] filters that representation when external
 //! information (e.g. from grid-level constraints) rules out certain values.
 //!
-//! Both traits are implemented by [`Table`](crate::mdk::table::Table), which
+//! Both traits are implemented by `Table`, which
 //! stores tuples explicitly, and will be implemented by `Mdd`, which stores
 //! them as a multivalued decision diagram.
 use crate::mdk::Error::{self, EmptyFills};
@@ -46,7 +46,7 @@ pub(crate) fn fills_from_tuples(tuples: &[Tuple]) -> Result<Vec<Fill>, Error> {
 /// A cage constraint representation that can be narrowed by restricting candidate values.
 pub trait Narrow: Sized {
     /// Returns a new representation containing only the tuples where every
-    /// position's value is present in the corresponding [`Fill`].
+    /// position's value is present in the corresponding `Fill`.
     ///
     /// # Errors
     /// Returns [`EmptyFills`] if no tuples survive the filter.

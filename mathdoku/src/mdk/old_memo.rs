@@ -5,8 +5,8 @@ use crate::mdk::old_mdd::Mdd;
 use crate::mdk::polyomino::{Cell, Polyomino};
 use std::collections::HashMap;
 
-/// Memo used to store intermediate results for [`Cage`] operations.
-/// [`Commutative`] operations use an [`Mdd`] while [`NonCommutative`] operations use a [`DominoTable`].
+/// Memo used to store intermediate results for cage operations.
+/// Commutative operations use an `Mdd` while non-commutative operations use a domino table.
 #[derive(Clone)]
 pub enum CageMemo {
     Mdd(Mdd),

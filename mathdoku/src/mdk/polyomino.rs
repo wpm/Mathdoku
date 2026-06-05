@@ -19,18 +19,27 @@ impl Polyomino {
     /// Returns [`InvalidPolyomino`] if the cells are empty or not edge-connected.
     pub fn from(cells: impl IntoIterator<Item = Cell>) -> Result<Self, Error> {
         let cells: Vec<Cell> = cells.into_iter().collect();
-        match is_edge_adjacent(&cells) {
-            true => Ok(Self(BTreeSet::from_iter(cells))),
-            false => Err(InvalidPolyomino(cells)),
+        if is_edge_adjacent(&cells) {
+            Ok(Self(BTreeSet::from_iter(cells)))
+        } else {
+            Err(InvalidPolyomino(cells))
         }
     }
 
     /// Returns the number of cells in this polyomino.
+    #[must_use]
     pub fn len(&self) -> usize {
         self.0.len()
     }
 
+    /// Returns `true` if this polyomino contains no cells.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
     /// Returns `true` if `cell` is part of this polyomino.
+    #[must_use]
     pub fn contains(&self, cell: &Cell) -> bool {
         self.0.contains(cell)
     }
@@ -46,7 +55,7 @@ impl Polyomino {
 /// Uses DFS from the first cell. When checking neighbours, only looks right
 /// (col+1) and down (row+1) while iterating — sufficient because the set is
 /// sorted row-major and back-edges (left/up) are discovered from the other end.
-fn is_edge_adjacent(cells: &Vec<Cell>) -> bool {
+fn is_edge_adjacent(cells: &[Cell]) -> bool {
     if cells.is_empty() {
         return false;
     }

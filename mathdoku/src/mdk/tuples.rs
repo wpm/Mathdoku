@@ -19,13 +19,14 @@ pub struct Tuples {
 
 impl Tuples {
     /// Creates a `Tuples` iterator for a commutative (monotonic) operation.
+    #[must_use]
     pub fn commutative(
         n: usize,
         k: usize,
         operation: CommutativeOperation,
         target: Target,
     ) -> Self {
-        Tuples {
+        Self {
             n,
             k,
             constraint: ArithmeticOperation::Commutative(operation, target),
@@ -34,8 +35,9 @@ impl Tuples {
     }
 
     /// Creates a `Tuples` iterator for a non-commutative operation over pairs (`k = 2`).
+    #[must_use]
     pub fn non_commutative(n: usize, operation: NonCommutativeOperation, target: Target) -> Self {
-        Tuples {
+        Self {
             n,
             k: 2,
             constraint: ArithmeticOperation::NonCommutative(operation, target),
@@ -52,27 +54,26 @@ impl Tuples {
         let Some(tuple) = self.queue.pop_front() else {
             return Step::Exhausted;
         };
-        match tuple.len() == self.k {
-            true => {
-                if operator.apply(&tuple) == target {
-                    Step::Yield(tuple)
-                } else {
-                    Step::Continue
-                }
-            }
-            false => {
-                for i in 1..=self.n {
-                    let mut new_tuple = tuple.clone();
-                    new_tuple.push(i as N);
-                    let s = operator.apply(&new_tuple);
-                    let remaining = (self.k - new_tuple.len()) as N;
-                    let residual = operator.dual().identity() * remaining;
-                    if s + residual <= target {
-                        self.queue.push_back(new_tuple);
-                    }
-                }
+        if tuple.len() == self.k {
+            if operator.apply(&tuple) == target {
+                Step::Yield(tuple)
+            } else {
                 Step::Continue
             }
+        } else {
+            for i in 1..=self.n {
+                let mut new_tuple = tuple.clone();
+                #[allow(clippy::cast_possible_truncation)]
+                new_tuple.push(i as N);
+                let s = operator.apply(&new_tuple);
+                #[allow(clippy::cast_possible_truncation)]
+                let remaining = (self.k - new_tuple.len()) as N;
+                let residual = operator.dual().identity() * remaining;
+                if s + residual <= target {
+                    self.queue.push_back(new_tuple);
+                }
+            }
+            Step::Continue
         }
     }
 
@@ -83,22 +84,20 @@ impl Tuples {
         let Some(tuple) = self.queue.pop_front() else {
             return Step::Exhausted;
         };
-        match tuple.len() == self.k {
-            true => {
-                if operator.apply(tuple[0], tuple[1]) == target {
-                    Step::Yield(tuple)
-                } else {
-                    Step::Continue
-                }
-            }
-            false => {
-                for i in 1..=self.n {
-                    let mut new_tuple = tuple.clone();
-                    new_tuple.push(i as N);
-                    self.queue.push_back(new_tuple);
-                }
+        if tuple.len() == self.k {
+            if operator.apply(tuple[0], tuple[1]) == target {
+                Step::Yield(tuple)
+            } else {
                 Step::Continue
             }
+        } else {
+            for i in 1..=self.n {
+                let mut new_tuple = tuple.clone();
+                #[allow(clippy::cast_possible_truncation)]
+                new_tuple.push(i as N);
+                self.queue.push_back(new_tuple);
+            }
+            Step::Continue
         }
     }
 }
@@ -127,7 +126,7 @@ impl Iterator for Tuples {
             };
             match step {
                 Step::Yield(tuple) => return Some(tuple),
-                Step::Continue => continue,
+                Step::Continue => {}
                 Step::Exhausted => return None,
             }
         }

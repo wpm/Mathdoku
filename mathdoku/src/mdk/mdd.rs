@@ -1,7 +1,7 @@
 //! Multivalued Decision Diagram (MDD) implementation of [`Lookup`] and [`Narrow`].
 //!
 //! Only commutative (add, multiply) constraints are supported. For non-commutative
-//! constraints (subtract, divide), use [`Table`](crate::mdk::table::Table) instead.
+//! constraints (subtract, divide), use `Table` instead.
 use crate::mdk::Error::IndexOutOfBounds;
 use crate::mdk::fill::Fill;
 use crate::mdk::memo::{Lookup, Narrow, fills_from_tuples};

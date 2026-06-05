@@ -24,15 +24,15 @@ type Target = u32;
 /// Errors returned by mdk operations.
 #[derive(Debug)]
 pub enum Error {
-    /// Invalid [`Grid`] size
+    /// Invalid grid size
     InvalidGridSize(usize),
     /// The [`Cell`]s do not form a polyomino
     InvalidPolyomino(Vec<Cell>),
-    /// The [`Cell`] is missing from the specified [`Polyomino`] or [`Grid`].
+    /// The [`Cell`] is missing from the specified polyomino or grid.
     MissingCell(Cell),
-    /// Specified [`Cage`] is not in the [`Puzzle`].
+    /// Specified cage is not in the puzzle.
     MissingCage(Cage),
-    /// No [`Fill`]s for a [`Cage`].
+    /// No candidate fills for a cage.
     EmptyFills,
     /// Index out of bounds.
     IndexOutOfBounds(usize),

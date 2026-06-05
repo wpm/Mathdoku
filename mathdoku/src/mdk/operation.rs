@@ -24,6 +24,7 @@ pub enum CommutativeOperation {
 // TODO Does CommutativeOperation need noth apply and apply_pair?
 impl CommutativeOperation {
     /// Applies this operator to `ns`, returning the result.
+    #[must_use]
     pub fn apply(&self, ns: &[N]) -> Target {
         match self {
             Self::Add => ns.iter().sum(),
@@ -45,6 +46,7 @@ impl CommutativeOperation {
     /// Used as the per-slot minimum bound when pruning tuple search: a partial
     /// result extended by `remaining` copies of the dual identity gives the
     /// tightest reachable lower bound on the final result.
+    #[must_use]
     pub const fn identity(&self) -> Target {
         match self {
             Self::Add => 0,
@@ -56,6 +58,7 @@ impl CommutativeOperation {
     ///
     /// The dual's identity is the minimum value each remaining slot can contribute,
     /// forming the ring relationship used in tuple pruning.
+    #[must_use]
     pub const fn dual(&self) -> Self {
         match self {
             Self::Add => Self::Multiply,
@@ -80,6 +83,7 @@ impl NonCommutativeOperation {
     ///
     /// Subtract returns `|a - b|`. Divide returns `max(a, b) / min(a, b)`
     /// using integer division.
+    #[must_use]
     pub fn apply(&self, a: N, b: N) -> Target {
         match self {
             Self::Subtract => a.abs_diff(b),
