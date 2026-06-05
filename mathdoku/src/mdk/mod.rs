@@ -33,4 +33,6 @@ pub enum Error {
     EmptyFills,
     /// The index for a [`Cell`] in a cage is out of bounds
     InvalidCellCageIndex(usize),
+    /// Value not permitted in this [`Cell`].
+    InvalidCellValue(Cell, N),
 }

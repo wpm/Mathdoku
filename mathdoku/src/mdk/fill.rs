@@ -30,16 +30,6 @@ impl Fill {
     pub(crate) fn is_empty(&self) -> bool {
         self.1.is_empty()
     }
-
-    pub(crate) fn compliment(&self) -> Self {
-        #[allow(clippy::cast_possible_truncation)]
-        Self(
-            self.0,
-            (1..=self.0 as N)
-                .filter(|&v| !self.1.contains(&v))
-                .collect(),
-        )
-    }
 }
 
 use serde::ser::SerializeStruct;

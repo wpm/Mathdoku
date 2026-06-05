@@ -5,11 +5,11 @@ use crate::mdk::cage::Cage;
 use crate::mdk::fill::Fill;
 use crate::mdk::grid::Grid;
 use crate::mdk::polyomino::{Cell, Polyomino};
-use crate::mdk::{Error, Target};
+use crate::mdk::{Error, N, Target};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-/// An n×n Mathdoku puzzle: a grid partitioned into cages, each with an arithmetic constraint.
+/// A Mathdoku puzzle: an n×n grid partitioned into cages, each with an arithmetic constraint.
 #[derive(Clone)]
 pub struct Puzzle {
     grid: Grid,
@@ -23,9 +23,7 @@ impl Puzzle {
     ///
     /// Returns [`MissingCell`] if `cell` is not in the puzzle.
     pub fn get(&self, cell: Cell) -> Result<Fill, Error> {
-        self.cages
-            .get(&cell)
-            .map_or(Err(MissingCell(cell)), |cage| cage.get(cell))
+        self.grid.get(cell)
     }
 
     /// Applies `fills` as assignments and returns the updated candidate fills for all cells.
@@ -34,7 +32,11 @@ impl Puzzle {
     ///
     /// Returns an error if any cell in `fills` is not in the puzzle.
     #[allow(clippy::todo)]
-    pub fn set(&self, _fills: HashMap<Cell, Fill>) -> Result<HashMap<Cell, Fill>, Error> {
+    pub fn set(&self, cell: Cell, n: N) -> Result<Self, Error> {
+        let fill = self.grid.get(cell)?;
+        if !fill.contains(n) {
+            return Err(Error::InvalidCellValue(cell, n));
+        }
         todo!()
     }
 

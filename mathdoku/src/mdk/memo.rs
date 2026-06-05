@@ -25,19 +25,6 @@ pub trait Memo: Sized {
     /// Returns [`Error::InvalidCellCageIndex`] if `index` is out of range.
     fn get(&self, index: usize) -> Result<Fill, Error>;
 
-    /// Returns a new representation with `fills` assigned, restricting tuples to
-    /// those consistent with the complement of each position's fill.
-    ///
-    /// # Errors
-    /// Returns [`EmptyFills`] if no tuples survive after the assignment.
-    fn set(&self, fills: Vec<Fill>) -> Result<Self, Error> {
-        self.reset()
-            .narrow(fills.iter().map(Fill::compliment).collect())
-    }
-
-    #[must_use]
-    fn reset(&self) -> Self;
-
     /// Returns a new representation containing only the tuples where every
     /// position's value is present in the corresponding `Fill`.
     ///

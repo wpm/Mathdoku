@@ -1,6 +1,5 @@
 //! Grid and cell types internal to the mdk implementation.
-use crate::mdk::Error;
-use crate::mdk::Error::MissingCell;
+use crate::mdk::Error::{self, MissingCell};
 use crate::mdk::fill::Fill;
 use crate::mdk::polyomino::Cell;
 use serde::de::Error as DeError;
@@ -10,26 +9,28 @@ use std::fmt::{Display, Formatter};
 
 /// An n×n grid mapping each cell to its current candidate fill.
 #[derive(Clone)]
-pub struct Grid {
-    n: usize,
-    fill: BTreeMap<Cell, Fill>,
-}
+pub struct Grid(usize, BTreeMap<Cell, Fill>);
 
 impl Grid {
     /// Creates a new grid of size `n` with every cell initialised to the full
     /// candidate set `{1..=n}`.
     pub fn new(n: usize) -> Self {
-        let fill = (1..=n)
+        let fills = (1..=n)
             .flat_map(|i| (1..=n).map(move |j| Cell(i, j)))
             .map(|cell| (cell, Fill::new(n)))
             .collect();
-        Self { n, fill }
+        Self(n, fills)
     }
 
-    /// Returns the candidate fill for `cell`, or an error if the cell is not in this
-    /// grid.
-    pub fn get(&self, cell: &Cell) -> Result<Fill, Error> {
-        self.fill.get(cell).cloned().ok_or(MissingCell(*cell))
+    /// Returns the [`Fill`] for `cell`, or an error if the cell is not in this grid.
+    pub fn get(&self, cell: Cell) -> Result<Fill, Error> {
+        self.1.get(&cell).cloned().ok_or(MissingCell(cell))
+    }
+
+    pub fn set(&self, cell: Cell, fill: Fill) -> Self {
+        let mut fills = self.1.clone();
+        let _ = fills.insert(cell, fill);
+        Self(self.0, fills)
     }
 }
 
@@ -44,20 +45,16 @@ struct GridWire {
 
 impl Serialize for Grid {
     fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        let full = Fill::new(self.n);
-        let is_full = self.fill.values().all(|f| f == &full);
+        let full = Fill::new(self.0);
+        let is_full = self.1.values().all(|f| f == &full);
         let fills = if is_full {
             vec![]
         } else {
-            (1..=self.n)
-                .map(|r| {
-                    (1..=self.n)
-                        .map(|c| self.fill[&Cell(r, c)].clone())
-                        .collect()
-                })
+            (1..=self.0)
+                .map(|r| (1..=self.0).map(|c| self.1[&Cell(r, c)].clone()).collect())
                 .collect()
         };
-        GridWire { n: self.n, fills }.serialize(s)
+        GridWire { n: self.0, fills }.serialize(s)
     }
 }
 
@@ -85,7 +82,7 @@ impl<'de> Deserialize<'de> for Grid {
                 )));
             }
         }
-        let fill = wire
+        let fills = wire
             .fills
             .into_iter()
             .enumerate()
@@ -95,13 +92,13 @@ impl<'de> Deserialize<'de> for Grid {
                     .map(move |(c, f)| (Cell(r + 1, c + 1), f))
             })
             .collect();
-        Ok(Self { n, fill })
+        Ok(Self(n, fills))
     }
 }
 
 impl Display for Grid {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}×{} grid", self.n, self.n)
+        write!(f, "{}×{} grid", self.0, self.0)
     }
 }
 
@@ -113,14 +110,14 @@ mod tests {
     fn assert_all_full(g: &Grid, n: usize) {
         for r in 1..=n {
             for c in 1..=n {
-                assert_eq!(g.get(&Cell(r, c)).unwrap(), Fill::new(n));
+                assert_eq!(g.get(Cell(r, c)).unwrap(), Fill::new(n));
             }
         }
     }
 
     fn grid_with_modified_cell(n: usize, cell: Cell, fill: Fill) -> Grid {
         let mut g = Grid::new(n);
-        drop(g.fill.insert(cell, fill));
+        drop(g.1.insert(cell, fill));
         g
     }
 
@@ -128,7 +125,7 @@ mod tests {
     fn new_valid_sizes_succeed() {
         for n in 1..=9 {
             let g = Grid::new(n);
-            assert_eq!(g.n, n);
+            assert_eq!(g.0, n);
         }
     }
 
@@ -140,8 +137,8 @@ mod tests {
     #[test]
     fn get_values_out_of_bounds_returns_err() {
         let g = Grid::new(3);
-        assert!(matches!(g.get(&Cell(4, 1)), Err(MissingCell(_))));
-        assert!(matches!(g.get(&Cell(1, 4)), Err(MissingCell(_))));
+        assert!(matches!(g.get(Cell(4, 1)), Err(MissingCell(_))));
+        assert!(matches!(g.get(Cell(1, 4)), Err(MissingCell(_))));
     }
 
     #[test]
@@ -153,8 +150,8 @@ mod tests {
     fn grid_round_trips_through_json() {
         let g = grid_with_modified_cell(3, Cell(1, 1), Fill::from(3, &[2]));
         let restored: Grid = from_str(&to_string(&g).unwrap()).unwrap();
-        assert_eq!(g.fill, restored.fill);
-        assert_eq!(g.n, restored.n);
+        assert_eq!(g.1, restored.1);
+        assert_eq!(g.0, restored.0);
     }
 
     #[test]
@@ -183,7 +180,7 @@ mod tests {
     #[test]
     fn grid_deserialize_absent_values_uses_full_fill_sets() {
         let g: Grid = from_str(r#"{"n":3}"#).unwrap();
-        assert_eq!(g.n, 3);
+        assert_eq!(g.0, 3);
         assert_all_full(&g, 3);
     }
 

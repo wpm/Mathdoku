@@ -335,17 +335,6 @@ impl Memo for Mdd {
             .ok_or(InvalidCellCageIndex(index))
     }
 
-    fn reset(&self) -> Self {
-        #[allow(clippy::cast_possible_truncation)]
-        Self::new(
-            self.n,
-            self.constraint.arity as usize,
-            self.constraint.operator,
-            self.constraint.target,
-        )
-        .unwrap_or_else(|_| unreachable!("reset reconstructs a constraint that was already valid"))
-    }
-
     fn narrow(&self, support: Vec<Fill>) -> Result<Self, Error> {
         #[allow(clippy::cast_possible_truncation)]
         let forbidden: HashMap<N, HashSet<N>> = support
@@ -490,41 +479,6 @@ mod tests {
     }
 
     // ---- reset ----
-
-    #[test]
-    fn reset_equals_fresh_construction() {
-        let m = Mdd::new(4, 2, Add, 5).unwrap();
-        let narrowed = m
-            .narrow(vec![Fill::from(4, &[1, 2]), Fill::from(4, &[1, 2, 3, 4])])
-            .unwrap();
-        assert_eq!(narrowed.reset(), m);
-    }
-
-    // ---- set ----
-
-    #[test]
-    fn set_restricts_to_compliment_of_assigned_fills() {
-        // add to 5 in n=4: tuples (1,4),(2,3),(3,2),(4,1)
-        // assign pos 0 = {1,2} → compliment = {3,4}
-        // assign pos 1 = {3,4} → compliment = {1,2}
-        // surviving tuples where pos-0 ∈ {3,4} and pos-1 ∈ {1,2}: (3,2),(4,1)
-        let m = Mdd::new(4, 2, Add, 5).unwrap();
-        let result = m
-            .set(vec![Fill::from(4, &[1, 2]), Fill::from(4, &[3, 4])])
-            .unwrap();
-        assert_eq!(result.get(0).unwrap(), Fill::from(4, &[3, 4]));
-        assert_eq!(result.get(1).unwrap(), Fill::from(4, &[1, 2]));
-    }
-
-    #[test]
-    fn set_eliminating_all_tuples_returns_empty_fills_error() {
-        // assign both positions the full fill → compliment = {} → no tuples survive
-        let m = Mdd::new(4, 2, Add, 5).unwrap();
-        assert!(matches!(
-            m.set(vec![Fill::new(4), Fill::new(4)]),
-            Err(EmptyFills)
-        ));
-    }
 
     // ---- display ----
 
