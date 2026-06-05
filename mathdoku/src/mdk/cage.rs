@@ -67,6 +67,7 @@ enum CageSupport {
 pub struct Cage {
     /// The cells belonging to this cage.
     pub polyomino: Polyomino,
+    /// The constraint for this cage and its supporting values.
     support: CageSupport,
 }
 
@@ -111,10 +112,10 @@ impl Cage {
     ///
     /// Always succeeds for a valid `cell`; returns `Err` only if the cell cannot
     /// form a polyomino, which cannot happen for a single non-empty cell.
-    pub fn given(cell: Cell, target: N) -> Result<Self, Error> {
+    pub fn given(cell: Cell, n: N) -> Result<Self, Error> {
         Ok(Self {
             polyomino: Polyomino::from(vec![cell])?,
-            support: CageSupport::Given(target),
+            support: CageSupport::Given(n),
         })
     }
 
