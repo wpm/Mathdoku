@@ -162,8 +162,8 @@ impl Puzzle {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mdk::operation::CommutativeOperator::Add;
-    use crate::mdk::operation::NonCommutativeOperator::Subtract;
+    use crate::mdk::operator::CommutativeOperator::Add;
+    use crate::mdk::operator::NonCommutativeOperator::Subtract;
     use crate::mdk::polyomino::Polyomino;
 
     fn domino(r0: usize, c0: usize, r1: usize, c1: usize) -> Polyomino {

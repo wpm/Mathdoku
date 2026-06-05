@@ -41,7 +41,7 @@ use crate::mdk::fill::Fill;
 use crate::mdk::grid::Grid;
 use crate::mdk::mdd::Mdd;
 use crate::mdk::memo::Memo;
-use crate::mdk::operation::{CommutativeOperator, NonCommutativeOperator};
+use crate::mdk::operator::{CommutativeOperator, NonCommutativeOperator};
 use crate::mdk::polyomino::{Cell, Polyomino};
 use crate::mdk::table::Table;
 use crate::mdk::{Error, Error::EmptyFills, N, T};
@@ -195,8 +195,8 @@ impl Constraint<Grid, Cell, Fill, Error> for Cage {
 mod tests {
     use super::*;
     use crate::mdk::grid::Grid;
-    use crate::mdk::operation::CommutativeOperator::{Add, Multiply};
-    use crate::mdk::operation::NonCommutativeOperator::{Divide, Subtract};
+    use crate::mdk::operator::CommutativeOperator::{Add, Multiply};
+    use crate::mdk::operator::NonCommutativeOperator::{Divide, Subtract};
 
     fn domino(r0: usize, c0: usize, r1: usize, c1: usize) -> Polyomino {
         Polyomino::from([Cell(r0, c0), Cell(r1, c1)]).unwrap()

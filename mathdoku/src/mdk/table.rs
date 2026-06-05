@@ -2,7 +2,7 @@
 use crate::mdk::Error::InvalidCellCageIndex;
 use crate::mdk::fill::Fill;
 use crate::mdk::memo::{Memo, fills_from_tuples};
-use crate::mdk::operation::{ArithmeticConstraint, CommutativeOperator, NonCommutativeOperator};
+use crate::mdk::operator::{ArithmeticConstraint, CommutativeOperator, NonCommutativeOperator};
 use crate::mdk::tuples::Tuples;
 use crate::mdk::{Error, N, T};
 
@@ -107,8 +107,8 @@ impl Memo for Table {
 mod tests {
     use super::*;
     use crate::mdk::Error::EmptyFills;
-    use crate::mdk::operation::CommutativeOperator::{Add, Multiply};
-    use crate::mdk::operation::NonCommutativeOperator::{Divide, Subtract};
+    use crate::mdk::operator::CommutativeOperator::{Add, Multiply};
+    use crate::mdk::operator::NonCommutativeOperator::{Divide, Subtract};
 
     // ---- get ----
 

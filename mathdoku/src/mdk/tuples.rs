@@ -1,5 +1,5 @@
 //! Iterator over value tuples satisfying a cage arithmetic constraint.
-use crate::mdk::operation::{ArithmeticConstraint, CommutativeOperator, NonCommutativeOperator};
+use crate::mdk::operator::{ArithmeticConstraint, CommutativeOperator, NonCommutativeOperator};
 use crate::mdk::{N, T};
 use std::collections::VecDeque;
 
@@ -130,8 +130,8 @@ impl Iterator for Tuples {
 
 #[cfg(test)]
 mod tests {
-    use crate::mdk::operation::CommutativeOperator::{Add, Multiply};
-    use crate::mdk::operation::NonCommutativeOperator::{Divide, Subtract};
+    use crate::mdk::operator::CommutativeOperator::{Add, Multiply};
+    use crate::mdk::operator::NonCommutativeOperator::{Divide, Subtract};
     use crate::mdk::tuples::{Tuple, Tuples};
 
     #[test]

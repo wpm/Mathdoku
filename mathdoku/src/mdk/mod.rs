@@ -9,7 +9,7 @@ pub(crate) mod fill;
 mod grid;
 pub mod mdd;
 pub mod memo;
-pub mod operation;
+pub mod operator;
 pub mod polyomino;
 pub mod puzzle;
 pub(crate) mod regin;
