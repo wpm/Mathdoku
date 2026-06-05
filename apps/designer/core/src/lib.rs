@@ -256,7 +256,12 @@ pub fn new_latin_square<R: Rng>(
 ) -> Result<State, Error> {
     let puzzle = Puzzle::new(n)?;
     let latin = generate_latin_square(n, rng);
-    let solution = Grid::from_latin_square(n, &latin)?;
+    #[allow(clippy::cast_possible_truncation)] // latin values are always 1..=n ≤ 9
+    let latin_u8: Vec<Vec<u8>> = latin
+        .iter()
+        .map(|r| r.iter().map(|&v| v as u8).collect())
+        .collect();
+    let solution = Grid::from_latin_square(n, &latin_u8)?;
     state.puzzle = Some(puzzle);
     state.solution = Some(solution);
     state.path = None;

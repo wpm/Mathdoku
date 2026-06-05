@@ -17,7 +17,7 @@ pub(crate) mod regin;
 pub mod table;
 pub mod tuples;
 
-type N = u32;
+pub type N = u32;
 type Target = u32;
 
 /// Errors returned by mdk operations.
