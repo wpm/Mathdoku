@@ -51,6 +51,12 @@ impl Polyomino {
         self.0.contains(cell)
     }
 
+    /// Returns `true` if this polyomino shares no cells with `other`.
+    #[must_use]
+    pub fn is_disjoint(&self, other: &Self) -> bool {
+        self.0.is_disjoint(&other.0)
+    }
+
     /// Returns an iterator over the cells of this polyomino in sorted order.
     pub fn iter(&self) -> impl Iterator<Item = &Cell> {
         self.0.iter()
@@ -144,6 +150,34 @@ mod tests {
             Polyomino::from([Cell(1, 1), Cell(1, 2), Cell(3, 3), Cell(3, 4)]),
             Err(InvalidPolyomino(_))
         ));
+    }
+
+    #[test]
+    fn is_disjoint_no_overlap_returns_true() {
+        let a = Polyomino::from([Cell(1, 1), Cell(1, 2)]).unwrap();
+        let b = Polyomino::from([Cell(2, 1), Cell(2, 2)]).unwrap();
+        assert!(a.is_disjoint(&b));
+    }
+
+    #[test]
+    fn is_disjoint_partial_overlap_returns_false() {
+        let a = Polyomino::from([Cell(1, 1), Cell(1, 2)]).unwrap();
+        let b = Polyomino::from([Cell(1, 2), Cell(1, 3)]).unwrap();
+        assert!(!a.is_disjoint(&b));
+    }
+
+    #[test]
+    fn is_disjoint_identical_returns_false() {
+        let a = Polyomino::from([Cell(1, 1)]).unwrap();
+        let b = Polyomino::from([Cell(1, 1)]).unwrap();
+        assert!(!a.is_disjoint(&b));
+    }
+
+    #[test]
+    fn is_disjoint_is_symmetric() {
+        let a = Polyomino::from([Cell(1, 1), Cell(1, 2)]).unwrap();
+        let b = Polyomino::from([Cell(2, 1), Cell(2, 2)]).unwrap();
+        assert_eq!(a.is_disjoint(&b), b.is_disjoint(&a));
     }
 
     #[test]

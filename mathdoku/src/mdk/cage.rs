@@ -143,6 +143,12 @@ impl Cage {
         Ok(fill)
     }
 
+    /// Returns `true` if this cage shares no cells with `other`.
+    #[must_use]
+    pub fn is_disjoint(&self, other: &Self) -> bool {
+        self.polyomino.is_disjoint(&other.polyomino)
+    }
+
     /// Returns the index of `cell` in its containing [`Cage`].
     ///
     /// # Errors
@@ -345,6 +351,40 @@ mod tests {
     fn given_stores_target_as_value() {
         let cage = Cage::given(Cell(1, 1), 4, 7).unwrap();
         assert_eq!(cage.support, CageSupport::Given(7));
+    }
+
+    // ---- is_disjoint ----
+
+    #[test]
+    fn is_disjoint_non_overlapping_cages_returns_true() {
+        let a = Cage::given(Cell(1, 1), 4, 1).unwrap();
+        let b = Cage::given(Cell(2, 2), 4, 2).unwrap();
+        assert!(a.is_disjoint(&b));
+    }
+
+    #[test]
+    fn is_disjoint_same_cell_returns_false() {
+        let a = Cage::given(Cell(1, 1), 4, 1).unwrap();
+        let b = Cage::given(Cell(1, 1), 4, 2).unwrap();
+        assert!(!a.is_disjoint(&b));
+    }
+
+    #[test]
+    fn is_disjoint_overlapping_dominos_returns_false() {
+        let p1 = Polyomino::from([Cell(1, 1), Cell(1, 2)]).unwrap();
+        let p2 = Polyomino::from([Cell(1, 2), Cell(1, 3)]).unwrap();
+        let a = Cage::commutative(4, p1, Add, 3).unwrap();
+        let b = Cage::commutative(4, p2, Add, 3).unwrap();
+        assert!(!a.is_disjoint(&b));
+    }
+
+    #[test]
+    fn is_disjoint_adjacent_dominos_returns_true() {
+        let p1 = Polyomino::from([Cell(1, 1), Cell(1, 2)]).unwrap();
+        let p2 = Polyomino::from([Cell(1, 3), Cell(1, 4)]).unwrap();
+        let a = Cage::commutative(4, p1, Add, 3).unwrap();
+        let b = Cage::commutative(4, p2, Add, 3).unwrap();
+        assert!(a.is_disjoint(&b));
     }
 
     // ---- get ----
