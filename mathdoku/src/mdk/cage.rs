@@ -46,9 +46,9 @@ use crate::mdk::polyomino::{Cell, Polyomino};
 use crate::mdk::table::Table;
 use crate::mdk::{Error, Error::EmptyFills, N, T};
 
-/// The constraint for a cage and its backing memo.
+/// The constraint for a cage and its supporting values.
 #[derive(Clone, PartialEq, Eq, Debug)]
-enum CageOperation {
+enum CageSupport {
     /// A commutative (monotonic) operation: add or multiply.
     Commutative(CommutativeOperator, T, Mdd),
     /// A non-commutative (non-monotonic) operation: subtract or divide.
@@ -69,7 +69,7 @@ pub struct Cage {
     n: usize,
     /// The cells belonging to this cage.
     pub polyomino: Polyomino,
-    operation: CageOperation,
+    support: CageSupport,
 }
 
 impl Cage {
@@ -87,11 +87,11 @@ impl Cage {
         target: T,
     ) -> Result<Self, Error> {
         let mdd = Mdd::new(n, polyomino.len(), operation, target)?;
-        let operation = CageOperation::Commutative(operation, target, mdd);
+        let support = CageSupport::Commutative(operation, target, mdd);
         Ok(Self {
             n,
             polyomino,
-            operation,
+            support,
         })
     }
 
@@ -109,11 +109,11 @@ impl Cage {
         target: T,
     ) -> Result<Self, Error> {
         let table = Table::non_commutative(n, operation, target)?;
-        let operation = CageOperation::NonCommutative(operation, target, table);
+        let support = CageSupport::NonCommutative(operation, target, table);
         Ok(Self {
             n,
             polyomino,
-            operation,
+            support,
         })
     }
 
@@ -125,7 +125,7 @@ impl Cage {
         Ok(Self {
             n,
             polyomino: Polyomino::from(vec![cell])?,
-            operation: CageOperation::Given(target),
+            support: CageSupport::Given(target),
         })
     }
 
@@ -135,10 +135,10 @@ impl Cage {
     /// Returns [`Error::MissingCell`] if `cell` is not in a [`Cage`].
     pub fn get(&self, cell: Cell) -> Result<Fill, Error> {
         let index = self.polyomino_index(cell)?;
-        let fill = match &self.operation {
-            CageOperation::Commutative(_, _, memo) => memo.get(index)?,
-            CageOperation::NonCommutative(_, _, memo) => memo.get(index)?,
-            CageOperation::Given(n) => Fill::from(&[*n]),
+        let fill = match &self.support {
+            CageSupport::Commutative(_, _, memo) => memo.get(index)?,
+            CageSupport::NonCommutative(_, _, memo) => memo.get(index)?,
+            CageSupport::Given(n) => Fill::from(&[*n]),
         };
         Ok(fill)
     }
@@ -162,8 +162,8 @@ impl Constraint<Grid, Cell, Fill, Error> for Cage {
             .iter()
             .map(|&c| state.get(c))
             .collect::<Result<_, _>>()?;
-        let new_fills = match &self.operation {
-            CageOperation::Given(n) => {
+        let new_fills = match &self.support {
+            CageSupport::Given(n) => {
                 // Singleton cell: fill is always the fixed value, intersected with current state.
                 let singleton = Fill::from(&[*n]);
                 vec![if old_fills[0].contains(*n) {
@@ -172,14 +172,14 @@ impl Constraint<Grid, Cell, Fill, Error> for Cage {
                     Fill::default()
                 }]
             }
-            CageOperation::Commutative(_, _, memo) => match memo.narrow(old_fills.clone()) {
+            CageSupport::Commutative(_, _, memo) => match memo.narrow(old_fills.clone()) {
                 Ok(narrowed) => (0..cells.len())
                     .map(|i| narrowed.get(i).unwrap_or_default())
                     .collect(),
                 Err(EmptyFills) => vec![Fill::default(); cells.len()],
                 Err(e) => return Err(e),
             },
-            CageOperation::NonCommutative(_, _, memo) => match memo.narrow(old_fills.clone()) {
+            CageSupport::NonCommutative(_, _, memo) => match memo.narrow(old_fills.clone()) {
                 Ok(narrowed) => (0..cells.len())
                     .map(|i| narrowed.get(i).unwrap_or_default())
                     .collect(),
@@ -344,7 +344,7 @@ mod tests {
     #[test]
     fn given_stores_target_as_value() {
         let cage = Cage::given(Cell(1, 1), 4, 7).unwrap();
-        assert_eq!(cage.operation, CageOperation::Given(7));
+        assert_eq!(cage.support, CageSupport::Given(7));
     }
 
     // ---- get ----
