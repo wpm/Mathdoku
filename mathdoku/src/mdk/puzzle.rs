@@ -325,6 +325,23 @@ mod tests {
     }
 
     #[test]
+    fn possible_operations_size_10_returns_only_commutative() {
+        // A 10-cell snake across two columns of a 9×9 grid: col 1 rows 1–5,
+        // col 2 rows 5–9. No row contains more than 2 cage cells, so AllDifferent
+        // is satisfiable. k > 2 so only Add and Multiply are candidates.
+        let mut cells: Vec<Cell> = (1..=5).map(|r| Cell(r, 1)).collect();
+        cells.extend((5..=9).map(|r| Cell(r, 2)));
+        let poly = Polyomino::from(cells).unwrap();
+        let p = Puzzle::from_parts(Grid::new(9).unwrap(), vec![]);
+        let ops = p.possible_operations(&poly).unwrap();
+        assert!(ops.iter().any(|o| matches!(o, CageOperator::Add)));
+        assert!(ops.iter().any(|o| matches!(o, CageOperator::Multiply)));
+        assert!(!ops.iter().any(|o| matches!(o, CageOperator::Subtract)));
+        assert!(!ops.iter().any(|o| matches!(o, CageOperator::Divide)));
+        assert!(!ops.iter().any(|o| matches!(o, CageOperator::Given)));
+    }
+
+    #[test]
     fn possible_operations_singleton_returns_only_given() {
         let p = Puzzle::from_parts(Grid::new(4).unwrap(), vec![]);
         let poly = Polyomino::from([Cell(1, 1)]).unwrap();
