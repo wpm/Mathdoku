@@ -34,6 +34,10 @@ pub enum Error {
     InvalidPolyomino(Vec<Cell>),
     /// The [`Cell`] is missing from the specified polyomino or grid
     MissingCell(Cell),
+    /// The [`Polyomino`] contains cells not present in the puzzle grid
+    MissingPolyomino(Polyomino),
+    /// The two [`Polyomino`]es overlap on one or more [`Cell`]s
+    NonDisjointPolyominoes(Polyomino, Polyomino),
     /// Invalid fill for a cage
     InvalidCageFill(Polyomino, Fill),
     /// No candidate fills for a cage
@@ -57,6 +61,10 @@ impl std::fmt::Display for Error {
             Self::InvalidCellCageIndex(i) => write!(f, "cell cage index out of bounds: {i}"),
             Self::InvalidCellValue(cell, n) => {
                 write!(f, "value {n} not a candidate for cell {cell}")
+            }
+            Self::MissingPolyomino(poly) => write!(f, "polyomino not in puzzle grid: {poly:?}"),
+            Self::NonDisjointPolyominoes(a, b) => {
+                write!(f, "polyominoes overlap: {a:?} and {b:?}")
             }
         }
     }

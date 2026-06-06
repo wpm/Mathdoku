@@ -1,5 +1,4 @@
 //! [`Puzzle`]: the top-level constraint-solving interface.
-use crate::Operation;
 use crate::mdk::Error::MissingCell;
 use crate::mdk::cage::Cage;
 use crate::mdk::csp::{Constraint, generalized_arc_consistency};
@@ -65,14 +64,88 @@ impl Puzzle {
         })
     }
 
-    /// Returns a copy of the puzzle with `cage` added.
+    /// Returns a copy of the puzzle with a new cage added, propagated to a fixpoint.
+    ///
+    /// Returns `None` if the new cage makes the puzzle infeasible.
     ///
     /// # Errors
     ///
-    /// Returns an error if `cage` overlaps with an existing cage.
-    #[allow(clippy::todo)]
-    pub fn insert(&self, _cage: &Cage) -> Result<Option<Self>, Error> {
-        todo!()
+    /// Returns [`Error::MissingPolyomino`] if any cell of `polyomino` is not in the grid.
+    /// Returns [`Error::NonDisjointPolyominoes`] if `polyomino` overlaps an existing cage.
+    pub fn insert(
+        &self,
+        polyomino: &Polyomino,
+        operation: CageOperator,
+        target: T,
+    ) -> Result<Option<Self>, Error> {
+        let n = self.grid.size();
+
+        // Check all cells are in the grid.
+        for &cell in polyomino.iter() {
+            if self.grid.get(cell).is_err() {
+                return Err(Error::MissingPolyomino(polyomino.clone()));
+            }
+        }
+
+        // Check disjoint with every existing cage.
+        let mut seen: std::collections::HashSet<*const Cage> = std::collections::HashSet::new();
+        for arc in self.cages.values() {
+            if seen.insert(Arc::as_ptr(arc)) && !arc.polyomino.is_disjoint(polyomino) {
+                return Err(Error::NonDisjointPolyominoes(
+                    arc.polyomino.clone(),
+                    polyomino.clone(),
+                ));
+            }
+        }
+
+        // Build the cage.
+        let cage = match operation {
+            CageOperator::Add => Cage::commutative(
+                n,
+                polyomino.clone(),
+                crate::mdk::operator::CommutativeOperator::Add,
+                target,
+            )?,
+            CageOperator::Multiply => Cage::commutative(
+                n,
+                polyomino.clone(),
+                crate::mdk::operator::CommutativeOperator::Multiply,
+                target,
+            )?,
+            CageOperator::Subtract => Cage::non_commutative(
+                n,
+                polyomino.clone(),
+                crate::mdk::operator::NonCommutativeOperator::Subtract,
+                target,
+            )?,
+            CageOperator::Divide => Cage::non_commutative(
+                n,
+                polyomino.clone(),
+                crate::mdk::operator::NonCommutativeOperator::Divide,
+                target,
+            )?,
+            CageOperator::Given => {
+                let &cell = polyomino
+                    .iter()
+                    .next()
+                    .ok_or_else(|| Error::MissingPolyomino(polyomino.clone()))?;
+                #[allow(clippy::cast_possible_truncation)]
+                Cage::given(cell, target as N)?
+            }
+        };
+
+        // Insert into a cloned cage map.
+        let mut cages = self.cages.clone();
+        let arc = Arc::new(cage);
+        for &cell in polyomino.iter() {
+            let _ = cages.insert(cell, Arc::clone(&arc));
+        }
+
+        Ok(Self {
+            grid: self.grid.clone(),
+            cages,
+        }
+        .fixpoint())
     }
 
     /// Returns a copy of the puzzle with `cage` removed.
@@ -88,7 +161,7 @@ impl Puzzle {
         Ok(self.fixpoint())
     }
 
-    /// Returns the operations that are feasible for `polyomino` given the current grid state.
+    /// Returns the operators that are feasible for `polyomino` given the current grid state.
     ///
     /// An operation is feasible if at least one target value exists that is consistent
     /// with the candidate fills of the polyomino's cells.
@@ -97,7 +170,7 @@ impl Puzzle {
     ///
     /// Returns [`MissingCell`] if any cell of `polyomino` is not in the puzzle.
     #[allow(clippy::todo)]
-    pub fn possible_operations(&self, _polyomino: &Polyomino) -> Result<Vec<Operation>, Error> {
+    pub fn possible_operations(&self, _polyomino: &Polyomino) -> Result<Vec<CageOperator>, Error> {
         todo!()
     }
 
@@ -114,7 +187,7 @@ impl Puzzle {
     pub fn possible_targets(
         &self,
         _polyomino: &Polyomino,
-        _operation: Operation,
+        _operation: CageOperator,
     ) -> Result<Vec<T>, Error> {
         todo!()
     }
@@ -159,6 +232,15 @@ impl Puzzle {
     }
 }
 
+#[derive(Clone, Copy)]
+pub enum CageOperator {
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
+    Given,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -168,6 +250,60 @@ mod tests {
 
     fn domino(r0: usize, c0: usize, r1: usize, c1: usize) -> Polyomino {
         Polyomino::from([Cell(r0, c0), Cell(r1, c1)]).unwrap()
+    }
+
+    #[test]
+    fn insert_cage_pins_cell() {
+        let p = Puzzle::from_parts(Grid::new(4).unwrap(), vec![]);
+        let poly = Polyomino::from([Cell(1, 1)]).unwrap();
+        let fp = p.insert(&poly, CageOperator::Given, 3).unwrap().unwrap();
+        assert_eq!(fp.get(Cell(1, 1)).unwrap(), Fill::from(&[3]));
+    }
+
+    #[test]
+    fn insert_missing_polyomino_returns_error() {
+        let p = Puzzle::from_parts(Grid::new(2).unwrap(), vec![]);
+        let poly = Polyomino::from([Cell(9, 9)]).unwrap();
+        assert!(matches!(
+            p.insert(&poly, CageOperator::Given, 1),
+            Err(Error::MissingPolyomino(_))
+        ));
+    }
+
+    #[test]
+    fn insert_overlapping_cage_returns_error() {
+        let cage = Cage::given(Cell(1, 1), 1).unwrap();
+        let p = Puzzle::from_parts(Grid::new(2).unwrap(), vec![cage]);
+        let poly = Polyomino::from([Cell(1, 1)]).unwrap();
+        assert!(matches!(
+            p.insert(&poly, CageOperator::Given, 2),
+            Err(Error::NonDisjointPolyominoes(_, _))
+        ));
+    }
+
+    #[test]
+    fn insert_infeasible_cage_returns_none() {
+        // pin (1,1)=1 and (1,2)=1 in a 2×2 — AllDifferent makes it infeasible
+        let p = Puzzle::from_parts(Grid::new(2).unwrap(), vec![]);
+        let p = p
+            .insert(
+                &Polyomino::from([Cell(1, 1)]).unwrap(),
+                CageOperator::Given,
+                1,
+            )
+            .unwrap()
+            .unwrap();
+        let poly = Polyomino::from([Cell(1, 2)]).unwrap();
+        assert!(p.insert(&poly, CageOperator::Given, 1).unwrap().is_none());
+    }
+
+    #[test]
+    fn insert_add_cage_prunes_cells() {
+        let p = Puzzle::from_parts(Grid::new(4).unwrap(), vec![]);
+        let poly = domino(1, 1, 1, 2);
+        let fp = p.insert(&poly, CageOperator::Add, 3).unwrap().unwrap();
+        assert_eq!(fp.get(Cell(1, 1)).unwrap(), Fill::from(&[1, 2]));
+        assert_eq!(fp.get(Cell(1, 2)).unwrap(), Fill::from(&[1, 2]));
     }
 
     #[test]
