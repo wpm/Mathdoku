@@ -1,4 +1,4 @@
-//! Explicit-tuple implementation of [`Memo`] and `Narrow`.
+//! Explicit-tuple implementation of [`Memo`].
 use crate::mdk::Error::InvalidCellCageIndex;
 use crate::mdk::fill::Fill;
 use crate::mdk::memo::{Memo, fills_from_tuples};

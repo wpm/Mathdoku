@@ -7,7 +7,8 @@
 //! Both traits are implemented by `Table`, which
 //! stores tuples explicitly, and will be implemented by `Mdd`, which stores
 //! them as a multivalued decision diagram.
-use crate::mdk::Error::{self, EmptyFills};
+use crate::mdk::Error;
+use crate::mdk::Error::EmptyFills;
 use crate::mdk::fill::Fill;
 use crate::mdk::tuples::Tuple;
 

@@ -203,20 +203,6 @@ impl Puzzle {
         todo!()
     }
 
-    /// Builds a [`Puzzle`] from a grid and a list of cages.
-    ///
-    /// Each cage's cells are mapped to a shared [`Arc`] in the cell→cage index.
-    pub(crate) fn from_parts(grid: Grid, cage_list: Vec<Cage>) -> Self {
-        let mut cages: HashMap<Cell, Arc<Cage>> = HashMap::new();
-        for cage in cage_list {
-            let arc = Arc::new(cage);
-            for &cell in arc.polyomino.iter() {
-                let _ = cages.insert(cell, Arc::clone(&arc));
-            }
-        }
-        Self { grid, cages }
-    }
-
     /// Propagates all cage and all-different constraints to a GAC fixpoint.
     ///
     /// Returns `None` if any cell's domain becomes empty (infeasible).
@@ -332,6 +318,19 @@ mod tests {
     use crate::mdk::operator::CommutativeOperator::Add;
     use crate::mdk::operator::NonCommutativeOperator::Subtract;
     use crate::mdk::polyomino::Polyomino;
+
+    impl Puzzle {
+        fn from_parts(grid: Grid, cage_list: Vec<Cage>) -> Self {
+            let mut cages: HashMap<Cell, Arc<Cage>> = HashMap::new();
+            for cage in cage_list {
+                let arc = Arc::new(cage);
+                for &cell in arc.polyomino.iter() {
+                    let _ = cages.insert(cell, Arc::clone(&arc));
+                }
+            }
+            Self { grid, cages }
+        }
+    }
 
     fn domino(r0: usize, c0: usize, r1: usize, c1: usize) -> Polyomino {
         Polyomino::from([Cell(r0, c0), Cell(r1, c1)]).unwrap()
