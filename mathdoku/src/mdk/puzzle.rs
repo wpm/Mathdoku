@@ -5,9 +5,11 @@ pub use crate::mdk::cage::CageOperator;
 use crate::mdk::csp::{Constraint, generalized_arc_consistency};
 use crate::mdk::fill::Fill;
 use crate::mdk::grid::{AllDifferent, Grid};
+use crate::mdk::mdd::Mdd;
+use crate::mdk::memo::Memo;
 use crate::mdk::operator::{CommutativeOperator, NonCommutativeOperator};
 use crate::mdk::polyomino::{Cell, Polyomino};
-use crate::mdk::tuples::Tuples;
+use crate::mdk::table::Table;
 use crate::mdk::{Error, N, T};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -241,30 +243,36 @@ impl Puzzle {
     }
 }
 
-/// Returns the range of target values to check for `op` on a polyomino of size `k`
-/// in an `n`×`n` grid.
-const fn target_range(op: CageOperator, n: usize, k: usize) -> std::ops::RangeInclusive<T> {
-    #[allow(clippy::cast_possible_truncation)]
-    let n = n as T;
-    #[allow(clippy::cast_possible_truncation)]
-    let k = k as T;
+/// Returns the tight target range for `op` derived from the fills' actual min/max values.
+/// Returns `None` if any fill is empty or no valid target exists.
+fn target_range(op: CageOperator, fills: &[Fill]) -> Option<std::ops::RangeInclusive<T>> {
+    let mins: Option<Vec<T>> = fills.iter().map(|f| f.min_value().map(T::from)).collect();
+    let maxs: Option<Vec<T>> = fills.iter().map(|f| f.max_value().map(T::from)).collect();
+    let mins = mins?;
+    let maxs = maxs?;
     match op {
-        CageOperator::Given => 1..=n,
-        CageOperator::Add => k..=(n * k),
-        CageOperator::Multiply => 1..=(n * k),
-        CageOperator::Subtract => 1..=(n - 1),
-        CageOperator::Divide => 2..=n,
+        CageOperator::Given => Some(mins[0]..=maxs[0]),
+        CageOperator::Add => Some(mins.iter().sum()..=maxs.iter().sum()),
+        CageOperator::Multiply => Some(mins.iter().product()..=maxs.iter().product()),
+        CageOperator::Subtract => {
+            let max_val = maxs[0].max(maxs[1]);
+            let min_val = mins[0].min(mins[1]);
+            let hi = max_val - min_val;
+            if hi == 0 { None } else { Some(1..=hi) }
+        }
+        CageOperator::Divide => {
+            let max_val = maxs[0].max(maxs[1]);
+            let min_val = mins[0].min(mins[1]);
+            let hi = max_val / min_val;
+            if hi < 2 { None } else { Some(2..=hi) }
+        }
     }
 }
 
-/// Returns true if any tuple from `tuples` has each value contained in the
-/// corresponding fill.
-fn tuple_consistent_with_fills(mut tuples: Tuples, fills: &[Fill]) -> bool {
-    tuples.any(|tuple| tuple.iter().enumerate().all(|(i, &v)| fills[i].contains(v)))
-}
-
-/// Returns true if `op` with some target is feasible for `polyomino` in `puzzle`:
-/// a fill-consistent tuple exists and inserting the cage yields a non-empty fixpoint.
+/// Returns true if `op` with some target is feasible for `polyomino` in `puzzle`.
+///
+/// For each target in the fill-derived range: builds the Memo, narrows it to the
+/// fills, and if tuples survive checks the fixpoint.
 fn operator_is_feasible(
     puzzle: &Puzzle,
     polyomino: &Polyomino,
@@ -273,12 +281,16 @@ fn operator_is_feasible(
     op: CageOperator,
     fills: &[Fill],
 ) -> bool {
-    target_range(op, n, k)
+    let Some(range) = target_range(op, fills) else {
+        return false;
+    };
+    range
+        .into_iter()
         .any(|target| target_is_feasible(puzzle, polyomino, n, k, op, fills, target))
 }
 
-/// Returns true if `op` with `target` is feasible: a fill-consistent tuple exists
-/// and inserting the cage yields a non-empty fixpoint.
+/// Returns true if `op` with `target` is feasible: the Memo narrowed to fills is
+/// non-empty and inserting the cage yields a non-empty fixpoint.
 fn target_is_feasible(
     puzzle: &Puzzle,
     polyomino: &Polyomino,
@@ -288,24 +300,25 @@ fn target_is_feasible(
     fills: &[Fill],
     target: T,
 ) -> bool {
-    let tuples = match op {
-        CageOperator::Given => {
+    let has_consistent_tuple = match op {
+        CageOperator::Given =>
+        {
             #[allow(clippy::cast_possible_truncation)]
-            return fills[0].contains(target as N)
-                && puzzle
-                    .insert(polyomino, op, target)
-                    .ok()
-                    .flatten()
-                    .is_some();
+            fills[0].contains(target as N)
         }
-        CageOperator::Add => Tuples::commutative(n, k, CommutativeOperator::Add, target),
-        CageOperator::Multiply => Tuples::commutative(n, k, CommutativeOperator::Multiply, target),
+        CageOperator::Add => {
+            Mdd::new(n, k, CommutativeOperator::Add, target).is_ok_and(|m| m.narrow(fills).is_ok())
+        }
+        CageOperator::Multiply => Mdd::new(n, k, CommutativeOperator::Multiply, target)
+            .is_ok_and(|m| m.narrow(fills).is_ok()),
         CageOperator::Subtract => {
-            Tuples::non_commutative(n, NonCommutativeOperator::Subtract, target)
+            Table::non_commutative(n, NonCommutativeOperator::Subtract, target)
+                .is_ok_and(|t| t.narrow(fills).is_ok())
         }
-        CageOperator::Divide => Tuples::non_commutative(n, NonCommutativeOperator::Divide, target),
+        CageOperator::Divide => Table::non_commutative(n, NonCommutativeOperator::Divide, target)
+            .is_ok_and(|t| t.narrow(fills).is_ok()),
     };
-    tuple_consistent_with_fills(tuples, fills)
+    has_consistent_tuple
         && puzzle
             .insert(polyomino, op, target)
             .ok()

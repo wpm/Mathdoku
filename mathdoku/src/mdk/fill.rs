@@ -73,6 +73,18 @@ impl Fill {
     pub fn values(self) -> Vec<N> {
         (1u8..=9).filter(|&v| self.0 & (1u16 << v) != 0).collect()
     }
+
+    /// Returns the smallest value in the set, or `None` if empty.
+    #[must_use]
+    pub fn min_value(self) -> Option<N> {
+        (1u8..=9).find(|&v| self.0 & (1u16 << v) != 0)
+    }
+
+    /// Returns the largest value in the set, or `None` if empty.
+    #[must_use]
+    pub fn max_value(self) -> Option<N> {
+        (1u8..=9).rev().find(|&v| self.0 & (1u16 << v) != 0)
+    }
 }
 
 impl BitOr for Fill {
