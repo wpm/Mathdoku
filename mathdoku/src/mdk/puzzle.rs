@@ -80,11 +80,12 @@ impl Puzzle {
     ) -> Result<Option<Self>, Error> {
         let n = self.grid.size();
 
-        // Check all cells are in the grid.
-        for &cell in polyomino.iter() {
-            if self.grid.get(cell).is_err() {
-                return Err(Error::MissingPolyomino(polyomino.clone()));
-            }
+        // Check all cells are within the grid bounds.
+        if polyomino
+            .iter()
+            .any(|&Cell(r, c)| r < 1 || r > n || c < 1 || c > n)
+        {
+            return Err(Error::MissingPolyomino(polyomino.clone()));
         }
 
         // Check disjoint with every existing cage.
