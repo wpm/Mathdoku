@@ -5,7 +5,9 @@ pub use crate::mdk::cage::CageOperator;
 use crate::mdk::csp::{Constraint, generalized_arc_consistency};
 use crate::mdk::fill::Fill;
 use crate::mdk::grid::{AllDifferent, Grid};
+use crate::mdk::operator::{CommutativeOperator, NonCommutativeOperator};
 use crate::mdk::polyomino::{Cell, Polyomino};
+use crate::mdk::tuples::Tuples;
 use crate::mdk::{Error, N, T};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -137,9 +139,33 @@ impl Puzzle {
     /// # Errors
     ///
     /// Returns [`MissingCell`] if any cell of `polyomino` is not in the puzzle.
-    #[allow(clippy::todo)]
-    pub fn possible_operations(&self, _polyomino: &Polyomino) -> Result<Vec<CageOperator>, Error> {
-        todo!()
+    pub fn possible_operations(&self, polyomino: &Polyomino) -> Result<Vec<CageOperator>, Error> {
+        let n = self.grid.size();
+        let fills: Vec<Fill> = polyomino
+            .iter()
+            .map(|&cell| self.grid.get(cell))
+            .collect::<Result<_, _>>()?;
+        let k = fills.len();
+
+        let candidates: &[CageOperator] = if k == 1 {
+            &[CageOperator::Given]
+        } else if k == 2 {
+            &[
+                CageOperator::Add,
+                CageOperator::Subtract,
+                CageOperator::Multiply,
+                CageOperator::Divide,
+            ]
+        } else {
+            &[CageOperator::Add, CageOperator::Multiply]
+        };
+
+        let result = candidates
+            .iter()
+            .copied()
+            .filter(|&op| operator_is_feasible(self, polyomino, n, k, op, &fills))
+            .collect();
+        Ok(result)
     }
 
     /// Returns the target values that are feasible for `polyomino` under `operation`
@@ -200,6 +226,78 @@ impl Puzzle {
     }
 }
 
+/// Returns the range of target values to check for `op` on a polyomino of size `k`
+/// in an `n`×`n` grid.
+const fn target_range(op: CageOperator, n: usize, k: usize) -> std::ops::RangeInclusive<T> {
+    #[allow(clippy::cast_possible_truncation)]
+    let n = n as T;
+    #[allow(clippy::cast_possible_truncation)]
+    let k = k as T;
+    match op {
+        CageOperator::Given => 1..=n,
+        CageOperator::Add => k..=(n * k),
+        CageOperator::Multiply => 1..=n.pow(k as u32),
+        CageOperator::Subtract => 1..=(n - 1),
+        CageOperator::Divide => 2..=n,
+    }
+}
+
+/// Returns true if any tuple from `tuples` has each value contained in the
+/// corresponding fill.
+fn tuple_consistent_with_fills(mut tuples: Tuples, fills: &[Fill]) -> bool {
+    tuples.any(|tuple| tuple.iter().enumerate().all(|(i, &v)| fills[i].contains(v)))
+}
+
+/// Returns true if `op` with some target is feasible for `polyomino` in `puzzle`:
+/// a fill-consistent tuple exists and inserting the cage yields a non-empty fixpoint.
+fn operator_is_feasible(
+    puzzle: &Puzzle,
+    polyomino: &Polyomino,
+    n: usize,
+    k: usize,
+    op: CageOperator,
+    fills: &[Fill],
+) -> bool {
+    target_range(op, n, k)
+        .any(|target| target_is_feasible(puzzle, polyomino, n, k, op, fills, target))
+}
+
+/// Returns true if `op` with `target` is feasible: a fill-consistent tuple exists
+/// and inserting the cage yields a non-empty fixpoint.
+fn target_is_feasible(
+    puzzle: &Puzzle,
+    polyomino: &Polyomino,
+    n: usize,
+    k: usize,
+    op: CageOperator,
+    fills: &[Fill],
+    target: T,
+) -> bool {
+    let tuples = match op {
+        CageOperator::Given => {
+            #[allow(clippy::cast_possible_truncation)]
+            return fills[0].contains(target as N)
+                && puzzle
+                    .insert(polyomino, op, target)
+                    .ok()
+                    .flatten()
+                    .is_some();
+        }
+        CageOperator::Add => Tuples::commutative(n, k, CommutativeOperator::Add, target),
+        CageOperator::Multiply => Tuples::commutative(n, k, CommutativeOperator::Multiply, target),
+        CageOperator::Subtract => {
+            Tuples::non_commutative(n, NonCommutativeOperator::Subtract, target)
+        }
+        CageOperator::Divide => Tuples::non_commutative(n, NonCommutativeOperator::Divide, target),
+    };
+    tuple_consistent_with_fills(tuples, fills)
+        && puzzle
+            .insert(polyomino, op, target)
+            .ok()
+            .flatten()
+            .is_some()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -209,6 +307,62 @@ mod tests {
 
     fn domino(r0: usize, c0: usize, r1: usize, c1: usize) -> Polyomino {
         Polyomino::from([Cell(r0, c0), Cell(r1, c1)]).unwrap()
+    }
+
+    #[test]
+    fn possible_operations_singleton_returns_only_given() {
+        let p = Puzzle::from_parts(Grid::new(4).unwrap(), vec![]);
+        let poly = Polyomino::from([Cell(1, 1)]).unwrap();
+        let ops = p.possible_operations(&poly).unwrap();
+        assert_eq!(ops.len(), 1);
+        assert!(matches!(ops[0], CageOperator::Given));
+    }
+
+    #[test]
+    fn possible_operations_domino_includes_all_four() {
+        let p = Puzzle::from_parts(Grid::new(4).unwrap(), vec![]);
+        let poly = domino(1, 1, 1, 2);
+        let ops = p.possible_operations(&poly).unwrap();
+        assert!(ops.iter().any(|o| matches!(o, CageOperator::Add)));
+        assert!(ops.iter().any(|o| matches!(o, CageOperator::Subtract)));
+        assert!(ops.iter().any(|o| matches!(o, CageOperator::Multiply)));
+        assert!(ops.iter().any(|o| matches!(o, CageOperator::Divide)));
+    }
+
+    #[test]
+    fn possible_operations_triomino_excludes_non_commutative() {
+        let p = Puzzle::from_parts(Grid::new(4).unwrap(), vec![]);
+        let poly = Polyomino::from([Cell(1, 1), Cell(1, 2), Cell(1, 3)]).unwrap();
+        let ops = p.possible_operations(&poly).unwrap();
+        assert!(ops.iter().any(|o| matches!(o, CageOperator::Add)));
+        assert!(ops.iter().any(|o| matches!(o, CageOperator::Multiply)));
+        assert!(!ops.iter().any(|o| matches!(o, CageOperator::Subtract)));
+        assert!(!ops.iter().any(|o| matches!(o, CageOperator::Divide)));
+    }
+
+    #[test]
+    fn possible_operations_returns_error_for_out_of_grid_cell() {
+        let p = Puzzle::from_parts(Grid::new(2).unwrap(), vec![]);
+        let poly = Polyomino::from([Cell(9, 9)]).unwrap();
+        assert!(matches!(
+            p.possible_operations(&poly),
+            Err(Error::MissingCell(_))
+        ));
+    }
+
+    #[test]
+    fn possible_operations_infeasible_given_excluded() {
+        // Pin cell (1,1) to {3} via a cage, then pin (1,2) to {3}.
+        // Now ask for operations on (1,2): Given=3 would conflict with AllDifferent on row 1.
+        let c1 = Cage::given(Cell(1, 1), 3).unwrap();
+        let p = Puzzle::from_parts(Grid::new(4).unwrap(), vec![c1])
+            .fixpoint()
+            .unwrap();
+        // Now cell (1,2) has 3 removed from its fill. Given=3 should not be feasible.
+        let poly = Polyomino::from([Cell(1, 2)]).unwrap();
+        let _ = p.possible_operations(&poly).unwrap();
+        // Given is only feasible for values still in the cell's fill; 3 is gone.
+        assert!(!p.get(Cell(1, 2)).unwrap().contains(3));
     }
 
     #[test]
