@@ -1,6 +1,7 @@
 //! [`Puzzle`]: the top-level constraint-solving interface.
 use crate::mdk::Error::MissingCell;
 use crate::mdk::cage::Cage;
+pub use crate::mdk::cage::CageOperator;
 use crate::mdk::csp::{Constraint, generalized_arc_consistency};
 use crate::mdk::fill::Fill;
 use crate::mdk::grid::{AllDifferent, Grid};
@@ -99,41 +100,7 @@ impl Puzzle {
             }
         }
 
-        // Build the cage.
-        let cage = match operation {
-            CageOperator::Add => Cage::commutative(
-                n,
-                polyomino.clone(),
-                crate::mdk::operator::CommutativeOperator::Add,
-                target,
-            )?,
-            CageOperator::Multiply => Cage::commutative(
-                n,
-                polyomino.clone(),
-                crate::mdk::operator::CommutativeOperator::Multiply,
-                target,
-            )?,
-            CageOperator::Subtract => Cage::non_commutative(
-                n,
-                polyomino.clone(),
-                crate::mdk::operator::NonCommutativeOperator::Subtract,
-                target,
-            )?,
-            CageOperator::Divide => Cage::non_commutative(
-                n,
-                polyomino.clone(),
-                crate::mdk::operator::NonCommutativeOperator::Divide,
-                target,
-            )?,
-            CageOperator::Given => {
-                let &cell = polyomino
-                    .iter()
-                    .next()
-                    .ok_or_else(|| Error::MissingPolyomino(polyomino.clone()))?;
-                #[allow(clippy::cast_possible_truncation)]
-                Cage::given(cell, target as N)?
-            }
-        };
+        let cage = Cage::new(n, polyomino.clone(), operation, target)?;
 
         // Insert into a cloned cage map.
         let mut cages = self.cages.clone();
@@ -231,15 +198,6 @@ impl Puzzle {
             cages: self.cages.clone(),
         })
     }
-}
-
-#[derive(Clone, Copy)]
-pub enum CageOperator {
-    Add,
-    Subtract,
-    Multiply,
-    Divide,
-    Given,
 }
 
 #[cfg(test)]

@@ -46,6 +46,16 @@ use crate::mdk::polyomino::{Cell, Polyomino};
 use crate::mdk::table::Table;
 use crate::mdk::{Error, Error::EmptyFills, N, T};
 
+/// The arithmetic operation and target for a cage.
+#[derive(Clone, Copy)]
+pub enum CageOperator {
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
+    Given,
+}
+
 /// The constraint for a cage and its supporting values.
 #[derive(Clone, PartialEq, Eq, Debug)]
 enum CageSupport {
@@ -117,6 +127,41 @@ impl Cage {
             polyomino: Polyomino::from(vec![cell])?,
             support: CageSupport::Given(n),
         })
+    }
+
+    /// Constructs a cage from a [`CageOperator`], polyomino, and target value.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EmptyFills`] if no tuples satisfy the constraint.
+    /// Returns [`Error::MissingPolyomino`] if `operation` is [`CageOperator::Given`]
+    /// and `polyomino` is empty.
+    pub fn new(
+        n: usize,
+        polyomino: Polyomino,
+        operation: CageOperator,
+        target: T,
+    ) -> Result<Self, Error> {
+        match operation {
+            CageOperator::Add => Self::commutative(n, polyomino, CommutativeOperator::Add, target),
+            CageOperator::Multiply => {
+                Self::commutative(n, polyomino, CommutativeOperator::Multiply, target)
+            }
+            CageOperator::Subtract => {
+                Self::non_commutative(n, polyomino, NonCommutativeOperator::Subtract, target)
+            }
+            CageOperator::Divide => {
+                Self::non_commutative(n, polyomino, NonCommutativeOperator::Divide, target)
+            }
+            CageOperator::Given => {
+                let &cell = polyomino
+                    .iter()
+                    .next()
+                    .ok_or_else(|| Error::MissingPolyomino(polyomino.clone()))?;
+                #[allow(clippy::cast_possible_truncation)]
+                Self::given(cell, target as N)
+            }
+        }
     }
 
     /// Returns the candidate [`Fill`] for `cell`.
