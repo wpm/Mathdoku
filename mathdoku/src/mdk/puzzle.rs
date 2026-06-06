@@ -308,6 +308,104 @@ mod tests {
     }
 
     #[test]
+    fn insert_multiply_cage_prunes_cells() {
+        // Multiply 6 in a 4×4: valid pairs are (1,6)—out of range—(2,3),(3,2). So both {2,3}.
+        let p = Puzzle::from_parts(Grid::new(4).unwrap(), vec![]);
+        let poly = domino(1, 1, 1, 2);
+        let fp = p.insert(&poly, CageOperator::Multiply, 6).unwrap().unwrap();
+        assert_eq!(fp.get(Cell(1, 1)).unwrap(), Fill::from(&[2, 3]));
+        assert_eq!(fp.get(Cell(1, 2)).unwrap(), Fill::from(&[2, 3]));
+    }
+
+    #[test]
+    fn insert_subtract_cage_prunes_cells() {
+        // Subtract 3 in a 4×4: only valid pair is (4,1)/(1,4). Both cells narrow to {1,4}.
+        let p = Puzzle::from_parts(Grid::new(4).unwrap(), vec![]);
+        let poly = domino(1, 1, 1, 2);
+        let fp = p.insert(&poly, CageOperator::Subtract, 3).unwrap().unwrap();
+        assert_eq!(fp.get(Cell(1, 1)).unwrap(), Fill::from(&[1, 4]));
+        assert_eq!(fp.get(Cell(1, 2)).unwrap(), Fill::from(&[1, 4]));
+    }
+
+    #[test]
+    fn insert_divide_cage_prunes_cells() {
+        // Divide 4 in a 4×4: only valid pair is (4,1)/(1,4). Both cells narrow to {1,4}.
+        let p = Puzzle::from_parts(Grid::new(4).unwrap(), vec![]);
+        let poly = domino(1, 1, 1, 2);
+        let fp = p.insert(&poly, CageOperator::Divide, 4).unwrap().unwrap();
+        assert_eq!(fp.get(Cell(1, 1)).unwrap(), Fill::from(&[1, 4]));
+        assert_eq!(fp.get(Cell(1, 2)).unwrap(), Fill::from(&[1, 4]));
+    }
+
+    #[test]
+    fn insert_does_not_affect_unrelated_cells() {
+        // Adding a cage to (1,1) should leave (2,2) at its full candidate set.
+        let p = Puzzle::from_parts(Grid::new(4).unwrap(), vec![]);
+        let poly = Polyomino::from([Cell(1, 1)]).unwrap();
+        let fp = p.insert(&poly, CageOperator::Given, 3).unwrap().unwrap();
+        assert_eq!(fp.get(Cell(2, 2)).unwrap(), Fill::all(4));
+    }
+
+    #[test]
+    fn insert_cell_at_boundary_succeeds() {
+        // (n, n) is a valid cell; inserting a cage there should work.
+        let p = Puzzle::from_parts(Grid::new(4).unwrap(), vec![]);
+        let poly = Polyomino::from([Cell(4, 4)]).unwrap();
+        assert!(p.insert(&poly, CageOperator::Given, 4).unwrap().is_some());
+    }
+
+    #[test]
+    fn insert_cell_row_zero_returns_missing_polyomino() {
+        let p = Puzzle::from_parts(Grid::new(4).unwrap(), vec![]);
+        let poly = Polyomino::from([Cell(0, 1)]).unwrap();
+        assert!(matches!(
+            p.insert(&poly, CageOperator::Given, 1),
+            Err(Error::MissingPolyomino(_))
+        ));
+    }
+
+    #[test]
+    fn insert_cell_col_zero_returns_missing_polyomino() {
+        let p = Puzzle::from_parts(Grid::new(4).unwrap(), vec![]);
+        let poly = Polyomino::from([Cell(1, 0)]).unwrap();
+        assert!(matches!(
+            p.insert(&poly, CageOperator::Given, 1),
+            Err(Error::MissingPolyomino(_))
+        ));
+    }
+
+    #[test]
+    fn get_returns_full_fill_for_unconstrained_cell() {
+        let p = Puzzle::from_parts(Grid::new(3).unwrap(), vec![]);
+        assert_eq!(p.get(Cell(2, 2)).unwrap(), Fill::all(3));
+    }
+
+    #[test]
+    fn get_missing_cell_returns_error() {
+        let p = Puzzle::from_parts(Grid::new(3).unwrap(), vec![]);
+        assert!(matches!(p.get(Cell(9, 9)), Err(Error::MissingCell(_))));
+    }
+
+    #[test]
+    fn set_pins_cell_to_value() {
+        let p = Puzzle::from_parts(Grid::new(4).unwrap(), vec![]);
+        let p2 = p.set(Cell(1, 1), 3).unwrap();
+        assert_eq!(p2.get(Cell(1, 1)).unwrap(), Fill::from(&[3]));
+    }
+
+    #[test]
+    fn set_invalid_value_returns_error() {
+        // Pin (1,1) to {2} first, then try to set it to 3.
+        let cage = Cage::given(Cell(1, 1), 2).unwrap();
+        let p = Puzzle::from_parts(Grid::new(4).unwrap(), vec![cage]);
+        let p = p.fixpoint().unwrap();
+        assert!(matches!(
+            p.set(Cell(1, 1), 3),
+            Err(Error::InvalidCellValue(_, 3))
+        ));
+    }
+
+    #[test]
     fn fixpoint_no_cages_full_grid_unchanged() {
         // With no cages and a full grid, AllDifferent has nothing to prune.
         let p = Puzzle::from_parts(Grid::new(2).unwrap(), vec![]);
