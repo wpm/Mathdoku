@@ -53,6 +53,18 @@ pub use latin_square::generate_latin_square;
 pub use polyomino::{Cell, Polyomino};
 pub use puzzle::{CageOperator, Puzzle, operators_for};
 
+/// Initialises debug logging if the `MATHDOKU_DEBUG` environment variable is set to `1`.
+///
+/// Uses [`env_logger`] at `debug` level for all `mathdoku` targets. Safe to call
+/// multiple times — subsequent calls after the first are no-ops.
+pub fn init_debug_logging() {
+    if std::env::var("MATHDOKU_DEBUG").as_deref() == Ok("1") {
+        let _ = env_logger::builder()
+            .filter_module("mathdoku", log::LevelFilter::Debug)
+            .try_init();
+    }
+}
+
 /// A cell value in the range `1..=9`.
 pub type N = u8;
 

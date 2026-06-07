@@ -10,8 +10,8 @@
 //! result so the dropdown does not recompute on every open.
 
 use std::cell::RefCell;
-use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
+use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
 use mathdoku::{Cage, Error, Operator, Polyomino, Puzzle, Target};
@@ -126,7 +126,9 @@ pub fn group_by_operator(pairs: &[(Operator, Target)]) -> Vec<(Operator, Vec<Tar
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::panic)]
 mod tests {
-    use super::{cached_feasible_op_targets, feasible_op_targets, group_by_operator, is_globally_feasible};
+    use super::{
+        cached_feasible_op_targets, feasible_op_targets, group_by_operator, is_globally_feasible,
+    };
     use mathdoku::{Cage, Cell, Operator, Polyomino, Puzzle};
 
     fn poly(positions: &[(usize, usize)]) -> Polyomino {
@@ -134,8 +136,8 @@ mod tests {
         Polyomino::from_cells(&cells).unwrap()
     }
 
-    fn cage(n: usize, positions: &[(usize, usize)], op: Operator, target: u64) -> Cage {
-        Cage::new(n, poly(positions), op, target as mathdoku::T).unwrap()
+    fn cage(n: usize, positions: &[(usize, usize)], op: Operator, target: mathdoku::T) -> Cage {
+        Cage::new(n, poly(positions), op, target).unwrap()
     }
 
     #[test]
@@ -245,5 +247,4 @@ mod tests {
         let pairs = feasible_op_targets(&puzzle, &square).unwrap();
         assert!(!pairs.is_empty());
     }
-
 }

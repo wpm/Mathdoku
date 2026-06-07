@@ -424,11 +424,18 @@ mod tests {
     use super::*;
     use crate::Error::EmptyFills;
     use crate::operator::CommutativeOperator::{Add, Multiply};
+    use std::sync::OnceLock;
+
+    static LOGGING: OnceLock<()> = OnceLock::new();
+    fn setup() {
+        let () = *LOGGING.get_or_init(crate::init_debug_logging);
+    }
 
     // ---- get ----
 
     #[test]
     fn add_fills_are_union_of_column_values() {
+        setup();
         let m = Mdd::new(4, 2, Add, 6).unwrap();
         assert_eq!(m.get(0).unwrap(), Fill::from(&[2, 3, 4]));
         assert_eq!(m.get(1).unwrap(), Fill::from(&[2, 3, 4]));
@@ -436,6 +443,7 @@ mod tests {
 
     #[test]
     fn multiply_fills_contain_expected_values() {
+        setup();
         let m = Mdd::new(6, 2, Multiply, 6).unwrap();
         assert_eq!(m.get(0).unwrap(), Fill::from(&[1, 2, 3, 6]));
         assert_eq!(m.get(1).unwrap(), Fill::from(&[1, 2, 3, 6]));
@@ -443,11 +451,13 @@ mod tests {
 
     #[test]
     fn commutative_no_solutions_returns_empty_fills_error() {
+        setup();
         assert!(matches!(Mdd::new(4, 2, Add, 9), Err(EmptyFills)));
     }
 
     #[test]
     fn fill_out_of_bounds_returns_index_error() {
+        setup();
         let m = Mdd::new(4, 2, Add, 5).unwrap();
         assert!(matches!(m.get(2), Err(InvalidCellCageIndex(2))));
     }
@@ -456,12 +466,14 @@ mod tests {
 
     #[test]
     fn narrow_with_full_support_is_identity() {
+        setup();
         let m = Mdd::new(4, 2, Add, 5).unwrap();
         assert_eq!(m.narrow(&[Fill::all(4), Fill::all(4)]).unwrap(), m);
     }
 
     #[test]
     fn narrow_filters_tuples_and_updates_fills() {
+        setup();
         // add to 5 in n=4: (1,4),(2,3),(3,2),(4,1)
         // restrict pos 0 to {1,2} → surviving: (1,4),(2,3)
         let m = Mdd::new(4, 2, Add, 5).unwrap();
@@ -474,6 +486,7 @@ mod tests {
 
     #[test]
     fn narrow_eliminating_all_tuples_returns_empty_fills_error() {
+        setup();
         let m = Mdd::new(4, 2, Add, 5).unwrap();
         assert!(matches!(
             m.narrow(&[Fill::from(&[1]), Fill::from(&[1])]),
@@ -487,6 +500,7 @@ mod tests {
 
     #[test]
     fn sum_pair_display() {
+        setup();
         assert_eq!(
             Mdd::new(3, 2, Add, 4).unwrap().to_string(),
             "MDD(+4 [2] 4 nodes)"
@@ -495,6 +509,7 @@ mod tests {
 
     #[test]
     fn sum_triple_display() {
+        setup();
         assert_eq!(
             Mdd::new(3, 3, Add, 5).unwrap().to_string(),
             "MDD(+5 [3] 7 nodes)"
@@ -503,6 +518,7 @@ mod tests {
 
     #[test]
     fn sum_triple_larger_n_display() {
+        setup();
         assert_eq!(
             Mdd::new(4, 3, Add, 6).unwrap().to_string(),
             "MDD(+6 [3] 9 nodes)"
@@ -511,6 +527,7 @@ mod tests {
 
     #[test]
     fn product_pair_display() {
+        setup();
         assert_eq!(
             Mdd::new(4, 2, Multiply, 6).unwrap().to_string(),
             "MDD(×6 [2] 4 nodes)"
@@ -519,6 +536,7 @@ mod tests {
 
     #[test]
     fn product_triple_display() {
+        setup();
         assert_eq!(
             Mdd::new(4, 3, Multiply, 4).unwrap().to_string(),
             "MDD(×4 [3] 7 nodes)"
@@ -529,6 +547,7 @@ mod tests {
 
     #[test]
     fn sum_pair_fills() {
+        setup();
         let m = Mdd::new(3, 2, Add, 4).unwrap();
         assert_eq!(m.get(0).unwrap(), Fill::from(&[1, 2, 3]));
         assert_eq!(m.get(1).unwrap(), Fill::from(&[1, 2, 3]));
@@ -536,6 +555,7 @@ mod tests {
 
     #[test]
     fn sum_triple_fills() {
+        setup();
         let m = Mdd::new(3, 3, Add, 5).unwrap();
         assert_eq!(m.get(0).unwrap(), Fill::from(&[1, 2, 3]));
         assert_eq!(m.get(1).unwrap(), Fill::from(&[1, 2, 3]));
@@ -544,6 +564,7 @@ mod tests {
 
     #[test]
     fn product_pair_fills() {
+        setup();
         let m = Mdd::new(4, 2, Multiply, 6).unwrap();
         assert_eq!(m.get(0).unwrap(), Fill::from(&[2, 3]));
         assert_eq!(m.get(1).unwrap(), Fill::from(&[2, 3]));
@@ -551,6 +572,7 @@ mod tests {
 
     #[test]
     fn product_triple_fills() {
+        setup();
         let m = Mdd::new(4, 3, Multiply, 4).unwrap();
         assert_eq!(m.get(0).unwrap(), Fill::from(&[1, 2, 4]));
         assert_eq!(m.get(1).unwrap(), Fill::from(&[1, 2, 4]));
@@ -561,12 +583,14 @@ mod tests {
 
     #[test]
     fn sum_target_out_of_range_is_empty_fills() {
+        setup();
         assert!(matches!(Mdd::new(3, 3, Add, 1), Err(EmptyFills)));
         assert!(matches!(Mdd::new(3, 3, Add, 10), Err(EmptyFills)));
     }
 
     #[test]
     fn product_target_out_of_range_is_empty_fills() {
+        setup();
         assert!(matches!(Mdd::new(3, 3, Multiply, 28), Err(EmptyFills)));
     }
 
@@ -574,6 +598,7 @@ mod tests {
 
     #[test]
     fn remove_support_empty_is_identity() {
+        setup();
         let m = Mdd::new(3, 3, Add, 5).unwrap();
         assert_eq!(
             sorted_tuples(&m.remove_support(&HashMap::<T, HashSet<N>>::new())),
@@ -583,6 +608,7 @@ mod tests {
 
     #[test]
     fn remove_support_sum_triple_delete_var0() {
+        setup();
         let m = Mdd::new(3, 3, Add, 5)
             .unwrap()
             .remove_support(&forbidden(&[(0, &[1])]));
@@ -594,6 +620,7 @@ mod tests {
 
     #[test]
     fn remove_support_sum_pair_delete_var0() {
+        setup();
         let m = Mdd::new(3, 2, Add, 4)
             .unwrap()
             .remove_support(&forbidden(&[(0, &[2])]));
@@ -602,6 +629,7 @@ mod tests {
 
     #[test]
     fn remove_support_product_pair_delete_var0() {
+        setup();
         let m = Mdd::new(4, 2, Multiply, 6)
             .unwrap()
             .remove_support(&forbidden(&[(0, &[3])]));
@@ -610,6 +638,7 @@ mod tests {
 
     #[test]
     fn remove_support_sum_triple_reset_var1() {
+        setup();
         let m = Mdd::new(3, 3, Add, 5)
             .unwrap()
             .remove_support(&forbidden(&[(1, &[1, 2])]));
@@ -618,6 +647,7 @@ mod tests {
 
     #[test]
     fn remove_support_sum_triple_two_layers() {
+        setup();
         let m = Mdd::new(3, 3, Add, 5)
             .unwrap()
             .remove_support(&forbidden(&[(0, &[1]), (2, &[1])]));
@@ -626,6 +656,7 @@ mod tests {
 
     #[test]
     fn remove_support_all_removed() {
+        setup();
         let m = Mdd::new(3, 3, Add, 5)
             .unwrap()
             .remove_support(&forbidden(&[(1, &[1, 2, 3])]));
@@ -636,6 +667,7 @@ mod tests {
 
     #[test]
     fn constructed_mdd_is_reduced() {
+        setup();
         let cases = [
             (4usize, Add, 5u32, 2usize),
             (6, Add, 10, 3),
@@ -650,6 +682,7 @@ mod tests {
 
     #[test]
     fn mdd_is_reduced_after_remove_support() {
+        setup();
         let m = Mdd::new(4, 3, Add, 6).unwrap();
         let pruned = m.remove_support(&forbidden(&[(0, &[1])]));
         assert_reduced(&pruned);
@@ -660,6 +693,7 @@ mod tests {
     #[test]
     #[ignore = "exhaustive property test; run with --include-ignored on merge to main"]
     fn matches_brute_force_across_n_arity_and_target() {
+        setup();
         for n in 3usize..=9 {
             for k in 2usize..=5 {
                 #[allow(clippy::cast_possible_truncation)]

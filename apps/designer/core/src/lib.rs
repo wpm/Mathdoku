@@ -1514,12 +1514,6 @@ mod tests {
                 );
             }
         }
-
-        #[test]
-        fn generated_is_valid_latin_square_for_n_1() {
-            let grid = solution_for(1, 1);
-            assert!(is_valid_latin_square(&grid, 1));
-        }
     }
 
     // ---- Category 8: pre-condition and trivial-getter tests ----

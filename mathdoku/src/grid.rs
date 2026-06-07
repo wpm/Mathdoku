@@ -130,7 +130,6 @@ impl Constraint<Grid, Cell, Fill, Error> for AllDifferent {
     }
 }
 
-
 // Serde wire format: flat struct with an n×n `fills` array of cell fill sets.
 // `fills` is optional on deserialization; absent means full fill sets for all cells.
 #[derive(Serialize, Deserialize)]
@@ -215,7 +214,10 @@ mod tests {
 
     #[test]
     fn all_different_column_display() {
-        assert_eq!(AllDifferent::column(4, 2).to_string(), "Column 2 all different");
+        assert_eq!(
+            AllDifferent::column(4, 2).to_string(),
+            "Column 2 all different"
+        );
     }
 
     #[test]

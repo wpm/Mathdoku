@@ -286,7 +286,7 @@ impl Display for Cage {
             self.operation(),
             self.cells()
                 .iter()
-                .map(|c| c.to_string())
+                .map(ToString::to_string)
                 .collect::<Vec<_>>()
                 .join(", ")
         )

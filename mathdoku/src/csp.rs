@@ -43,7 +43,7 @@ pub trait State<V, D, E> {
 /// A constraint is satisfied when the values assigned to its scope variables are jointly
 /// consistent. Propagation enforces generalized arc consistency (GAC): it removes from each
 /// variable's domain any value not supported by some consistent tuple over the scope.
-pub trait Constraint<S, V, D, E>: Sized + Clone
+pub trait Constraint<S, V, D, E>: Sized + Clone + std::fmt::Display
 where
     S: State<V, D, E>,
 {
@@ -62,7 +62,7 @@ where
 ///
 /// The GAC algorithm uses [`Domain::is_empty`] to detect infeasibility: as soon
 /// as any variable's domain empties, no solution exists and propagation stops.
-pub trait Domain {
+pub trait Domain: std::fmt::Display {
     fn is_empty(&self) -> bool;
 }
 
@@ -79,18 +79,36 @@ pub trait Domain {
 pub fn generalized_arc_consistency<S, V, C, D, E>(mut state: S, constraints: &[C]) -> Option<S>
 where
     S: State<V, D, E>,
-    V: Clone,
+    V: Clone + std::fmt::Display,
     D: Domain,
     C: Constraint<S, V, D, E>,
 {
     let mut q: VecDeque<C> = constraints.iter().cloned().collect();
+    #[cfg(debug_assertions)]
+    let mut pass = 0usize;
     while let Some(constraint) = q.pop_front() {
+        #[cfg(debug_assertions)]
+        {
+            if q.is_empty() || pass == 0 {
+                pass += 1;
+                log::debug!("━━━ Pass {pass} (queue len {}) ━━━", q.len() + 1);
+            }
+        }
+        log::debug!("  propagate: {constraint}");
         let (new_state, narrowed) = constraint.propagate(&state).ok()?;
         state = new_state;
+        if !narrowed.is_empty() {
+            for v in &narrowed {
+                if let Ok(domain) = state.get(v.clone()) {
+                    log::debug!("    narrowed: {v} → {domain}");
+                }
+            }
+        }
         if narrowed
             .iter()
             .any(|v| state.get(v.clone()).ok().is_some_and(|d| d.is_empty()))
         {
+            log::debug!("  infeasible: domain emptied");
             return None;
         }
         q.extend(
@@ -188,16 +206,62 @@ mod tests {
     }
 
     fn sorted(result: &IntegerSets, var: &str) -> Vec<u8> {
-        let mut v: Vec<u8> = result.get(var.to_string()).unwrap().into_iter().collect();
+        let mut v: Vec<u8> = result
+            .get(var.to_string())
+            .unwrap()
+            .0
+            .iter()
+            .copied()
+            .collect();
         v.sort_unstable();
         v
     }
 
-    type TestDomain = HashSet<u8>;
+    #[derive(Clone, PartialEq)]
+    struct TestDomain(HashSet<u8>);
 
-    impl<S: std::hash::BuildHasher> super::Domain for HashSet<u8, S> {
+    impl TestDomain {
+        fn intersection<'a>(&'a self, other: &'a Self) -> impl Iterator<Item = &'a u8> {
+            self.0.intersection(&other.0)
+        }
+        fn insert(&mut self, v: u8) -> bool {
+            self.0.insert(v)
+        }
+    }
+
+    impl FromIterator<u8> for TestDomain {
+        fn from_iter<I: IntoIterator<Item = u8>>(iter: I) -> Self {
+            Self(iter.into_iter().collect())
+        }
+    }
+
+    impl super::Domain for TestDomain {
         fn is_empty(&self) -> bool {
-            self.is_empty()
+            self.0.is_empty()
+        }
+    }
+
+    impl std::fmt::Display for TestDomain {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            let mut vals: Vec<u8> = self.0.iter().copied().collect();
+            vals.sort_unstable();
+            write!(
+                f,
+                "{{{}}}",
+                vals.iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        }
+    }
+
+    impl std::fmt::Display for Constraints {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match self {
+                Equal(a, b) => write!(f, "{a} = {b}"),
+                Sum(vars, t) => write!(f, "{} = {t}", vars.join(" + ")),
+            }
         }
     }
 
@@ -289,7 +353,7 @@ mod tests {
                             }
                             return;
                         }
-                        for &v in &domains[idx] {
+                        for &v in &domains[idx].0 {
                             let next = partial.saturating_add(v);
                             if next <= target {
                                 assignment.push(v);
@@ -302,7 +366,9 @@ mod tests {
                         .iter()
                         .map(|v| state.get(v.clone()))
                         .collect::<Result<_, _>>()?;
-                    let mut supported: Vec<TestDomain> = vec![HashSet::new(); vars.len()];
+                    let mut supported: Vec<TestDomain> = (0..vars.len())
+                        .map(|_| TestDomain(HashSet::new()))
+                        .collect();
                     enumerate(&domains, &mut supported, 0, 0, *target, &mut vec![]);
                     let mut changed = vec![];
                     let mut new_map = state.0.clone();

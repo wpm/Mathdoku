@@ -212,6 +212,7 @@ fn try_restore<R: Runtime>(app: &AppHandle<R>) -> Option<Puzzle> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 #[allow(clippy::expect_used)]
 pub fn run() {
+    mathdoku::init_debug_logging();
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(Mutex::new(AppState::default()))
