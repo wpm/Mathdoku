@@ -125,17 +125,15 @@ impl State {
 
     /// Returns the working grid for the puzzle being designed.
     ///
-    /// In With-Solution mode the cages are applied on top of the fixed Latin
-    /// square so solution singleton values are preserved. In Without-Solution
-    /// mode the cages are propagated from a fresh unconstrained grid.
+    /// Always returns the puzzle's own propagated grid — the fills that remain
+    /// possible given the cage constraints and all-different. In With-Solution
+    /// mode the fixed Latin square is used separately (to highlight the correct
+    /// value in green) but does not change the candidate fills shown per cell.
     ///
     /// # Errors
     /// Returns an error if constraint propagation fails.
     pub fn current(&self) -> Result<Grid, mathdoku::Error> {
-        self.solution.as_ref().map_or_else(
-            || Ok(self.puzzle.grid()),
-            |solution| solution.constrain(&self.puzzle),
-        )
+        Ok(self.puzzle.grid())
     }
 
     /// Switches from Without-Solution to With-Solution by snapshotting the
@@ -1031,12 +1029,8 @@ mod tests {
             let st = new_latin_square(&mut state, 4, &mut rng).unwrap();
             assert!(state.puzzle.is_some());
             assert!(state.solution.is_some());
-            // New puzzle with no user cages — current() is the solution itself.
-            let solution = state.solution.as_ref().unwrap();
-            assert_eq!(
-                st.current().unwrap(),
-                solution.constrain(&state.puzzle.unwrap()).unwrap()
-            );
+            // New puzzle with no user cages — current() is the unconstrained puzzle grid.
+            assert_eq!(st.current().unwrap(), state.puzzle.unwrap().grid());
             assert!(state.path.is_none());
             assert!(state.dirty);
         }
@@ -1060,11 +1054,34 @@ mod tests {
                 insert_cage(&mut state, region.clone(), mathdoku::Operator::Given, None).unwrap();
             let puzzle = state.puzzle.as_ref().unwrap();
             assert!(puzzle.cages().any(|c| c.polyomino() == &region));
-            let solution = st.solution.as_ref().unwrap();
-            let expected = solution.constrain(puzzle).unwrap();
+            // current() is always the puzzle's own propagated grid.
+            let expected = puzzle.grid();
             assert_eq!(st.current().unwrap(), expected);
             assert!(state.dirty);
             assert!(st.solution.is_some());
+        }
+
+        // Regression: with-solution current() must show multi-value fills for
+        // caged cells, not singletons derived from the solution. An Add(3) cage
+        // on two cells of a 3×3 constrains them to {1,2}, not the solution values.
+        #[test]
+        fn current_with_solution_shows_puzzle_fills_not_solution_singletons() {
+            let mut state = with_solution_3x3();
+            // Add(3) on (0,0)+(0,1) constrains both to {1,2}.
+            let region = poly(&[(0, 0), (0, 1)]);
+            let st = insert_cage(&mut state, region, mathdoku::Operator::Add, Some(3)).unwrap();
+            let grid = st.current().unwrap();
+            // Both caged cells must show {1,2} — multi-value, not the solution singleton.
+            let fill_00 = grid.get_values(Cell::new(0, 0)).unwrap();
+            let fill_01 = grid.get_values(Cell::new(0, 1)).unwrap();
+            assert!(
+                !fill_00.is_singleton(),
+                "cell (0,0) should have multiple candidates, got {fill_00:?}"
+            );
+            assert!(
+                !fill_01.is_singleton(),
+                "cell (0,1) should have multiple candidates, got {fill_01:?}"
+            );
         }
 
         #[test]
@@ -1874,18 +1891,13 @@ mod tests {
             }
         }
 
-        // The core state invariant: `current()` always equals the puzzle's cage
-        // constraints applied on top of the solution (With-Solution) or on a
-        // fresh grid (Without-Solution).
+        // The core state invariant: `current()` always equals the puzzle's own
+        // propagated grid, regardless of whether a solution is present.
         fn assert_consistent(state: &AppState) {
             let designer = state.to_designer_state().unwrap();
             let current = designer.current().unwrap();
             let puzzle = state.puzzle.as_ref().unwrap();
-            let expected = state.solution.as_ref().map_or_else(
-                || puzzle.grid(),
-                |solution| solution.constrain(puzzle).unwrap(),
-            );
-            assert_eq!(current, expected);
+            assert_eq!(current, puzzle.grid());
         }
 
         // `fix`/`unfix` are deliberately excluded from the consistency generator:
