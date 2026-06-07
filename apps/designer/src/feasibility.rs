@@ -9,23 +9,12 @@
 //! pairs for a candidate cage; [`cached_feasible_op_targets`] memoizes that
 //! result so the dropdown does not recompute on every open.
 
-#![allow(
-    clippy::cast_possible_truncation,
-    clippy::cast_sign_loss,
-    clippy::cast_precision_loss
-)]
-
 use std::cell::RefCell;
 use std::collections::hash_map::DefaultHasher;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 
-use mathdoku::{Cage, Error, Operator, Polyomino, Puzzle, Target, operators_for};
-
-/// Products above this ceiling are never offered as `Multiply` targets. No
-/// realistic cage in an `n ≤ 9` grid has a larger product, and the bound keeps
-/// the candidate enumeration finite for pathologically large cages.
-const MAX_PRODUCT: Target = 1_000_000_000;
+use mathdoku::{Cage, Error, Operator, Polyomino, Puzzle, Target};
 
 /// Returns `true` if the puzzle extended with `candidate` has at least one
 /// global completion.
@@ -45,10 +34,9 @@ pub fn is_globally_feasible(puzzle: &Puzzle, candidate: &Cage) -> bool {
 /// Enumerates all globally-feasible `(operator, target)` pairs for `polyomino`
 /// against the current `puzzle`.
 ///
-/// For each operator valid for the cage's size, every candidate target is tested
-/// with [`is_globally_feasible`]. The candidate targets are a tight superset
-/// derived by reachability, so the only pairs returned are the ones that
-/// actually admit a completion.
+/// For each locally-feasible operator and target (from [`Puzzle::possible_operations`]
+/// and [`Puzzle::possible_targets`]), tests global feasibility with
+/// [`is_globally_feasible`]. Only pairs that admit a completion are returned.
 ///
 /// # Errors
 /// Returns [`Error`] if constructing a candidate cage fails.
@@ -57,10 +45,9 @@ pub fn feasible_op_targets(
     polyomino: &Polyomino,
 ) -> Result<Vec<(Operator, Target)>, Error> {
     let n = puzzle.n();
-    let k = polyomino.len();
     let mut out = Vec::new();
-    for op in operators_for(polyomino) {
-        for target in candidate_targets(op, k, n) {
+    for op in puzzle.possible_operations(polyomino)? {
+        for target in puzzle.possible_targets(polyomino, op)? {
             let cage = Cage::new(n, polyomino.clone(), op, target)?;
             if is_globally_feasible(puzzle, &cage) {
                 out.push((op, target));
@@ -68,58 +55,6 @@ pub fn feasible_op_targets(
         }
     }
     Ok(out)
-}
-
-/// Candidate targets to test for `op` on a `k`-cell cage in an `n×n` grid.
-///
-/// This is a *superset* of the achievable targets; global feasibility is the
-/// final filter. Sums and products are enumerated by reachability so the ranges
-/// stay tight without iterating all integers up to `n^k`.
-fn candidate_targets(op: Operator, k: usize, n: usize) -> Vec<Target> {
-    let n = n as Target;
-    match op {
-        Operator::Given => (1..=n).collect(),
-        // A 2-cell collinear pair can never differ by 0 or by `n` or more.
-        Operator::Subtract => (1..n).collect(),
-        // A ratio of 1 is impossible for distinct collinear cells; the largest
-        // possible ratio is `n` (e.g. `n` over `1`).
-        Operator::Divide => (2..=n).collect(),
-        Operator::Add => reachable(k, n, 0, |acc, v| acc + v)
-            .into_iter()
-            .filter(|&t| t > 0)
-            .collect(),
-        Operator::Multiply => reachable(k, n, 1, Target::saturating_mul)
-            .into_iter()
-            .collect(),
-    }
-}
-
-/// Reachable accumulator values after combining `k` cells, each contributing a
-/// value in `1..=n` via `step`, starting from `seed`. Values exceeding
-/// [`MAX_PRODUCT`] are pruned to keep the set finite.
-fn reachable(
-    k: usize,
-    n: Target,
-    seed: Target,
-    step: impl Fn(Target, Target) -> Target,
-) -> BTreeSet<Target> {
-    let mut acc: BTreeSet<Target> = BTreeSet::from([seed]);
-    for _ in 0..k {
-        let mut next = BTreeSet::new();
-        for &a in &acc {
-            for v in 1..=n {
-                let r = step(a, v);
-                if r <= MAX_PRODUCT {
-                    let _ = next.insert(r);
-                }
-            }
-        }
-        acc = next;
-        if acc.is_empty() {
-            break;
-        }
-    }
-    acc
 }
 
 // ---- dropdown-query cache (Piece 5) ----
@@ -172,7 +107,7 @@ pub fn cached_feasible_op_targets(
 
 /// Groups feasible `(operator, target)` pairs by operator.
 ///
-/// The operator order of [`operators_for`] is preserved. Used by the
+/// The operator order from [`Puzzle::possible_operations`] is preserved. Used by the
 /// Without-Solution two-step picker: the operator strip shows the keys, and
 /// clicking one reveals its targets.
 #[must_use]
@@ -191,10 +126,7 @@ pub fn group_by_operator(pairs: &[(Operator, Target)]) -> Vec<(Operator, Vec<Tar
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::panic)]
 mod tests {
-    use super::{
-        cached_feasible_op_targets, candidate_targets, feasible_op_targets, group_by_operator,
-        is_globally_feasible,
-    };
+    use super::{cached_feasible_op_targets, feasible_op_targets, group_by_operator, is_globally_feasible};
     use mathdoku::{Cage, Cell, Operator, Polyomino, Puzzle};
 
     fn poly(positions: &[(usize, usize)]) -> Polyomino {
@@ -277,29 +209,6 @@ mod tests {
     }
 
     #[test]
-    fn candidate_targets_divide_never_includes_one() {
-        for n in 2..=9 {
-            let targets = candidate_targets(Operator::Divide, 2, n);
-            assert!(
-                !targets.contains(&1),
-                "Divide target 1 is impossible (would require equal values): n={n}"
-            );
-            assert!(
-                targets.iter().all(|&t| t >= 2),
-                "all Divide targets must be ≥ 2: n={n}"
-            );
-        }
-    }
-
-    #[test]
-    fn candidate_targets_add_pair_is_bounded_by_two_n() {
-        let targets = candidate_targets(Operator::Add, 2, 4);
-        // Two cells in 1..=4 sum to between 2 and 8.
-        assert_eq!(*targets.first().unwrap(), 2);
-        assert_eq!(*targets.last().unwrap(), 8);
-    }
-
-    #[test]
     fn cache_returns_same_result_as_direct_call() {
         let puzzle = Puzzle::new(4).unwrap();
         let p = poly(&[(2, 2), (2, 3)]);
@@ -337,17 +246,4 @@ mod tests {
         assert!(!pairs.is_empty());
     }
 
-    #[test]
-    fn candidate_count_2x2_in_7x7() {
-        use super::candidate_targets;
-        use mathdoku::operators_for;
-        let puzzle = Puzzle::new(7).unwrap();
-        let square = poly(&[(0, 0), (0, 1), (1, 0), (1, 1)]);
-        let total: usize = operators_for(&square)
-            .iter()
-            .map(|&op| candidate_targets(op, 4, puzzle.n()).len())
-            .sum();
-        let _ = total; // assert below is the actual check
-        assert!(total > 0);
-    }
 }

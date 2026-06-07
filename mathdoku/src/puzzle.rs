@@ -299,13 +299,26 @@ impl Puzzle {
     /// # Errors
     ///
     /// Returns [`MissingCell`] if any cell of `polyomino` is not in the puzzle.
-    #[allow(clippy::todo)]
     pub fn possible_targets(
         &self,
-        _polyomino: &Polyomino,
-        _operation: CageOperator,
+        polyomino: &Polyomino,
+        operation: CageOperator,
     ) -> Result<Vec<T>, Error> {
-        todo!()
+        self.check_in_bounds(polyomino)?;
+        let n = self.grid.size();
+        let fills: Vec<Fill> = polyomino
+            .iter()
+            .map(|&cell| self.grid.get(cell))
+            .collect::<Result<_, _>>()?;
+        let k = fills.len();
+        let Some(range) = target_range(operation, &fills) else {
+            return Ok(vec![]);
+        };
+        let result = range
+            .into_iter()
+            .filter(|&target| target_is_feasible(self, polyomino, n, k, operation, &fills, target))
+            .collect();
+        Ok(result)
     }
 
     /// Propagates all cage and all-different constraints to a GAC fixpoint.
@@ -589,6 +602,80 @@ mod tests {
     use crate::operator::CommutativeOperator::Add;
     use crate::operator::NonCommutativeOperator::Subtract;
     use crate::polyomino::Polyomino;
+
+    #[test]
+    fn possible_targets_given_singleton() {
+        let p = Puzzle::from_parts(InternalGrid::new(4).unwrap(), vec![]);
+        let poly = Polyomino::from([Cell(1, 1)]).unwrap();
+        let targets = p.possible_targets(&poly, CageOperator::Given).unwrap();
+        assert_eq!(targets, vec![1, 2, 3, 4]);
+    }
+
+    #[test]
+    fn possible_targets_add_domino() {
+        let p = Puzzle::from_parts(InternalGrid::new(4).unwrap(), vec![]);
+        let poly = domino(1, 1, 1, 2);
+        let targets = p.possible_targets(&poly, CageOperator::Add).unwrap();
+        // Pairs from {1,2,3,4} with distinct values: sums 3..=7
+        assert!(targets.contains(&3));
+        assert!(targets.contains(&5));
+        assert!(targets.contains(&7));
+        assert!(!targets.contains(&1));
+        assert!(!targets.contains(&2));
+        assert!(!targets.contains(&8));
+    }
+
+    #[test]
+    fn possible_targets_subtract_excludes_zero() {
+        let p = Puzzle::from_parts(InternalGrid::new(4).unwrap(), vec![]);
+        let poly = domino(1, 1, 1, 2);
+        let targets = p.possible_targets(&poly, CageOperator::Subtract).unwrap();
+        assert!(!targets.is_empty());
+        assert!(!targets.contains(&0));
+    }
+
+    #[test]
+    fn possible_targets_divide_starts_at_two() {
+        let p = Puzzle::from_parts(InternalGrid::new(4).unwrap(), vec![]);
+        let poly = domino(1, 1, 1, 2);
+        let targets = p.possible_targets(&poly, CageOperator::Divide).unwrap();
+        assert!(!targets.is_empty());
+        assert!(!targets.contains(&1));
+        assert!(targets.iter().all(|&t| t >= 2));
+    }
+
+    #[test]
+    fn possible_targets_multiply_domino() {
+        let p = Puzzle::from_parts(InternalGrid::new(4).unwrap(), vec![]);
+        let poly = domino(1, 1, 1, 2);
+        let targets = p.possible_targets(&poly, CageOperator::Multiply).unwrap();
+        // Valid products of distinct pairs from {1,2,3,4}: 2,3,4,6,8,12
+        assert!(targets.contains(&2));
+        assert!(targets.contains(&6));
+        assert!(targets.contains(&12));
+        // 1 = 1×1 (equal values, forbidden by AllDifferent)
+        assert!(!targets.contains(&1));
+    }
+
+    #[test]
+    fn possible_targets_narrows_with_constrained_cell() {
+        let p = Puzzle::from_parts(InternalGrid::new(4).unwrap(), vec![]);
+        let poly = domino(1, 1, 1, 2);
+        let all_targets = p.possible_targets(&poly, CageOperator::Add).unwrap();
+        // Pin cell (1,1) to 1; Add targets must include 1 in the pair, so max sum is 1+4=5
+        let p_pinned = p.set(Cell(1, 1), 1).unwrap();
+        let pinned_targets = p_pinned.possible_targets(&poly, CageOperator::Add).unwrap();
+        assert!(pinned_targets.len() < all_targets.len());
+        assert!(!pinned_targets.contains(&7)); // 3+4=7, not reachable when cell is pinned to 1
+    }
+
+    #[test]
+    fn possible_targets_missing_cell_error() {
+        let p = Puzzle::from_parts(InternalGrid::new(4).unwrap(), vec![]);
+        // Cell (5,1) is out of a 4×4 grid
+        let poly = Polyomino::from([Cell(5, 1)]).unwrap();
+        assert!(p.possible_targets(&poly, CageOperator::Given).is_err());
+    }
 
     impl Puzzle {
         fn from_parts(grid: InternalGrid, cage_list: Vec<Cage>) -> Self {
