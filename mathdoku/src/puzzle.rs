@@ -334,35 +334,29 @@ impl Puzzle {
     }
 }
 
+/// Deduplicated cage keys for equality and hashing: `(polyomino, operator, target)`.
+fn cage_keys(p: &Puzzle) -> Vec<(Polyomino, CageOperator, T)> {
+    let mut seen = HashSet::new();
+    p.cages
+        .values()
+        .filter(|arc| seen.insert(Arc::as_ptr(arc)))
+        .map(|arc| {
+            let (op, target) = arc.op_target();
+            (arc.polyomino.clone(), op, target)
+        })
+        .collect()
+}
+
 impl PartialEq for Puzzle {
     fn eq(&self, other: &Self) -> bool {
-        self.n() == other.n() && {
-            // Compare cage sets by deduplication.
-            let a: std::collections::BTreeSet<*const Cage> = {
-                let mut seen = HashSet::new();
-                self.cages
-                    .values()
-                    .filter(|arc| seen.insert(Arc::as_ptr(arc)))
-                    .map(Arc::as_ptr)
-                    .collect()
-            };
-            let b: std::collections::BTreeSet<*const Cage> = {
-                let mut seen = HashSet::new();
-                other
-                    .cages
-                    .values()
-                    .filter(|arc| seen.insert(Arc::as_ptr(arc)))
-                    .map(Arc::as_ptr)
-                    .collect()
-            };
-            // Use polyomino equality instead of pointer equality.
-            let poly_a: std::collections::BTreeSet<&Polyomino> =
-                self.cages().map(|c| &c.polyomino).collect();
-            let poly_b: std::collections::BTreeSet<&Polyomino> =
-                other.cages().map(|c| &c.polyomino).collect();
-            let _ = (a, b); // suppress unused warning
-            poly_a == poly_b
+        if self.n() != other.n() {
+            return false;
         }
+        let mut a = cage_keys(self);
+        let mut b = cage_keys(other);
+        a.sort_unstable();
+        b.sort_unstable();
+        a == b
     }
 }
 
@@ -371,11 +365,10 @@ impl Eq for Puzzle {}
 impl Hash for Puzzle {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.n().hash(state);
-        // Hash cages sorted by polyomino for determinism.
         #[allow(clippy::collection_is_never_read)]
-        let mut polys: Vec<&Polyomino> = self.cages().map(|c| &c.polyomino).collect();
-        polys.sort_unstable();
-        polys.hash(state);
+        let mut keys = cage_keys(self);
+        keys.sort_unstable();
+        keys.hash(state);
     }
 }
 

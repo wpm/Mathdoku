@@ -47,7 +47,9 @@ use crate::table::Table;
 use crate::{Error, Error::EmptyFills, N, T};
 
 /// The arithmetic operation and target for a cage.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub enum CageOperator {
     /// Sum of all cell values equals the target.
     Add,
