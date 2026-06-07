@@ -125,10 +125,17 @@ impl State {
 
     /// Returns the working grid for the puzzle being designed.
     ///
+    /// In With-Solution mode the cages are applied on top of the fixed Latin
+    /// square so solution singleton values are preserved. In Without-Solution
+    /// mode the cages are propagated from a fresh unconstrained grid.
+    ///
     /// # Errors
     /// Returns an error if constraint propagation fails.
     pub fn current(&self) -> Result<Grid, mathdoku::Error> {
-        Ok(self.puzzle.grid())
+        self.solution.as_ref().map_or_else(
+            || Ok(self.puzzle.grid()),
+            |solution| solution.constrain(&self.puzzle),
+        )
     }
 
     /// Switches from Without-Solution to With-Solution by snapshotting the
@@ -1024,7 +1031,12 @@ mod tests {
             let st = new_latin_square(&mut state, 4, &mut rng).unwrap();
             assert!(state.puzzle.is_some());
             assert!(state.solution.is_some());
-            assert_eq!(st.current().unwrap(), state.puzzle.unwrap().grid());
+            // New puzzle with no user cages — current() is the solution itself.
+            let solution = state.solution.as_ref().unwrap();
+            assert_eq!(
+                st.current().unwrap(),
+                solution.constrain(&state.puzzle.unwrap()).unwrap()
+            );
             assert!(state.path.is_none());
             assert!(state.dirty);
         }
@@ -1048,7 +1060,8 @@ mod tests {
                 insert_cage(&mut state, region.clone(), mathdoku::Operator::Given, None).unwrap();
             let puzzle = state.puzzle.as_ref().unwrap();
             assert!(puzzle.cages().any(|c| c.polyomino() == &region));
-            let expected = puzzle.grid();
+            let solution = st.solution.as_ref().unwrap();
+            let expected = solution.constrain(puzzle).unwrap();
             assert_eq!(st.current().unwrap(), expected);
             assert!(state.dirty);
             assert!(st.solution.is_some());
@@ -1861,13 +1874,17 @@ mod tests {
             }
         }
 
-        // The core state invariant: `current()` always equals the puzzle re-applied
-        // to either the fixed solution (With-Solution) or a fresh grid (Without).
+        // The core state invariant: `current()` always equals the puzzle's cage
+        // constraints applied on top of the solution (With-Solution) or on a
+        // fresh grid (Without-Solution).
         fn assert_consistent(state: &AppState) {
             let designer = state.to_designer_state().unwrap();
             let current = designer.current().unwrap();
             let puzzle = state.puzzle.as_ref().unwrap();
-            let expected = puzzle.grid();
+            let expected = state.solution.as_ref().map_or_else(
+                || puzzle.grid(),
+                |solution| solution.constrain(puzzle).unwrap(),
+            );
             assert_eq!(current, expected);
         }
 

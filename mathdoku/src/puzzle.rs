@@ -513,6 +513,45 @@ impl Grid {
         Ok(Self(puzzle))
     }
 
+    /// Returns a new `Grid` whose per-cell fills are the intersection of this
+    /// grid's fills and `puzzle`'s propagated fills.
+    ///
+    /// Use this in With-Solution mode to show which values are still reachable
+    /// given both the fixed Latin square and the design cages: start from a
+    /// `Grid::from_latin_square` and pass the in-progress `Puzzle`.
+    ///
+    /// Since the solution grid always has singleton fills (one value per cell),
+    /// the intersection with the puzzle's fill is either that same singleton (if
+    /// the puzzle still allows it) or empty (infeasible). The result is built by
+    /// inserting Given cages for each cell's intersected singleton value.
+    ///
+    /// # Errors
+    /// Returns an error if `puzzle.n() != self.n()` or if the intersection is
+    /// infeasible (a cell's value is ruled out by the puzzle's constraints).
+    pub fn constrain(&self, puzzle: &Puzzle) -> Result<Self, Error> {
+        let n = self.n();
+        if puzzle.n() != n {
+            return Err(Error::InvalidGridSize(puzzle.n()));
+        }
+        let puzzle_grid = puzzle.grid();
+        let mut p = Puzzle::new(n)?;
+        for r in 0..n {
+            for c in 0..n {
+                let cell = Cell::new(r, c);
+                let solution_fill = self.0.get(cell)?;
+                let puzzle_fill = puzzle_grid.0.get(cell)?;
+                let intersected = solution_fill & puzzle_fill;
+                if let Some(&v) = intersected.values().first() {
+                    let poly = Polyomino::from([cell])?;
+                    if let Some(next) = p.insert(&poly, CageOperator::Given, T::from(v))? {
+                        p = next;
+                    }
+                }
+            }
+        }
+        Ok(Self(p))
+    }
+
     /// Returns the candidate fill for `cell` (0-indexed).
     ///
     /// # Errors

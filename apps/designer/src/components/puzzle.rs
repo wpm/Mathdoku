@@ -58,9 +58,11 @@ pub fn Puzzle(
     let cage_cells: Vec<Vec<Cell>> = cages.iter().map(|(c, _)| c.clone()).collect();
     let (colors, cage_index) = assign_colors(n, &cage_cells, CAGE_PALETTE.len());
 
-    // Propagate cage constraints from an unconstrained grid so each cell's
-    // values show all candidates still possible given the cages, not just the solution.
-    let grid = state.puzzle.grid();
+    // In With-Solution mode, constrain the fixed Latin square by the design
+    // cages so each cell shows the values still reachable given both the
+    // solution and the cages. In Without-Solution mode, use the puzzle's own
+    // propagated grid.
+    let grid = state.current().unwrap_or_else(|_| state.puzzle.grid());
     let mut get_values = vec![vec![vec![]; n]; n];
     let mut solution_values = vec![vec![None::<mathdoku::N>; n]; n];
     for (r, row) in get_values.iter_mut().enumerate() {

@@ -213,7 +213,7 @@ test.describe('grid rendering', () => {
         },
       ],
     };
-    await installTauriStubs(page, puzzle);
+    await installTauriStubs(page, puzzle, { withoutSolution: true });
     await gotoApp(page);
 
     const fills: string[] = await page.evaluate(() => {
