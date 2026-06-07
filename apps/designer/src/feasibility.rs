@@ -277,6 +277,21 @@ mod tests {
     }
 
     #[test]
+    fn candidate_targets_divide_never_includes_one() {
+        for n in 2..=9 {
+            let targets = candidate_targets(Operator::Divide, 2, n);
+            assert!(
+                !targets.contains(&1),
+                "Divide target 1 is impossible (would require equal values): n={n}"
+            );
+            assert!(
+                targets.iter().all(|&t| t >= 2),
+                "all Divide targets must be ≥ 2: n={n}"
+            );
+        }
+    }
+
+    #[test]
     fn candidate_targets_add_pair_is_bounded_by_two_n() {
         let targets = candidate_targets(Operator::Add, 2, 4);
         // Two cells in 1..=4 sum to between 2 and 8.

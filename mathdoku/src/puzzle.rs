@@ -757,6 +757,20 @@ mod tests {
     }
 
     #[test]
+    fn possible_operations_divide_never_produces_target_one() {
+        // Divide target 1 would require max(a,b)/min(a,b)=1, i.e. a==b,
+        // which all-different forbids. Cage::new rejects target < 2 for Divide
+        // before even building the tuple table.
+        let p = Puzzle::from_parts(InternalGrid::new(4).unwrap(), vec![]);
+        let poly = domino(1, 1, 1, 2);
+        // Insert a Divide cage with target 1 — must be an error, not Ok(Some(_)).
+        assert!(
+            p.insert(&poly, CageOperator::Divide, 1).is_err(),
+            "Divide target 1 must be rejected as infeasible"
+        );
+    }
+
+    #[test]
     fn possible_operations_triomino_excludes_non_commutative() {
         let p = Puzzle::from_parts(InternalGrid::new(4).unwrap(), vec![]);
         let poly = Polyomino::from([Cell(1, 1), Cell(1, 2), Cell(1, 3)]).unwrap();

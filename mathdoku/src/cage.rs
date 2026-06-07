@@ -124,7 +124,7 @@ impl Cage {
                 )
             }
             CageOperator::Divide => {
-                if k != 2 {
+                if k != 2 || target < 2 {
                     return Err(Error::InfeasibleCage(polyomino, u64::from(target)));
                 }
                 Self::non_commutative(n, polyomino.clone(), NonCommutativeOperator::Divide, target)
