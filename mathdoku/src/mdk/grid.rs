@@ -10,7 +10,7 @@ use std::collections::BTreeMap;
 use std::fmt::{Display, Formatter};
 
 /// An n×n grid mapping each cell to its current candidate fill.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Grid(usize, BTreeMap<Cell, Fill>);
 
 impl Grid {

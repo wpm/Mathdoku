@@ -47,12 +47,17 @@ use crate::mdk::table::Table;
 use crate::mdk::{Error, Error::EmptyFills, N, T};
 
 /// The arithmetic operation and target for a cage.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum CageOperator {
+    /// Sum of all cell values equals the target.
     Add,
+    /// Absolute difference of two cell values equals the target.
     Subtract,
+    /// Product of all cell values equals the target.
     Multiply,
+    /// Ratio `max/min` of two cell values equals the target.
     Divide,
+    /// A single cell is fixed to the target value.
     Given,
 }
 
@@ -70,8 +75,8 @@ enum CageSupport {
 /// A cage: a connected group of cells subject to an arithmetic constraint.
 ///
 /// The constraint is one of:
-/// - **Commutative** (`Add`, `Multiply`): backed by an [`Mdd`] for efficient narrowing.
-/// - **`NonCommutative`** (`Subtract`, `Divide`): backed by a [`Table`] of explicit pairs.
+/// - **Commutative** (`Add`, `Multiply`): backed by an `Mdd` for efficient narrowing.
+/// - **`NonCommutative`** (`Subtract`, `Divide`): backed by a `Table` of explicit pairs.
 /// - **Given**: a singleton cell whose value is fixed.
 #[derive(Debug, Clone)]
 pub struct Cage {
@@ -84,9 +89,13 @@ pub struct Cage {
 impl Cage {
     /// Constructs a cage from a [`CageOperator`], polyomino, and target value.
     ///
+    /// # Panics
+    ///
+    /// Never panics in practice: the `Given` branch is only reached after confirming `k == 1`.
+    ///
     /// # Errors
     ///
-    /// Returns [`EmptyFills`] if no tuples satisfy the constraint.
+    /// Returns [`Error::InfeasibleCage`] if no tuples satisfy the constraint.
     /// Returns [`Error::MissingPolyomino`] if `operation` is [`CageOperator::Given`]
     /// and `polyomino` is empty.
     pub fn new(
@@ -95,26 +104,47 @@ impl Cage {
         operation: CageOperator,
         target: T,
     ) -> Result<Self, Error> {
-        match operation {
-            CageOperator::Add => Self::commutative(n, polyomino, CommutativeOperator::Add, target),
+        let k = polyomino.len();
+        let result = match operation {
+            CageOperator::Add => {
+                Self::commutative(n, polyomino.clone(), CommutativeOperator::Add, target)
+            }
             CageOperator::Multiply => {
-                Self::commutative(n, polyomino, CommutativeOperator::Multiply, target)
+                Self::commutative(n, polyomino.clone(), CommutativeOperator::Multiply, target)
             }
             CageOperator::Subtract => {
-                Self::non_commutative(n, polyomino, NonCommutativeOperator::Subtract, target)
+                if k != 2 {
+                    return Err(Error::InfeasibleCage(polyomino, u64::from(target)));
+                }
+                Self::non_commutative(
+                    n,
+                    polyomino.clone(),
+                    NonCommutativeOperator::Subtract,
+                    target,
+                )
             }
             CageOperator::Divide => {
-                Self::non_commutative(n, polyomino, NonCommutativeOperator::Divide, target)
+                if k != 2 {
+                    return Err(Error::InfeasibleCage(polyomino, u64::from(target)));
+                }
+                Self::non_commutative(n, polyomino.clone(), NonCommutativeOperator::Divide, target)
             }
             CageOperator::Given => {
-                let &cell = polyomino
-                    .iter()
-                    .next()
-                    .ok_or_else(|| Error::MissingPolyomino(polyomino.clone()))?;
+                if k != 1 {
+                    return Err(Error::InfeasibleCage(polyomino, u64::from(target)));
+                }
+                // k == 1 was just confirmed above, so `next()` always yields Some.
+                let Some(&cell) = polyomino.iter().next() else {
+                    return Err(Error::InfeasibleCage(polyomino, u64::from(target)));
+                };
                 #[allow(clippy::cast_possible_truncation)]
-                Self::given(cell, target as N)
+                return Self::given(cell, target as N);
             }
-        }
+        };
+        result.map_err(|e| match e {
+            Error::EmptyFills => Error::InfeasibleCage(polyomino, u64::from(target)),
+            other => other,
+        })
     }
 
     /// Constructs a cage for a commutative constraint over `polyomino`.
@@ -137,7 +167,7 @@ impl Cage {
 
     /// Constructs a cage for a non-commutative constraint over `polyomino`.
     ///
-    /// Builds a [`Table`] of all pairs of values in `1..=n` whose `operation`
+    /// Builds a `Table` of all pairs of values in `1..=n` whose `operation`
     /// equals `target`. Non-commutative cages must be exactly 2 cells.
     ///
     /// # Errors
@@ -157,6 +187,10 @@ impl Cage {
     ///
     /// Always succeeds for a valid `cell`; returns `Err` only if the cell cannot
     /// form a polyomino, which cannot happen for a single non-empty cell.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `polyomino` is empty.
     pub fn given(cell: Cell, n: N) -> Result<Self, Error> {
         Ok(Self {
             polyomino: Polyomino::from(vec![cell])?,
@@ -178,6 +212,28 @@ impl Cage {
         Ok(fill)
     }
 
+    /// Returns the `(CageOperator, target)` pair for this cage.
+    #[must_use]
+    pub fn op_target(&self) -> (CageOperator, T) {
+        match &self.support {
+            CageSupport::Commutative(op, target, _) => (
+                match op {
+                    CommutativeOperator::Add => CageOperator::Add,
+                    CommutativeOperator::Multiply => CageOperator::Multiply,
+                },
+                *target,
+            ),
+            CageSupport::NonCommutative(op, target, _) => (
+                match op {
+                    NonCommutativeOperator::Subtract => CageOperator::Subtract,
+                    NonCommutativeOperator::Divide => CageOperator::Divide,
+                },
+                *target,
+            ),
+            CageSupport::Given(n) => (CageOperator::Given, T::from(*n)),
+        }
+    }
+
     /// Returns the index of `cell` in its containing [`Cage`].
     ///
     /// # Errors
@@ -187,6 +243,69 @@ impl Cage {
             .iter()
             .position(|c| *c == cell)
             .ok_or(Error::MissingCell(cell))
+    }
+
+    /// Returns the polyomino (set of cells) for this cage.
+    #[must_use]
+    pub const fn polyomino(&self) -> &Polyomino {
+        &self.polyomino
+    }
+
+    /// Returns the operation (operator and target) for this cage.
+    #[must_use]
+    pub fn operation(&self) -> Operation {
+        let (operator, target) = self.op_target();
+        Operation {
+            operator,
+            target: u64::from(target),
+        }
+    }
+
+    /// Returns `true` if `cell` is part of this cage.
+    #[must_use]
+    pub fn contains(&self, cell: Cell) -> bool {
+        self.polyomino.contains(&cell)
+    }
+
+    /// Returns the cells in this cage as a `Vec`.
+    #[must_use]
+    pub fn cells(&self) -> Vec<Cell> {
+        self.polyomino.cells()
+    }
+}
+
+/// The arithmetic operation for a cage: operator and target value.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Operation {
+    /// The operator.
+    pub operator: CageOperator,
+    /// The target value.
+    pub target: u64,
+}
+
+impl Operation {
+    /// Creates an operation from `operator` and `target`.
+    #[must_use]
+    pub const fn new(operator: CageOperator, target: u64) -> Self {
+        Self { operator, target }
+    }
+}
+
+impl std::fmt::Display for CageOperator {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Add => write!(f, "+"),
+            Self::Subtract => write!(f, "−"),
+            Self::Multiply => write!(f, "×"),
+            Self::Divide => write!(f, "÷"),
+            Self::Given => write!(f, "="),
+        }
+    }
+}
+
+impl std::fmt::Display for Operation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}{}", self.target, self.operator)
     }
 }
 

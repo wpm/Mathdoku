@@ -1,15 +1,15 @@
 //! The [`Solutions`] iterator: MAC search over a [`Puzzle`]'s constraint graph.
 
-use crate::Fill;
-use crate::grid::Grid;
-use crate::puzzle::Puzzle;
-use crate::{Cell, Error};
+use crate::mdk::Error;
+use crate::mdk::fill::Fill;
+use crate::mdk::polyomino::Cell;
+use crate::mdk::puzzle::Puzzle;
 
 /// An iterator over all solutions for a [`Puzzle`].
 ///
-/// Each item is a solved [`Grid`] in which every cell's values are a singleton.
+/// Each item is a solved [`Puzzle`] in which every cell's fill is a singleton.
 /// Solutions are produced by interleaved propagation and backtracking search (MAC):
-/// branching on the most-constrained cell calls [`Puzzle::set_value`], which propagates
+/// branching on the most-constrained cell calls [`Puzzle::set`], which propagates
 /// all constraints to a fixpoint before the next branch is chosen.
 ///
 /// Obtained via [`Puzzle::solutions`].
@@ -26,18 +26,18 @@ impl Solutions {
         }
     }
 
-    /// Finds the cell with the fewest values of size ≥ 2 (the most constrained variable).
-    fn branch_cell(grid: &Grid) -> Option<(Cell, Fill)> {
-        let n = grid.n();
+    /// Finds the cell with the fewest candidate values of size ≥ 2 (most constrained).
+    fn branch_cell(puzzle: &Puzzle) -> Option<(Cell, Fill)> {
+        let n = puzzle.n();
         let mut best: Option<(Cell, Fill)> = None;
-        for r in 0..n {
-            for c in 0..n {
-                let cell = Cell::new(r, c);
-                if let Ok(values) = grid.get_values(cell)
-                    && values.len() >= 2
-                    && best.is_none_or(|(_, d)| values.len() < d.len())
+        for r in 1..=n {
+            for c in 1..=n {
+                let cell = Cell(r, c);
+                if let Ok(fill) = puzzle.get(cell)
+                    && fill.len() >= 2
+                    && best.is_none_or(|(_, d)| fill.len() < d.len())
                 {
-                    best = Some((cell, values));
+                    best = Some((cell, fill));
                 }
             }
         }
@@ -46,28 +46,27 @@ impl Solutions {
 }
 
 impl Iterator for Solutions {
-    type Item = Result<Grid, Error>;
+    type Item = Result<Puzzle, Error>;
 
     fn next(&mut self) -> Option<Self::Item> {
         while let Some(puzzle) = self.stack.pop() {
-            // Every Puzzle on the stack is already at a fixpoint (maintained by set_value).
-            // set_value returns None for infeasible branches, so they never enter the stack.
-            let grid = puzzle.grid();
-            let n = grid.n();
+            let n = puzzle.n();
 
-            // Check for success: all cells' values are singletons.
-            let solved = (0..n)
-                .flat_map(|r| (0..n).map(move |c| Cell::new(r, c)))
-                .all(|cell| grid.get_values(cell).is_ok_and(Fill::is_singleton));
+            // Check for success: all cells' fills are singletons.
+            let solved = (1..=n)
+                .flat_map(|r| (1..=n).map(move |c| Cell(r, c)))
+                .all(|cell| puzzle.get(cell).is_ok_and(Fill::is_singleton));
             if solved {
-                return Some(Ok(grid));
+                return Some(Ok(puzzle));
             }
 
             // Branch on the most constrained unassigned cell.
-            if let Some((cell, values)) = Self::branch_cell(&grid) {
-                for v in values.values() {
-                    if let Some(child) = puzzle.set_value(cell, v) {
-                        self.stack.push(child);
+            if let Some((cell, fill)) = Self::branch_cell(&puzzle) {
+                for v in fill.values() {
+                    if let Ok(child) = puzzle.set(cell, v)
+                        && let Some(fp) = child.fixpoint()
+                    {
+                        self.stack.push(fp);
                     }
                 }
             }

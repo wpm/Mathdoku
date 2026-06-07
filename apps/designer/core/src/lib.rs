@@ -14,7 +14,7 @@
 
 use std::collections::BTreeSet;
 
-use mathdoku::{Cage, Cell, Grid, Operation, Operator, Polyomino, Puzzle, generate_latin_square};
+use mathdoku::{Cage, Cell, Grid, Operator, Polyomino, Puzzle, T, generate_latin_square};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use serde_json::{from_str, to_string_pretty};
@@ -127,12 +127,16 @@ impl State {
     ///
     /// # Errors
     /// Returns an error if constraint propagation fails.
-    pub const fn current(&self) -> Result<Grid, mathdoku::Error> {
+    pub fn current(&self) -> Result<Grid, mathdoku::Error> {
         Ok(self.puzzle.grid())
     }
 
     /// Switches from Without-Solution to With-Solution by snapshotting the
     /// unique completion into `solution`.
+    ///
+    /// # Panics
+    ///
+    /// Never panics in practice: `first.get(cell)` is infallible for cells in a solved puzzle.
     ///
     /// # Errors
     /// Returns [`Error::NotUnique`] if the puzzle does not have exactly one
@@ -148,7 +152,23 @@ impl State {
             return Err(Error::NotUnique);
         }
         drop(solutions);
-        self.solution = Some(first);
+        let n = first.n();
+        let square: Vec<Vec<mathdoku::N>> = (0..n)
+            .map(|r| {
+                (0..n)
+                    .map(|c| {
+                        first
+                            .get(Cell::new(r, c))
+                            .unwrap_or_default()
+                            .values()
+                            .first()
+                            .copied()
+                            .unwrap_or(0)
+                    })
+                    .collect()
+            })
+            .collect();
+        self.solution = Some(Grid::from_latin_square(n, &square)?);
         Ok(())
     }
 
@@ -156,7 +176,7 @@ impl State {
     ///
     /// Always succeeds — the cages were chosen against a known completion and
     /// remain globally feasible after the field is dropped.
-    pub const fn unfix(&mut self) {
+    pub fn unfix(&mut self) {
         self.solution = None;
     }
 }
@@ -192,7 +212,7 @@ impl AppState {
         let puzzle = self.puzzle.clone()?;
         Some(State {
             puzzle,
-            solution: self.solution,
+            solution: self.solution.clone(),
             active: self.active.unwrap_or_else(|| Cell::new(0, 0)),
             provisional_cages: BTreeSet::new(),
         })
@@ -286,11 +306,12 @@ pub fn insert_cage(
     target: Option<u64>,
 ) -> Result<State, Error> {
     let puzzle = state.puzzle.as_ref().ok_or(Error::NoPuzzle)?;
+    let n = puzzle.n();
 
     // `Some` in Without-Solution mode (author-chosen target); `None` in
     // With-Solution mode, where the target is derived from the fixed solution.
     let target = target.unwrap_or_else(|| {
-        let cells = poly.cells();
+        let cells: Vec<Cell> = poly.iter().copied().collect();
         let true_values: Option<Vec<u64>> = state.solution.as_ref().and_then(|grid| {
             cells
                 .iter()
@@ -310,10 +331,10 @@ pub fn insert_cage(
             _ => 0,
         }
     });
-    let operation = Operation::new(operator, target);
 
-    let cage = Cage::new(poly, operation)?;
-    match puzzle.insert_cage(cage)? {
+    #[allow(clippy::cast_possible_truncation)]
+    let cage = Cage::new(n, poly, operator, target as T)?;
+    match puzzle.insert_cage(&cage)? {
         Some(new_puzzle) => commit_puzzle(state, new_puzzle),
         None => state.to_designer_state().ok_or(Error::NoPuzzle),
     }
@@ -394,7 +415,7 @@ pub fn get_puzzle(state: &AppState) -> Option<State> {
 /// serialization fails.
 pub fn serialize_save(state: &AppState) -> Result<String, Error> {
     let puzzle = state.puzzle.as_ref().ok_or(Error::NoPuzzle)?.clone();
-    let solution = state.solution;
+    let solution = state.solution.clone();
     let envelope = SaveEnvelope {
         version: SAVE_VERSION,
         puzzle,
@@ -441,13 +462,18 @@ mod tests {
     /// Shared fixtures.
     mod helpers {
         use crate::{AppState, State, apply_loaded, insert_cage, new_empty, serialize_save};
-        use mathdoku::{Cage, Cell, Grid, Operation, Operator, Polyomino, Puzzle};
+        use mathdoku::{Cage, Cell, Grid, Operator, Polyomino, Puzzle, T};
 
         /// Builds a [`Cage`] from `(row, column)` positions, an operator, and a target.
-        pub(super) fn cage_at(positions: &[(usize, usize)], op: Operator, target: u64) -> Cage {
+        pub(super) fn cage_at(
+            n: usize,
+            positions: &[(usize, usize)],
+            op: Operator,
+            target: u64,
+        ) -> Cage {
             let cells: Vec<Cell> = positions.iter().map(|&(r, c)| Cell::new(r, c)).collect();
             let poly = Polyomino::from_cells(&cells).unwrap();
-            Cage::new(poly, Operation::new(op, target)).unwrap()
+            Cage::new(n, poly, op, target as T).unwrap()
         }
 
         /// Builds [`Cell`]s from `(row, column)` positions.
@@ -480,7 +506,7 @@ mod tests {
                 for (c, &v) in row.iter().enumerate() {
                     st.puzzle = st
                         .puzzle
-                        .insert_cage(cage_at(&[(r, c)], Operator::Given, v))
+                        .insert_cage(&cage_at(3, &[(r, c)], Operator::Given, v))
                         .unwrap()
                         .unwrap();
                 }
@@ -591,7 +617,7 @@ mod tests {
             for r in 0..3 {
                 st.puzzle = st
                     .puzzle
-                    .insert_cage(cage_at(&[(r, 0), (r, 1), (r, 2)], Operator::Add, 6))
+                    .insert_cage(&cage_at(3, &[(r, 0), (r, 1), (r, 2)], Operator::Add, 6))
                     .unwrap()
                     .unwrap();
             }
@@ -718,10 +744,9 @@ mod tests {
             // designer abandons the operation, returning the unchanged state.
             let mut state = AppState::default();
             let _ = new_empty(&mut state, 3).unwrap();
-            assert!(matches!(
-                insert_cage(&mut state, poly(&[(0, 0), (0, 1)]), Operator::Add, Some(2)),
-                Ok(_)
-            ));
+            assert!(
+                insert_cage(&mut state, poly(&[(0, 0), (0, 1)]), Operator::Add, Some(2)).is_ok()
+            );
             // The state is unchanged (no cage was committed).
             assert_eq!(state.puzzle.as_ref().unwrap().cages().count(), 0);
         }
@@ -771,10 +796,7 @@ mod tests {
             let mut state = AppState::default();
             let _ = new_empty(&mut state, 3).unwrap();
             let _ = insert_cage(&mut state, poly(&[(0, 0)]), Operator::Given, Some(1)).unwrap();
-            assert!(matches!(
-                insert_cage(&mut state, poly(&[(0, 1)]), Operator::Given, Some(1)),
-                Ok(_)
-            ));
+            assert!(insert_cage(&mut state, poly(&[(0, 1)]), Operator::Given, Some(1)).is_ok());
             // Only the first cage was committed.
             assert_eq!(state.puzzle.as_ref().unwrap().cages().count(), 1);
         }
@@ -1387,8 +1409,9 @@ mod tests {
     "n": 2,
     "cages": [
       {
-        "polyomino": [{"row": 0, "column": 0}],
-        "operation": {"operator": "Given", "target": 1}
+        "polyomino": [[1, 1]],
+        "operation": "Given",
+        "target": 1
       }
     ]
   }

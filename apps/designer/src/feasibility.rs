@@ -20,7 +20,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::collections::{BTreeSet, HashMap};
 use std::hash::{Hash, Hasher};
 
-use mathdoku::{Cage, Error, Operation, Operator, Polyomino, Puzzle, Target, operators_for};
+use mathdoku::{Cage, Error, Operator, Polyomino, Puzzle, Target, operators_for};
 
 /// Products above this ceiling are never offered as `Multiply` targets. No
 /// realistic cage in an `n ≤ 9` grid has a larger product, and the bound keeps
@@ -36,7 +36,7 @@ const MAX_PRODUCT: Target = 1_000_000_000;
 /// stream all mean infeasible.
 #[must_use]
 pub fn is_globally_feasible(puzzle: &Puzzle, candidate: &Cage) -> bool {
-    let Ok(Some(extended)) = puzzle.insert_cage(candidate.clone()) else {
+    let Ok(Some(extended)) = puzzle.insert_cage(candidate) else {
         return false;
     };
     matches!(extended.solutions().next(), Some(Ok(_)))
@@ -61,7 +61,7 @@ pub fn feasible_op_targets(
     let mut out = Vec::new();
     for op in operators_for(polyomino) {
         for target in candidate_targets(op, k, n) {
-            let cage = Cage::new(polyomino.clone(), Operation::new(op, target))?;
+            let cage = Cage::new(n, polyomino.clone(), op, target)?;
             if is_globally_feasible(puzzle, &cage) {
                 out.push((op, target));
             }
@@ -195,15 +195,15 @@ mod tests {
         cached_feasible_op_targets, candidate_targets, feasible_op_targets, group_by_operator,
         is_globally_feasible,
     };
-    use mathdoku::{Cage, Cell, Operation, Operator, Polyomino, Puzzle};
+    use mathdoku::{Cage, Cell, Operator, Polyomino, Puzzle};
 
     fn poly(positions: &[(usize, usize)]) -> Polyomino {
         let cells: Vec<Cell> = positions.iter().map(|&(r, c)| Cell::new(r, c)).collect();
         Polyomino::from_cells(&cells).unwrap()
     }
 
-    fn cage(positions: &[(usize, usize)], op: Operator, target: u64) -> Cage {
-        Cage::new(poly(positions), Operation::new(op, target)).unwrap()
+    fn cage(n: usize, positions: &[(usize, usize)], op: Operator, target: u64) -> Cage {
+        Cage::new(n, poly(positions), op, target as mathdoku::T).unwrap()
     }
 
     #[test]
@@ -211,7 +211,7 @@ mod tests {
         let puzzle = Puzzle::new(3).unwrap();
         assert!(is_globally_feasible(
             &puzzle,
-            &cage(&[(0, 0)], Operator::Given, 2)
+            &cage(3, &[(0, 0)], Operator::Given, 2)
         ));
     }
 
@@ -220,7 +220,7 @@ mod tests {
         let puzzle = Puzzle::new(3).unwrap();
         assert!(!is_globally_feasible(
             &puzzle,
-            &cage(&[(0, 0)], Operator::Given, 9)
+            &cage(3, &[(0, 0)], Operator::Given, 9)
         ));
     }
 
@@ -229,12 +229,12 @@ mod tests {
         // A cage conflict (overlapping an existing cage) is never feasible.
         let puzzle = Puzzle::new(3)
             .unwrap()
-            .insert_cage(cage(&[(0, 0), (0, 1)], Operator::Add, 3))
+            .insert_cage(&cage(3, &[(0, 0), (0, 1)], Operator::Add, 3))
             .unwrap()
             .unwrap();
         assert!(!is_globally_feasible(
             &puzzle,
-            &cage(&[(0, 0)], Operator::Given, 1)
+            &cage(3, &[(0, 0)], Operator::Given, 1)
         ));
     }
 
@@ -243,7 +243,7 @@ mod tests {
         let puzzle = Puzzle::new(4).unwrap();
         let pairs = feasible_op_targets(&puzzle, &poly(&[(1, 1)])).unwrap();
         // A single cell in an empty 4×4 can hold any of 1..=4.
-        let targets: Vec<u64> = pairs.iter().map(|&(_, t)| t).collect();
+        let targets: Vec<mathdoku::Target> = pairs.iter().map(|&(_, t)| t).collect();
         assert_eq!(targets, vec![1, 2, 3, 4]);
         assert!(pairs.iter().all(|(op, _)| *op == Operator::Given));
     }
@@ -271,7 +271,7 @@ mod tests {
         for (op, target) in feasible_op_targets(&puzzle, &p).unwrap() {
             assert!(is_globally_feasible(
                 &puzzle,
-                &Cage::new(p.clone(), Operation::new(op, target)).unwrap()
+                &Cage::new(puzzle.n(), p.clone(), op, target).unwrap()
             ));
         }
     }

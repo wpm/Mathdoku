@@ -19,7 +19,7 @@ use std::collections::{HashMap, HashSet};
 /// Per-position candidate sets ([`Fill`]s) are derived from the surviving paths
 /// and cached; construction fails with [`EmptyFills`] if no valid tuples exist.
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub(crate) struct Mdd {
+pub struct Mdd {
     n: usize,
     constraint: Constraint,
     edges: HashMap<Node, Vec<(N, Node)>>,

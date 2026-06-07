@@ -1,5 +1,4 @@
 use crate::mdk::Error;
-use crate::mdk::Error::InvalidPolyomino;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::fmt;
@@ -8,6 +7,46 @@ use std::fmt;
 #[derive(Ord, Eq, PartialEq, Hash, PartialOrd, Copy, Clone, Debug, Serialize, Deserialize)]
 pub struct Cell(pub usize, pub usize);
 
+impl Cell {
+    /// Creates a cell from 0-indexed `(row, column)` coordinates.
+    ///
+    /// Converts to 1-indexed storage used internally.
+    #[must_use]
+    pub const fn new(row: usize, col: usize) -> Self {
+        Self(row + 1, col + 1)
+    }
+
+    /// Returns the 0-indexed row of this cell.
+    #[must_use]
+    pub const fn row(self) -> usize {
+        self.0 - 1
+    }
+
+    /// Returns the 0-indexed column of this cell.
+    #[must_use]
+    pub const fn column(self) -> usize {
+        self.1 - 1
+    }
+
+    /// Returns the 4-connected neighbors of this cell (unbounded, may include cells with row or
+    /// column equal to `usize::MAX` if the cell is at row/column 0).
+    #[must_use]
+    pub fn neighbors_4(self) -> Vec<Self> {
+        let r = self.row();
+        let c = self.column();
+        let mut result = Vec::with_capacity(4);
+        if r > 0 {
+            result.push(Self::new(r - 1, c));
+        }
+        result.push(Self::new(r + 1, c));
+        if c > 0 {
+            result.push(Self::new(r, c - 1));
+        }
+        result.push(Self::new(r, c + 1));
+        result
+    }
+}
+
 impl fmt::Display for Cell {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "({}, {})", self.0, self.1)
@@ -15,7 +54,7 @@ impl fmt::Display for Cell {
 }
 
 /// A set of edge-adjacent cells.
-#[derive(Eq, PartialEq, Ord, PartialOrd, Clone, Hash, Debug)]
+#[derive(Eq, PartialEq, Ord, PartialOrd, Clone, Hash, Debug, Serialize, Deserialize)]
 pub struct Polyomino(BTreeSet<Cell>);
 
 impl Polyomino {
@@ -23,13 +62,13 @@ impl Polyomino {
     ///
     /// # Errors
     ///
-    /// Returns [`InvalidPolyomino`] if the cells are empty or not edge-connected.
+    /// Returns [`Error::DisconnectedPolyomino`] if the cells are empty or not edge-connected.
     pub fn from(cells: impl IntoIterator<Item = Cell>) -> Result<Self, Error> {
         let cells: Vec<Cell> = cells.into_iter().collect();
         if is_edge_adjacent(&cells) {
             Ok(Self(BTreeSet::from_iter(cells)))
         } else {
-            Err(InvalidPolyomino(cells))
+            Err(Error::DisconnectedPolyomino)
         }
     }
 
@@ -60,6 +99,41 @@ impl Polyomino {
     /// Returns an iterator over the cells of this polyomino in sorted order.
     pub fn iter(&self) -> impl Iterator<Item = &Cell> {
         self.0.iter()
+    }
+
+    /// Alias for [`Polyomino::from`] accepting a slice.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::DisconnectedPolyomino`] if the cells are empty or not edge-connected.
+    pub fn from_cells(cells: &[Cell]) -> Result<Self, Error> {
+        Self::from(cells.iter().copied())
+    }
+
+    /// Returns the cells of this polyomino as a `Vec`.
+    #[must_use]
+    pub fn cells(&self) -> Vec<Cell> {
+        self.0.iter().copied().collect()
+    }
+
+    /// Returns a new polyomino with `cell` added.
+    ///
+    /// If `cell` is already in the polyomino, returns a clone unchanged.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::DisconnectedPolyomino`] if the result is not edge-connected.
+    pub fn insert(&self, cell: Cell) -> Result<Self, Error> {
+        if self.contains(&cell) {
+            return Ok(self.clone());
+        }
+        let cells: Vec<Cell> = self
+            .0
+            .iter()
+            .copied()
+            .chain(std::iter::once(cell))
+            .collect();
+        Self::from(cells)
     }
 }
 
@@ -103,7 +177,7 @@ impl IntoIterator for Polyomino {
 
 #[cfg(test)]
 mod tests {
-    use crate::mdk::Error::InvalidPolyomino;
+    use crate::mdk::Error;
     use crate::mdk::polyomino::{Cell, Polyomino};
 
     #[test]
@@ -133,14 +207,17 @@ mod tests {
 
     #[test]
     fn polyomino_empty_is_disconnected() {
-        assert!(matches!(Polyomino::from([]), Err(InvalidPolyomino(_))));
+        assert!(matches!(
+            Polyomino::from([]),
+            Err(Error::DisconnectedPolyomino)
+        ));
     }
 
     #[test]
     fn polyomino_diagonal_pair_is_disconnected() {
         assert!(matches!(
             Polyomino::from([Cell(1, 1), Cell(2, 2)]),
-            Err(InvalidPolyomino(_))
+            Err(Error::DisconnectedPolyomino)
         ));
     }
 
@@ -148,7 +225,7 @@ mod tests {
     fn polyomino_two_separate_pairs_is_disconnected() {
         assert!(matches!(
             Polyomino::from([Cell(1, 1), Cell(1, 2), Cell(3, 3), Cell(3, 4)]),
-            Err(InvalidPolyomino(_))
+            Err(Error::DisconnectedPolyomino)
         ));
     }
 

@@ -14,7 +14,7 @@ use crate::mdk::{Error, N, T};
 /// are guaranteed non-empty — construction fails with [`EmptyFills`]
 /// if no valid tuples exist.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Table {
+pub struct Table {
     n: usize,
     constraint: ArithmeticConstraint,
     tuples: Vec<Vec<N>>,

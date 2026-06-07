@@ -11,7 +11,7 @@
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use mathdoku::{Cage, Cell, Operation, Operator, Polyomino, Target, operators_for};
+use mathdoku::{Cage, Cell, Operator, Polyomino, Target, operators_for};
 use mathdoku_designer_core::State;
 
 use super::cage::Cage as CageComponent;
@@ -207,7 +207,7 @@ pub fn Puzzle(
         if let Some(poly) = st
             .provisional_cages
             .iter()
-            .find(|p| p.contains(active_cell))
+            .find(|p| p.contains(&active_cell))
             .cloned()
         {
             let mut new_st = st.clone();
@@ -263,7 +263,7 @@ pub fn Puzzle(
         let key = ev.key();
         let shift = ev.shift_key();
         let st = designer_state.get_untracked();
-        let (r, c) = (st.active.row, st.active.column);
+        let (r, c) = (st.active.row(), st.active.column());
 
         // Operation selector intercepts all keys when active. The exception is the
         // Without-Solution target dropdown (a native <select>): let it own
@@ -450,7 +450,7 @@ pub fn Puzzle(
                 let poly = if let Some(p) = st
                     .provisional_cages
                     .iter()
-                    .find(|p| p.contains(active_cell))
+                    .find(|p| p.contains(&active_cell))
                     .cloned()
                 {
                     p
@@ -523,7 +523,7 @@ pub fn Puzzle(
         .iter()
         .map(|(cells, cage)| {
             let a = anchor(cells);
-            let (x, y) = origin(cell, a.row, a.column);
+            let (x, y) = origin(cell, a.row(), a.column());
             let operation = cage.operation();
             view! { <CageComponent x=x y=y op_f=op_f operation=operation /> }.into_any()
         })
@@ -698,7 +698,7 @@ fn singleton_digit_commit(state: &State, key: &str) -> Result<Option<SingletonDi
         return Ok(None);
     }
     // Mid-draw inside a multi-cell provisional cage → no shortcut.
-    if let Some(p) = state.provisional_cages.iter().find(|p| p.contains(active))
+    if let Some(p) = state.provisional_cages.iter().find(|p| p.contains(&active))
         && p.len() > 1
     {
         return Ok(None);
@@ -706,7 +706,8 @@ fn singleton_digit_commit(state: &State, key: &str) -> Result<Option<SingletonDi
 
     let poly = Polyomino::from_cells(&[active])?;
     let target = Target::from(value);
-    let cage = Cage::new(poly.clone(), Operation::new(Operator::Given, target))?;
+    #[allow(clippy::cast_possible_truncation)]
+    let cage = Cage::new(state.puzzle.n(), poly.clone(), Operator::Given, target)?;
     if !crate::feasibility::is_globally_feasible(&state.puzzle, &cage) {
         return Ok(None);
     }
@@ -716,7 +717,7 @@ fn singleton_digit_commit(state: &State, key: &str) -> Result<Option<SingletonDi
     let parked = state
         .provisional_cages
         .iter()
-        .filter(|p| !p.contains(active))
+        .filter(|p| !p.contains(&active))
         .cloned()
         .collect();
     Ok(Some(SingletonDigitCommit {
@@ -741,7 +742,7 @@ fn step_provisional_cage(r: usize, c: usize, tr: usize, tc: usize, state: State)
     let active = state
         .provisional_cages
         .iter()
-        .find(|p| p.contains(current))
+        .find(|p| p.contains(&current))
         .cloned();
 
     let (cage, mut remaining): (Polyomino, BTreeSet<Polyomino>) = match active {
@@ -788,7 +789,7 @@ fn step_provisional_cage(r: usize, c: usize, tr: usize, tc: usize, state: State)
 #[allow(clippy::unwrap_used, clippy::panic)]
 mod tests {
     use super::{singleton_digit_commit, step_provisional_cage};
-    use mathdoku::{Cage, Cell, Operation, Operator, Polyomino};
+    use mathdoku::{Cage, Cell, Operator, Polyomino};
     use mathdoku_designer_core::State;
 
     fn poly(positions: &[(usize, usize)]) -> Polyomino {
@@ -796,8 +797,8 @@ mod tests {
         Polyomino::from_cells(&cells).unwrap()
     }
 
-    fn given_cage(r: usize, c: usize, target: u64) -> Cage {
-        Cage::new(poly(&[(r, c)]), Operation::new(Operator::Given, target)).unwrap()
+    fn given_cage(n: usize, r: usize, c: usize, target: u64) -> Cage {
+        Cage::new(n, poly(&[(r, c)]), Operator::Given, target as mathdoku::T).unwrap()
     }
 
     #[test]
@@ -836,7 +837,11 @@ mod tests {
     #[test]
     fn digit_rejected_on_cell_in_committed_cage() {
         let mut st = State::new(4).unwrap();
-        st.puzzle = st.puzzle.insert_cage(given_cage(0, 0, 2)).unwrap().unwrap();
+        st.puzzle = st
+            .puzzle
+            .insert_cage(&given_cage(4, 0, 0, 2))
+            .unwrap()
+            .unwrap();
         st.active = Cell::new(0, 0);
         assert!(singleton_digit_commit(&st, "3").unwrap().is_none());
     }
@@ -879,7 +884,10 @@ mod tests {
     }
 
     fn cells_of(p: &Polyomino) -> Vec<(usize, usize)> {
-        p.cells().into_iter().map(|c| (c.row, c.column)).collect()
+        p.cells()
+            .into_iter()
+            .map(|c| (c.row(), c.column()))
+            .collect()
     }
 
     #[test]

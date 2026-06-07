@@ -68,7 +68,7 @@ impl PartialSolution {
     pub fn viable_counts(&self, cage_idx: usize) -> Option<(usize, usize)> {
         let puzzle = self.lock_puzzle();
         let cage = puzzle.cages().nth(cage_idx)?;
-        let tuples = puzzle.cage_tuples(cage).ok()?;
+        let tuples = puzzle.cage_tuples(&cage.polyomino).ok()?;
         drop(puzzle);
         let multisets: HashSet<Vec<mathdoku::N>> = tuples
             .iter()
@@ -98,12 +98,13 @@ impl PartialSolution {
 #[allow(clippy::unwrap_used, clippy::panic)]
 mod tests {
     use super::PartialSolution;
-    use mathdoku::{Cage, Cell, Grid, Operation, Operator, Polyomino, Puzzle};
+    use mathdoku::{Cage, Cell, Grid, Operator, Polyomino, Puzzle};
 
-    fn cage_at(positions: &[(usize, usize)], op: Operator, target: u64) -> Cage {
+    #[allow(clippy::cast_possible_truncation)]
+    fn cage_at(n: usize, positions: &[(usize, usize)], op: Operator, target: u64) -> Cage {
         let cells: Vec<Cell> = positions.iter().map(|&(r, c)| Cell::new(r, c)).collect();
         let poly = Polyomino::from_cells(&cells).unwrap();
-        Cage::new(poly, Operation::new(op, target)).unwrap()
+        Cage::new(n, poly, op, target as mathdoku::T).unwrap()
     }
 
     /// A 3×3 puzzle whose cells are pinned to the Latin square
@@ -119,7 +120,7 @@ mod tests {
         for (r, row) in square.iter().enumerate() {
             for (c, &v) in row.iter().enumerate() {
                 puzzle = puzzle
-                    .insert_cage(cage_at(&[(r, c)], Operator::Given, v))
+                    .insert_cage(&cage_at(3, &[(r, c)], Operator::Given, v))
                     .unwrap()
                     .unwrap();
             }
@@ -134,7 +135,7 @@ mod tests {
         let mut puzzle = Puzzle::new(3).unwrap();
         for r in 0..3 {
             puzzle = puzzle
-                .insert_cage(cage_at(&[(r, 0), (r, 1), (r, 2)], Operator::Add, 6))
+                .insert_cage(&cage_at(3, &[(r, 0), (r, 1), (r, 2)], Operator::Add, 6))
                 .unwrap()
                 .unwrap();
         }
@@ -160,7 +161,7 @@ mod tests {
         // Only one cell is covered, so most of the grid is uncaged.
         let puzzle = Puzzle::new(3)
             .unwrap()
-            .insert_cage(cage_at(&[(0, 0)], Operator::Given, 1))
+            .insert_cage(&cage_at(3, &[(0, 0)], Operator::Given, 1))
             .unwrap()
             .unwrap();
         let ps = PartialSolution::new(puzzle, Grid::new(3).unwrap());
@@ -207,10 +208,10 @@ mod tests {
         // enumeration finds the single valid tuple (3,).
         let puzzle = Puzzle::new(3)
             .unwrap()
-            .insert_cage(cage_at(&[(0, 0), (0, 1)], Operator::Add, 3))
+            .insert_cage(&cage_at(3, &[(0, 0), (0, 1)], Operator::Add, 3))
             .unwrap()
             .unwrap()
-            .insert_cage(cage_at(&[(0, 2)], Operator::Given, 3))
+            .insert_cage(&cage_at(3, &[(0, 2)], Operator::Given, 3))
             .unwrap()
             .unwrap();
         let ps = PartialSolution::new(puzzle, Grid::new(3).unwrap());
@@ -222,7 +223,7 @@ mod tests {
     fn cage_index_at_covered_and_uncovered() {
         let puzzle = Puzzle::new(3)
             .unwrap()
-            .insert_cage(cage_at(&[(0, 0), (0, 1)], Operator::Add, 3))
+            .insert_cage(&cage_at(3, &[(0, 0), (0, 1)], Operator::Add, 3))
             .unwrap()
             .unwrap();
         let ps = PartialSolution::new(puzzle, Grid::new(3).unwrap());

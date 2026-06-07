@@ -34,7 +34,7 @@ pub enum CommutativeOperator {
 impl CommutativeOperator {
     /// Applies this operator to a tuple of values, returning the result.
     #[must_use]
-    pub fn apply_to_tuple(&self, ns: &[N]) -> T {
+    pub fn apply_to_tuple(self, ns: &[N]) -> T {
         match self {
             Self::Add => ns.iter().map(|&v| T::from(v)).sum(),
             Self::Multiply => ns.iter().map(|&v| T::from(v)).product(),
@@ -56,7 +56,7 @@ impl CommutativeOperator {
     /// result extended by `remaining` copies of the dual identity gives the
     /// tightest reachable lower bound on the final result.
     #[must_use]
-    pub const fn identity(&self) -> T {
+    pub const fn identity(self) -> T {
         match self {
             Self::Add => 0,
             Self::Multiply => 1,
@@ -68,7 +68,7 @@ impl CommutativeOperator {
     /// The dual's identity is the minimum value each remaining slot can contribute,
     /// forming the ring relationship used in tuple pruning.
     #[must_use]
-    pub const fn dual(&self) -> Self {
+    pub const fn dual(self) -> Self {
         match self {
             Self::Add => Self::Multiply,
             Self::Multiply => Self::Add,
@@ -93,7 +93,7 @@ impl NonCommutativeOperator {
     /// Subtract returns `|a - b|`. Divide returns `max(a, b) / min(a, b)`
     /// using integer division.
     #[must_use]
-    pub fn apply(&self, a: N, b: N) -> T {
+    pub fn apply(self, a: N, b: N) -> T {
         match self {
             Self::Subtract => T::from(a.abs_diff(b)),
             Self::Divide => T::from(max(a, b).div(min(a, b))),

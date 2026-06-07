@@ -37,7 +37,7 @@ pub trait Memo: Sized {
 /// Derives per-position fills from a non-empty tuple list.
 ///
 /// Returns `Err(EmptyFills)` if `tuples` is empty or any column's fill is empty.
-pub(crate) fn fills_from_tuples(tuples: &[Tuple]) -> Result<Vec<Fill>, Error> {
+pub fn fills_from_tuples(tuples: &[Tuple]) -> Result<Vec<Fill>, Error> {
     if tuples.is_empty() {
         return Err(EmptyFills);
     }

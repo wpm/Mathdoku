@@ -54,7 +54,7 @@ pub fn OperationSelector() -> impl IntoView {
 
         let cell_size = ctx.cell_size;
         let a = anchor(&pending.polyomino.cells());
-        let (x, y) = origin(cell_size, a.row, a.column);
+        let (x, y) = origin(cell_size, a.row(), a.column());
 
         match pending.feasible {
             Some(feasible) => without_solution_view(&pending, feasible, cell_size, x, y),
@@ -652,10 +652,10 @@ mod tests {
         let square: Vec<Vec<mathdoku::N>> = vec![
             vec![2, 6, 1, 3, 4, 5],
             vec![1, 2, 3, 4, 5, 6],
-            vec![3, 4, 5, 6, 1, 2],
-            vec![4, 5, 6, 1, 2, 3],
-            vec![5, 6, 1, 2, 3, 4],
-            vec![6, 1, 2, 3, 4, 5],
+            vec![3, 1, 5, 6, 2, 4],
+            vec![4, 5, 6, 1, 3, 2],
+            vec![5, 3, 4, 2, 6, 1],
+            vec![6, 4, 2, 5, 1, 3],
         ];
         let grid = Grid::from_latin_square(6, &square).unwrap();
         let ps = PartialSolution::new(Puzzle::new(6).unwrap(), grid);

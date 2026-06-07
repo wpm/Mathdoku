@@ -1,5 +1,5 @@
 //! Candidate value sets.
-use crate::Error;
+use crate::mdk::Error;
 use crate::mdk::N;
 use serde::de::Error as DeError;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};

@@ -4,37 +4,22 @@
 //!
 //! | Type | Role |
 //! |------|------|
-//! | [`Cell`] | A grid position identified by `(row, column)`. |
+//! | [`Cell`] | A grid position identified by `(row, column)`, 1-indexed. |
 //! | [`Fill`] | A bitmap set of candidate values `1..=9` for a cell. |
-//! | [`Cage`] | A polyomino paired with an [`Operation`]. |
-//! | [`Puzzle`] | An `n×n` cage structure (no cell values). |
-//! | [`Grid`] | An `n×n` grid of cell values. |
-//! | [`Tuple`] | An ordered assignment of values to the cells of a cage. |
+//! | [`Polyomino`] | A connected set of cells forming a cage shape. |
+//! | [`Puzzle`] | An `n×n` cage structure with constraint propagation. |
+//! | [`CageOperator`] | The arithmetic operator for a cage (`Add`, `Subtract`, etc.). |
 //!
 //! ## Entry points
 //!
 //! - **Generate** a random puzzle with [`generate()`].
-//! - **Construct** a puzzle programmatically with [`Puzzle::new`] and [`Puzzle::insert_cage`].
-//! - **Inspect** cell values with [`Puzzle::get_values`].
+//! - **Construct** a puzzle programmatically with [`Puzzle::new`] and [`Puzzle::insert`].
+//! - **Inspect** cell values with [`Puzzle::get`].
 //! - **Solve** with [`Puzzle::solutions`].
 //! - **Query valid operators** for a polyomino with [`operators_for`].
-//!
-//! ## Architecture
-//!
-//! Solving uses MAC (Maintaining Arc Consistency): [`Puzzle::solutions`] alternates between
-//! branching on the most-constrained cell and propagating all constraints to a fixpoint.
-//! Two propagators run on each fixpoint step:
-//!
-//! - **All-different** (rows and columns): Régin's GAC algorithm (internal `regin` module).
-//! - **Cage arithmetic**: an MDD-based propagator computes per-cell GAC support in `O(|edges|)`
-//!   using the MDD-4R algorithm (top-down reachability + bottom-up co-reachability sweep).
 
 #![deny(missing_docs)]
 #![allow(dead_code)]
-// Test code leans on `.unwrap()`/`.expect()`/`panic!()` to assert invariants
-// that the strict workspace policy denies in production. Allow them under
-// `cfg(test)` so `cargo clippy --all-targets` stays green without scattering
-// per-module `#[allow]`s.
 #![cfg_attr(
     test,
     allow(
@@ -45,33 +30,20 @@
     )
 )]
 
-mod cage;
-mod cage_fill;
-mod cell;
-mod error;
 mod generate;
-mod grid;
-pub mod grid_csp;
 mod latin_square;
-pub mod mdd;
-#[allow(missing_docs)]
-pub mod mdk;
-mod operation;
-mod polyomino;
-mod puzzle;
-mod regin;
-mod solutions;
-#[cfg(test)]
-mod test_utils;
+mod mdk;
+pub(crate) mod solutions;
 
-pub use cage::Cage;
-pub use cell::{Cell, Target, Tuple};
-pub use error::Error;
 pub use generate::generate;
-pub use grid::Grid;
 pub use latin_square::generate_latin_square;
-pub use mdk::N;
+pub use mdk::cage::{Cage, Operation};
 pub use mdk::fill::Fill;
-pub use operation::{Operation, Operator, operators_for};
-pub use polyomino::Polyomino;
-pub use puzzle::Puzzle;
+pub use mdk::polyomino::{Cell, Polyomino};
+pub use mdk::puzzle::{CageOperator, Grid, Puzzle, operators_for};
+pub use mdk::{Error, N, T};
+
+/// Alias for [`CageOperator`], kept for backward compatibility.
+pub type Operator = CageOperator;
+/// Alias for [`T`], kept for backward compatibility.
+pub type Target = T;

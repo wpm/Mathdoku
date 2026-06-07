@@ -1,18 +1,18 @@
-//! New Mathdoku implementation — work in progress; will eventually replace the top-level crate API.
+//! Mathdoku constraint-solving implementation.
 
 use crate::mdk::fill::Fill;
 use crate::mdk::polyomino::{Cell, Polyomino};
 
-mod cage;
+pub mod cage;
 pub mod csp;
-pub(crate) mod fill;
-mod grid;
+pub mod fill;
+pub mod grid;
 pub mod mdd;
 pub mod memo;
 pub mod operator;
 pub mod polyomino;
 pub mod puzzle;
-pub(crate) mod regin;
+pub mod regin;
 pub mod table;
 pub mod tuples;
 
@@ -23,36 +23,40 @@ pub type N = u8;
 ///
 /// Sums and products of up to nine 9s can reach 729, which overflows `u8` and `u16`.
 /// `u32` is wide enough for any realistic Mathdoku constraint.
-type T = u32;
+pub type T = u32;
 
 /// Errors returned by mdk operations.
 #[derive(Debug)]
 pub enum Error {
-    /// Invalid grid size
+    /// Invalid grid size.
     InvalidGridSize(usize),
-    /// The [`Cell`]s do not form a [`Polyomino`]
-    InvalidPolyomino(Vec<Cell>),
-    /// The [`Cell`] is missing from the specified polyomino or grid
+    /// The cells do not form a connected polyomino.
+    DisconnectedPolyomino,
+    /// The [`Cell`] is missing from the specified polyomino or grid.
     MissingCell(Cell),
-    /// The [`Polyomino`] contains cells not present in the puzzle grid
+    /// The [`Polyomino`] contains cells not present in the puzzle grid.
     MissingPolyomino(Polyomino),
-    /// The two [`Polyomino`]es overlap on one or more [`Cell`]s
-    NonDisjointPolyominoes(Polyomino, Polyomino),
-    /// Invalid fill for a cage
+    /// Two polyominoes share one or more cells.
+    CageConflict(Polyomino),
+    /// No valid value assignment exists for the cage (operator/target infeasible).
+    InfeasibleCage(Polyomino, u64),
+    /// Invalid fill for a cage.
     InvalidCageFill(Polyomino, Fill),
-    /// No candidate fills for a cage
+    /// No candidate fills for a cage (internal solver state).
     EmptyFills,
-    /// The index for a [`Cell`] in a cage is out of bounds
+    /// The index for a [`Cell`] in a cage is out of bounds.
     InvalidCellCageIndex(usize),
     /// Value not permitted in this [`Cell`].
     InvalidCellValue(Cell, N),
+    /// A value passed to [`Fill::new`] is outside the valid range `1..=9`.
+    InvalidValue(N),
 }
 
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::InvalidGridSize(n) => write!(f, "invalid grid size: {n}"),
-            Self::InvalidPolyomino(cells) => write!(f, "cells do not form a polyomino: {cells:?}"),
+            Self::DisconnectedPolyomino => write!(f, "cells do not form a connected polyomino"),
             Self::MissingCell(cell) => write!(f, "cell not in grid or polyomino: {cell}"),
             Self::InvalidCageFill(poly, fill) => {
                 write!(f, "invalid fill {fill} for cage {poly:?}")
@@ -63,12 +67,18 @@ impl std::fmt::Display for Error {
                 write!(f, "value {n} not a candidate for cell {cell}")
             }
             Self::MissingPolyomino(poly) => write!(f, "polyomino not in puzzle grid: {poly:?}"),
-            Self::NonDisjointPolyominoes(a, b) => {
-                write!(f, "polyominoes overlap: {a:?} and {b:?}")
+            Self::CageConflict(poly) => {
+                write!(f, "cage overlaps existing cage: {poly:?}")
             }
+            Self::InfeasibleCage(poly, target) => {
+                write!(f, "no valid assignments for cage {poly:?} target {target}")
+            }
+            Self::InvalidValue(v) => write!(f, "value {v} is outside the valid range 1..=9"),
         }
     }
 }
+
+impl std::error::Error for Error {}
 
 #[cfg(test)]
 mod tests {
@@ -114,10 +124,10 @@ mod tests {
     }
 
     #[test]
-    fn error_display_invalid_polyomino() {
+    fn error_display_disconnected_polyomino() {
         assert_eq!(
-            Error::InvalidPolyomino(vec![Cell(1, 1), Cell(3, 3)]).to_string(),
-            "cells do not form a polyomino: [Cell(1, 1), Cell(3, 3)]"
+            Error::DisconnectedPolyomino.to_string(),
+            "cells do not form a connected polyomino"
         );
     }
 

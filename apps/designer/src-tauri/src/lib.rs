@@ -14,7 +14,11 @@ use tauri::image::Image;
 use tauri::menu::{AboutMetadata, Menu, MenuItemBuilder, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Emitter, Manager, Runtime, WindowEvent};
 
-use commands::*;
+use commands::{
+    PuzzleMenu, fix, get_doc_state, get_puzzle, insert_cage, load_puzzle, new_empty,
+    new_latin_square, quit_app, read_recent, remove_cage_at, save_puzzle, set_active_cell,
+    set_puzzle_menu_enabled, set_window_title, unfix,
+};
 
 const EVENT_NEW: &str = "menu-new";
 const EVENT_OPEN: &str = "menu-open";
