@@ -47,15 +47,16 @@ export async function installTauriStubs(
       let hasSolution = !withoutSolution;
 
       // Wrap a bare { n, cages? } puzzle into the State wire format that the
-      // Rust backend now returns: { puzzle, solution, current, active, provisional_cages }.
+      // Rust backend now returns: { puzzle, solution, active, provisional_cages }.
       // `solution` is null in Without-Solution mode.
+      // Cell wire format: [row, col] 1-indexed (matching Rust's Cell(usize,usize) tuple struct).
       type BareP = { n: number; cages?: unknown[] } | null;
       const wrapState = (p: BareP) =>
         p
           ? {
               puzzle: p,
               solution: hasSolution ? { n: p.n } : null,
-              active: { row: 0, column: 0 },
+              active: [1, 1],
               provisional_cages: [],
             }
           : null;
@@ -93,27 +94,22 @@ export async function installTauriStubs(
               return Promise.resolve(null);
             }
             if (cmd === 'remove_cage_at') {
+              // polyomino arg is [[row,col],...] 1-indexed tuples.
               const typedArgs = args as
-                | { polyomino?: { row: number; column: number }[] }
+                | { polyomino?: [number, number][] }
                 | undefined;
               const removeCells = typedArgs?.polyomino ?? [];
               const currentPuzzle = puzzle as BareP;
               if (!currentPuzzle) return Promise.resolve(null);
               const cages = (currentPuzzle.cages ?? []).filter(
                 (cage: unknown) => {
-                  const c = cage as {
-                    polyomino?: { row: number; column: number }[];
-                  };
+                  const c = cage as { polyomino?: [number, number][] };
                   const cageSet = new Set(
-                    (c.polyomino ?? []).map(
-                      ({ row, column }) => `${row},${column}`,
-                    ),
+                    (c.polyomino ?? []).map(([r, col]) => `${r},${col}`),
                   );
                   return !(
                     removeCells.length === cageSet.size &&
-                    removeCells.every(({ row, column }) =>
-                      cageSet.has(`${row},${column}`),
-                    )
+                    removeCells.every(([r, col]) => cageSet.has(`${r},${col}`))
                   );
                 },
               );
@@ -121,10 +117,11 @@ export async function installTauriStubs(
               return Promise.resolve(wrapState(puzzle as BareP));
             }
             if (cmd === 'insert_cage') {
-              // Add the cells as a new cage and return a State.
+              // polyomino arg is [[row,col],...] 1-indexed tuples.
+              // operator is a string enum variant; target is a number.
               const typedArgs = args as
                 | {
-                    polyomino?: { row: number; column: number }[];
+                    polyomino?: [number, number][];
                     operator?: string;
                     target?: number | null;
                   }
@@ -148,11 +145,10 @@ export async function installTauriStubs(
                 1,
               );
               // For Given singletons, derive a cell-unique value using the latin
-              // square pattern (r+c) % n + 1 so multiple Given cages in the same
-              // row/column don't conflict.
+              // square pattern. Cells are 1-indexed so subtract 1 to get 0-indexed coords.
               const givenTarget =
                 cells.length === 1
-                  ? ((cells[0].row + cells[0].column) % n) + 1
+                  ? ((cells[0][0] - 1 + cells[0][1] - 1) % n) + 1
                   : 1;
               const defaultTarget =
                 operator === 'Given'
@@ -165,9 +161,11 @@ export async function installTauriStubs(
                         ? n - 1
                         : n; // Divide: largest valid ratio is n/1 = n
               const target = typedArgs?.target ?? defaultTarget;
+              // Cage wire format: polyomino [[r,c],...] 1-indexed, operation string, target number.
               const newCage = {
-                polyomino: cells.map(({ row, column }) => ({ row, column })),
-                operation: { operator, target },
+                polyomino: cells,
+                operation: operator,
+                target,
               };
               const cages = [...(currentPuzzle.cages ?? []), newCage];
               puzzle = { n: currentPuzzle.n, cages };
@@ -192,19 +190,23 @@ export async function installTauriStubs(
 // A 3×3 puzzle with two cages used across multiple test suites.
 // Cage 0: cells (0,0),(0,1) — Add(3)
 // Cage 1: cell  (0,2)       — Given(3)
+// Cell wire format: [row, col] 1-indexed.
+// Cage wire format: { polyomino: [[r,c],...], operation: "Op", target: N }
 export const PUZZLE_3 = {
   n: 3,
   cages: [
     {
       polyomino: [
-        { row: 0, column: 0 },
-        { row: 0, column: 1 },
+        [1, 1],
+        [1, 2],
       ],
-      operation: { operator: 'Add', target: 3 },
+      operation: 'Add',
+      target: 3,
     },
     {
-      polyomino: [{ row: 0, column: 2 }],
-      operation: { operator: 'Given', target: 3 },
+      polyomino: [[1, 3]],
+      operation: 'Given',
+      target: 3,
     },
   ],
 };

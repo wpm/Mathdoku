@@ -305,7 +305,11 @@ impl std::fmt::Display for CageOperator {
 
 impl std::fmt::Display for Operation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}{}", self.target, self.operator)
+        if self.operator == CageOperator::Given {
+            write!(f, "{}", self.target)
+        } else {
+            write!(f, "{}{}", self.operator, self.target)
+        }
     }
 }
 

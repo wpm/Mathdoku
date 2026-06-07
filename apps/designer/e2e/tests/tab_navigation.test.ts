@@ -10,14 +10,16 @@ const PUZZLE_3 = {
   cages: [
     {
       polyomino: [
-        { row: 0, column: 0 },
-        { row: 0, column: 1 },
+        [1, 1],
+        [1, 2],
       ],
-      operation: { operator: 'Add', target: 3 },
+      operation: 'Add',
+      target: 3,
     },
     {
-      polyomino: [{ row: 0, column: 2 }],
-      operation: { operator: 'Given', target: 3 },
+      polyomino: [[1, 3]],
+      operation: 'Given',
+      target: 3,
     },
   ],
 };

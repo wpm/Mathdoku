@@ -21,8 +21,9 @@ const PUZZLE_WITH_CAGE = {
   n: 3,
   cages: [
     {
-      polyomino: [{ row: 0, column: 0 }],
-      operation: { operator: 'Given', target: 1 },
+      polyomino: [[1, 1]],
+      operation: 'Given',
+      target: 1,
     },
   ],
 };

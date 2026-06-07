@@ -60,10 +60,11 @@ test.describe('grid rendering', () => {
       cages: [
         {
           polyomino: [
-            { row: 1, column: 0 },
-            { row: 1, column: 1 },
+            [2, 1],
+            [2, 2],
           ],
-          operation: { operator: 'Subtract', target: 2 },
+          operation: 'Subtract',
+          target: 2,
         },
       ],
     };
@@ -80,10 +81,11 @@ test.describe('grid rendering', () => {
       cages: [
         {
           polyomino: [
-            { row: 1, column: 0 },
-            { row: 1, column: 1 },
+            [2, 1],
+            [2, 2],
           ],
-          operation: { operator: 'Multiply', target: 6 },
+          operation: 'Multiply',
+          target: 6,
         },
       ],
     };
@@ -100,10 +102,11 @@ test.describe('grid rendering', () => {
       cages: [
         {
           polyomino: [
-            { row: 1, column: 0 },
-            { row: 1, column: 1 },
+            [2, 1],
+            [2, 2],
           ],
-          operation: { operator: 'Divide', target: 2 },
+          operation: 'Divide',
+          target: 2,
         },
       ],
     };
@@ -120,12 +123,14 @@ test.describe('grid rendering', () => {
       n: 3,
       cages: [
         {
-          polyomino: [{ row: 0, column: 0 }],
-          operation: { operator: 'Given', target: 1 },
+          polyomino: [[1, 1]],
+          operation: 'Given',
+          target: 1,
         },
         {
-          polyomino: [{ row: 0, column: 1 }],
-          operation: { operator: 'Given', target: 2 },
+          polyomino: [[1, 2]],
+          operation: 'Given',
+          target: 2,
         },
       ],
     };
@@ -175,8 +180,9 @@ test.describe('grid rendering', () => {
       n: 3,
       cages: [
         {
-          polyomino: [{ row: 0, column: 0 }],
-          operation: { operator: 'Given', target: 2 },
+          polyomino: [[1, 1]],
+          operation: 'Given',
+          target: 2,
         },
       ],
     };
@@ -201,8 +207,9 @@ test.describe('grid rendering', () => {
       n: 3,
       cages: [
         {
-          polyomino: [{ row: 0, column: 0 }],
-          operation: { operator: 'Given', target: 2 },
+          polyomino: [[1, 1]],
+          operation: 'Given',
+          target: 2,
         },
       ],
     };

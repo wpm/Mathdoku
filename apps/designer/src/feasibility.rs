@@ -314,7 +314,7 @@ mod tests {
     /// user draws a 2×2 cage and presses Enter in the designer — the operation
     /// selector triggers this call to populate its operator/target picker.
     #[test]
-    #[ignore]
+    #[ignore = "too slow — feasible_op_targets on a 2×2 in 7×7 needs algorithmic improvement"]
     fn perf_feasible_op_targets_2x2_in_empty_7x7() {
         let puzzle = Puzzle::new(7).unwrap();
         let square = poly(&[(0, 0), (0, 1), (1, 0), (1, 1)]);

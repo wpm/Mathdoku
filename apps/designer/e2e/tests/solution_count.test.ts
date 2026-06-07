@@ -7,19 +7,22 @@ const COMPLETE_2X2 = {
   n: 2,
   cages: [
     {
-      polyomino: [{ row: 0, column: 0 }],
-      operation: { operator: 'Given', target: 1 },
+      polyomino: [[1, 1]],
+      operation: 'Given',
+      target: 1,
     },
     {
-      polyomino: [{ row: 0, column: 1 }],
-      operation: { operator: 'Given', target: 2 },
+      polyomino: [[1, 2]],
+      operation: 'Given',
+      target: 2,
     },
     {
       polyomino: [
-        { row: 1, column: 0 },
-        { row: 1, column: 1 },
+        [2, 1],
+        [2, 2],
       ],
-      operation: { operator: 'Add', target: 3 },
+      operation: 'Add',
+      target: 3,
     },
   ],
 };
@@ -29,8 +32,9 @@ const INCOMPLETE_3X3 = {
   n: 3,
   cages: [
     {
-      polyomino: [{ row: 0, column: 0 }],
-      operation: { operator: 'Given', target: 1 },
+      polyomino: [[1, 1]],
+      operation: 'Given',
+      target: 1,
     },
   ],
 };
