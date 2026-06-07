@@ -51,7 +51,7 @@ pub use fill::Fill;
 pub use generate::generate;
 pub use latin_square::generate_latin_square;
 pub use polyomino::{Cell, Polyomino};
-pub use puzzle::{CageOperator, Grid, Puzzle, operators_for};
+pub use puzzle::{CageOperator, Puzzle, operators_for};
 
 /// A cell value in the range `1..=9`.
 pub type N = u8;

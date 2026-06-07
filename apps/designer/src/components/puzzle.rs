@@ -67,18 +67,18 @@ pub fn Puzzle(
     // cages so each cell shows the values still reachable given both the
     // solution and the cages. In Without-Solution mode, use the puzzle's own
     // propagated grid.
-    let grid = state.current().unwrap_or_else(|_| state.puzzle.grid());
+    let grid = state.current().unwrap_or_else(|_| state.puzzle.clone());
     let mut get_values = vec![vec![vec![]; n]; n];
     let mut solution_values = vec![vec![None::<mathdoku::N>; n]; n];
     for (r, row) in get_values.iter_mut().enumerate() {
         for (c, slot) in row.iter_mut().enumerate() {
             let cell_ref = Cell::new(r, c);
-            if let Ok(vals) = grid.get_values(cell_ref) {
+            if let Ok(vals) = grid.get(cell_ref) {
                 *slot = vals.values();
             }
             // Without-Solution mode has no solution values to overlay.
             if let Some(solution) = &state.solution
-                && let Ok(sv) = solution.get_values(cell_ref)
+                && let Ok(sv) = solution.get(cell_ref)
             {
                 solution_values[r][c] = sv.values().first().copied();
             }
@@ -87,7 +87,7 @@ pub fn Puzzle(
 
     let partial_solution = PartialSolution::new(
         state.puzzle.clone(),
-        state.current().unwrap_or_else(|_| state.puzzle.grid()),
+        state.current().unwrap_or_else(|_| state.puzzle.clone()),
     );
 
     let grid_size = cell * n as f64;

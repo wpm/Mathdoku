@@ -446,61 +446,17 @@ impl<'de> Deserialize<'de> for Puzzle {
     }
 }
 
-// ---- Grid: a read-only view of a Puzzle's cell fills ----
-
-/// A snapshot of cell candidate fills, used to represent the current constrained state
-/// or a fully-solved Latin square (where every cell's fill is a singleton).
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Grid(Puzzle);
-
-impl PartialEq for Grid {
-    fn eq(&self, other: &Self) -> bool {
-        let n = self.0.n();
-        if n != other.0.n() {
-            return false;
-        }
-        (0..n).all(|r| {
-            (0..n).all(|c| {
-                let cell = Cell::new(r, c);
-                self.0.get(cell).ok() == other.0.get(cell).ok()
-            })
-        })
-    }
-}
-
-impl Eq for Grid {}
-
-impl Hash for Grid {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        let n = self.0.n();
-        n.hash(state);
-        for r in 0..n {
-            for c in 0..n {
-                let cell = Cell::new(r, c);
-                self.0.get(cell).ok().hash(state);
-            }
-        }
-    }
-}
-
-impl Grid {
-    /// Creates an empty `n×n` grid with full candidate fills.
+impl Puzzle {
+    /// Creates a puzzle with singleton fills from a Latin square.
     ///
-    /// # Errors
-    /// Returns an error if `n` is not in `1..=9`.
-    pub fn new(n: usize) -> Result<Self, Error> {
-        Ok(Self(Puzzle::new(n)?))
-    }
-
-    /// Creates a grid with singleton fills from a Latin square.
-    ///
-    /// Each cell in `square[r][c]` (0-indexed) is inserted as a `Given` cage.
+    /// Each cell in `square[r][c]` (0-indexed) is inserted as a `Given` cage,
+    /// producing a fully-constrained puzzle where every cell's fill is a singleton.
     ///
     /// # Errors
     /// Returns an error if `n` is invalid, any cell value is out of range, or
-    /// the values do not form a valid Latin square (duplicate values in a row or column).
+    /// the values do not form a valid Latin square (duplicate in a row or column).
     pub fn from_latin_square(n: usize, square: &[Vec<N>]) -> Result<Self, Error> {
-        let mut puzzle = Puzzle::new(n)?;
+        let mut puzzle = Self::new(n)?;
         for (r, row) in square.iter().enumerate() {
             for (c, &v) in row.iter().enumerate() {
                 let cell = Cell::new(r, c);
@@ -510,68 +466,7 @@ impl Grid {
                     .ok_or(Error::EmptyFills)?;
             }
         }
-        Ok(Self(puzzle))
-    }
-
-    /// Returns a new `Grid` whose per-cell fills are the intersection of this
-    /// grid's fills and `puzzle`'s propagated fills.
-    ///
-    /// Use this in With-Solution mode to show which values are still reachable
-    /// given both the fixed Latin square and the design cages: start from a
-    /// `Grid::from_latin_square` and pass the in-progress `Puzzle`.
-    ///
-    /// Since the solution grid always has singleton fills (one value per cell),
-    /// the intersection with the puzzle's fill is either that same singleton (if
-    /// the puzzle still allows it) or empty (infeasible). The result is built by
-    /// inserting Given cages for each cell's intersected singleton value.
-    ///
-    /// # Errors
-    /// Returns an error if `puzzle.n() != self.n()` or if the intersection is
-    /// infeasible (a cell's value is ruled out by the puzzle's constraints).
-    pub fn constrain(&self, puzzle: &Puzzle) -> Result<Self, Error> {
-        let n = self.n();
-        if puzzle.n() != n {
-            return Err(Error::InvalidGridSize(puzzle.n()));
-        }
-        let puzzle_grid = puzzle.grid();
-        let mut p = Puzzle::new(n)?;
-        for r in 0..n {
-            for c in 0..n {
-                let cell = Cell::new(r, c);
-                let solution_fill = self.0.get(cell)?;
-                let puzzle_fill = puzzle_grid.0.get(cell)?;
-                let intersected = solution_fill & puzzle_fill;
-                if let Some(&v) = intersected.values().first() {
-                    let poly = Polyomino::from([cell])?;
-                    if let Some(next) = p.insert(&poly, CageOperator::Given, T::from(v))? {
-                        p = next;
-                    }
-                }
-            }
-        }
-        Ok(Self(p))
-    }
-
-    /// Returns the candidate fill for `cell` (0-indexed).
-    ///
-    /// # Errors
-    /// Returns an error if `cell` is not in the grid.
-    pub fn get_values(&self, cell: Cell) -> Result<Fill, Error> {
-        self.0.get(cell)
-    }
-
-    /// Returns the grid size `n`.
-    #[must_use]
-    pub const fn n(&self) -> usize {
-        self.0.n()
-    }
-}
-
-impl Puzzle {
-    /// Returns the current cell-fill state as a [`Grid`].
-    #[must_use]
-    pub fn grid(&self) -> Grid {
-        Grid(self.clone())
+        Ok(puzzle)
     }
 
     /// Inserts a cage for `polyomino` with `op` and `target`.

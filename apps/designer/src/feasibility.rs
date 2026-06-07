@@ -2,7 +2,7 @@
 //!
 //! In Without-Solution mode every operator and target the author picks must
 //! leave at least one global completion of the puzzle. These queries reuse the
-//! existing CSP/MDD solver ([`Grid::solutions`]) rather than introducing a
+//! existing CSP/MDD solver ([`Puzzle::solutions`]) rather than introducing a
 //! parallel engine, with an early exit at the first completion.
 //!
 //! [`feasible_op_targets`] enumerates the globally-feasible `(operator, target)`

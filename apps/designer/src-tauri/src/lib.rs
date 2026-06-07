@@ -256,7 +256,7 @@ mod tests {
     use serde::Serialize;
     use serde_json::{json, to_string, to_string_pretty};
 
-    use mathdoku::Grid;
+    use mathdoku::Puzzle;
 
     use super::*;
     use commands::{load_puzzle, recent_path, save_puzzle};
@@ -452,7 +452,7 @@ mod tests {
             .unwrap()
             .to_string();
         let puzzle = Puzzle::new(4).unwrap();
-        let solution = Grid::new(4).unwrap();
+        let solution = Puzzle::new(4).unwrap();
         let envelope = SaveEnvelope {
             version: SAVE_VERSION,
             puzzle,

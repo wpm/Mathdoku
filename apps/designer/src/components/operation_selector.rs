@@ -70,9 +70,7 @@ pub fn OperationSelector() -> impl IntoView {
                     .iter()
                     .map(|&cell| {
                         st.solution.as_ref().and_then(|g| {
-                            g.get_values(cell)
-                                .ok()
-                                .and_then(|f| f.values().first().copied())
+                            g.get(cell).ok().and_then(|f| f.values().first().copied())
                         })
                     })
                     .collect()
@@ -591,7 +589,7 @@ pub fn handle_key(
 mod tests {
     use super::{compute_target_from_values, key_to_operator};
     use crate::partial_solution::PartialSolution;
-    use mathdoku::{Cell, Grid, Operator, Polyomino, Puzzle};
+    use mathdoku::{Cell, Operator, Polyomino, Puzzle};
 
     fn poly(positions: &[(usize, usize)]) -> Polyomino {
         let cells: Vec<Cell> = positions.iter().map(|&(r, c)| Cell::new(r, c)).collect();
@@ -606,7 +604,7 @@ mod tests {
     /// ```
     fn pinned_3x3() -> PartialSolution {
         let square: Vec<Vec<mathdoku::N>> = vec![vec![1, 2, 3], vec![2, 3, 1], vec![3, 1, 2]];
-        let grid = Grid::from_latin_square(3, &square).unwrap();
+        let grid = Puzzle::from_latin_square(3, &square).unwrap();
         PartialSolution::new(Puzzle::new(3).unwrap(), grid)
     }
 
@@ -671,7 +669,7 @@ mod tests {
             vec![5, 3, 4, 2, 6, 1],
             vec![6, 4, 2, 5, 1, 3],
         ];
-        let grid = Grid::from_latin_square(6, &square).unwrap();
+        let grid = Puzzle::from_latin_square(6, &square).unwrap();
         let ps = PartialSolution::new(Puzzle::new(6).unwrap(), grid);
         // (0,0)=2, (0,1)=6 → 6/2 = 3
         assert_eq!(
@@ -712,7 +710,7 @@ mod tests {
     #[test]
     fn compute_target_none_when_values_not_singleton() {
         // Unconstrained grid: every cell's values are {1,2,3}, not a singleton.
-        let ps = PartialSolution::new(Puzzle::new(3).unwrap(), Grid::new(3).unwrap());
+        let ps = PartialSolution::new(Puzzle::new(3).unwrap(), Puzzle::new(3).unwrap());
         assert_eq!(compute_target(&poly(&[(0, 0)]), Operator::Given, &ps), None);
     }
 
