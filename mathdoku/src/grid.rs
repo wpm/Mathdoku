@@ -196,6 +196,22 @@ mod tests {
     }
 
     #[test]
+    fn get_returns_full_fill_for_new_grid() {
+        let g = Grid::new(3).unwrap();
+        assert_eq!(g.get(Cell(2, 3)).unwrap(), Fill::all(3));
+    }
+
+    #[test]
+    fn set_updates_one_cell_leaving_others_unchanged() {
+        let g = Grid::new(3).unwrap();
+        let new_fill = Fill::from(&[1, 2]);
+        let g2 = g.set(Cell(1, 2), new_fill);
+        assert_eq!(g2.get(Cell(1, 2)).unwrap(), new_fill);
+        assert_eq!(g2.get(Cell(1, 1)).unwrap(), Fill::all(3));
+        assert_eq!(g2.get(Cell(2, 2)).unwrap(), Fill::all(3));
+    }
+
+    #[test]
     fn all_different_propagate_full_values_unchanged() {
         let g = Grid::new(3).unwrap();
         let (new_g, changed) = AllDifferent::row(3, 1).propagate(&g).unwrap();
