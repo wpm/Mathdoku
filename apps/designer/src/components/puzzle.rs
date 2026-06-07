@@ -39,6 +39,11 @@ pub fn Puzzle(
     undo_stack: RwSignal<Vec<State>>,
     redo_stack: RwSignal<Vec<State>>,
     pending_commit: RwSignal<Option<PendingCommit>>,
+    /// If `Some(poly)` on mount, immediately open the operation selector for
+    /// that polyomino and clear the signal. Set by `demote_cage` so the
+    /// newly-mounted Puzzle opens its own selector rather than calling back
+    /// into the disposed old Puzzle's scope.
+    pending_selector: RwSignal<Option<mathdoku::Polyomino>>,
     on_puzzle_change: Callback<State>,
     on_state_change: Callback<State>,
     on_error: Callback<String>,
@@ -203,6 +208,16 @@ pub fn Puzzle(
             picked_operator,
         }));
     });
+
+    // If a demote was just performed, open the selector for the demoted cage.
+    // `pending_selector` is set by `demote_cage` after the state update that
+    // causes this Puzzle to mount; consuming it here (in this new Puzzle's
+    // scope) avoids the stale-callback bug where the old Puzzle's `open_selector`
+    // would be called from a disposed reactive scope.
+    if let Some(poly) = pending_selector.get_untracked() {
+        pending_selector.set(None);
+        open_selector.run(poly);
+    }
 
     // Helper: if the active cell is in a provisional cage, remove that cage.
     let remove_provisional = move |st: &State, active_cell: Cell| {
@@ -417,7 +432,7 @@ pub fn Puzzle(
                             redo_stack,
                             designer_state,
                             on_puzzle_change,
-                            open_selector,
+                            pending_selector,
                             on_error,
                         );
                     }

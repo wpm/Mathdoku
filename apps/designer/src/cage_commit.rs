@@ -107,18 +107,20 @@ pub fn delete_cage(
 }
 
 /// Demotes a committed cage back to a provisional cage via the `remove_cage_at` Tauri command,
-/// then opens the operation selector for it.
+/// then signals the new Puzzle instance to open the operation selector for it.
 ///
 /// On success, pushes the pre-demote state onto `undo_stack`, clears `redo_stack`, adds the
-/// cage's polyomino to `provisional_cages`, and calls `on_open_selector` with the polyomino
-/// so the caller can show the operation selector. On IPC error, calls `on_error`.
+/// cage's polyomino to `provisional_cages`, and writes the polyomino into `pending_selector`
+/// so the newly-mounted Puzzle can open its own selector for it. The signal must be app-level
+/// (stable across Puzzle re-mounts); a Callback from the old Puzzle's scope would be disposed
+/// before it could fire. On IPC error, calls `on_error`.
 pub fn demote_cage(
     poly: Polyomino,
     undo_stack: RwSignal<Vec<State>>,
     redo_stack: RwSignal<Vec<State>>,
     designer_state: RwSignal<State>,
     on_puzzle_change: Callback<State>,
-    on_open_selector: Callback<Polyomino>,
+    pending_selector: RwSignal<Option<Polyomino>>,
     on_error: Callback<String>,
 ) {
     spawn_local(async move {
@@ -139,6 +141,6 @@ pub fn demote_cage(
             designer_state,
             on_puzzle_change,
         );
-        on_open_selector.run(poly);
+        pending_selector.set(Some(poly));
     });
 }

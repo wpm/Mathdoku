@@ -353,6 +353,23 @@ test.describe('Escape demotes committed cage', () => {
     await expect(provisionalLines(page)).toHaveCount(0);
     await expect(accentRect(page)).toHaveCount(1);
   });
+
+  test('selecting operator after demote commits the cage', async ({ page }) => {
+    await setup(page);
+    await page.keyboard.press(SHIFT_ARROW_RIGHT); // draw {(0,0),(0,1)}
+    await page.keyboard.press(ENTER);
+    await page.keyboard.press('+'); // commit as Add cage
+
+    await page.keyboard.press(ESCAPE); // demote back to provisional + open selector
+
+    // Select an operator a second time — this must commit the cage, not leave it provisional.
+    await page.keyboard.press('+');
+
+    await expect(provisionalLines(page)).toHaveCount(0);
+    await expect(page.locator('.grid-svg text[font-weight="700"]')).toHaveCount(
+      1,
+    );
+  });
 });
 
 test.describe('Delete removes cages', () => {
