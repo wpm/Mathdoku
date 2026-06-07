@@ -2,11 +2,11 @@
 //!
 //! Only commutative (add, multiply) constraints are supported. For non-commutative
 //! constraints (subtract, divide), use `Table` instead.
-use crate::mdk::Error::InvalidCellCageIndex;
-use crate::mdk::fill::Fill;
-use crate::mdk::memo::{Memo, fills_from_tuples};
-use crate::mdk::operator::CommutativeOperator;
-use crate::mdk::{Error, N, T};
+use crate::Error::InvalidCellCageIndex;
+use crate::fill::Fill;
+use crate::memo::{Memo, fills_from_tuples};
+use crate::operator::CommutativeOperator;
+use crate::{Error, N, T};
 use log::debug;
 use std::collections::{HashMap, HashSet};
 
@@ -422,8 +422,8 @@ impl std::fmt::Display for Node {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mdk::Error::EmptyFills;
-    use crate::mdk::operator::CommutativeOperator::{Add, Multiply};
+    use crate::Error::EmptyFills;
+    use crate::operator::CommutativeOperator::{Add, Multiply};
 
     // ---- get ----
 

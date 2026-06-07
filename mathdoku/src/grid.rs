@@ -1,9 +1,9 @@
 //! Grid and cell types internal to the mdk implementation.
-use crate::mdk::Error;
-use crate::mdk::Error::{InvalidGridSize, MissingCell};
-use crate::mdk::csp::{Constraint, State};
-use crate::mdk::fill::Fill;
-use crate::mdk::polyomino::Cell;
+use crate::Error;
+use crate::Error::{InvalidGridSize, MissingCell};
+use crate::csp::{Constraint, State};
+use crate::fill::Fill;
+use crate::polyomino::Cell;
 use serde::de::Error as DeError;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::BTreeMap;
@@ -105,7 +105,7 @@ impl Constraint<Grid, Cell, Fill, Error> for AllDifferent {
             .iter()
             .map(|&c| state.get(c))
             .collect::<Result<_, _>>()?;
-        let new_fills = crate::mdk::regin::regin_gac(&old_fills);
+        let new_fills = crate::regin::regin_gac(&old_fills);
         Ok(state.apply_fills(cells, &old_fills, new_fills))
     }
 
@@ -182,7 +182,7 @@ impl Display for Grid {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mdk::fill::Fill;
+    use crate::fill::Fill;
     use serde_json::{Value, from_str, json, to_string};
     fn assert_all_full(g: &Grid, n: usize) {
         for r in 1..=n {

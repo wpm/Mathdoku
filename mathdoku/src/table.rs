@@ -1,10 +1,10 @@
 //! Explicit-tuple implementation of [`Memo`].
-use crate::mdk::Error::InvalidCellCageIndex;
-use crate::mdk::fill::Fill;
-use crate::mdk::memo::{Memo, fills_from_tuples};
-use crate::mdk::operator::{ArithmeticConstraint, CommutativeOperator, NonCommutativeOperator};
-use crate::mdk::tuples::Tuples;
-use crate::mdk::{Error, N, T};
+use crate::Error::InvalidCellCageIndex;
+use crate::fill::Fill;
+use crate::memo::{Memo, fills_from_tuples};
+use crate::operator::{ArithmeticConstraint, CommutativeOperator, NonCommutativeOperator};
+use crate::tuples::Tuples;
+use crate::{Error, N, T};
 
 /// A cage constraint stored as an explicit list of valid value tuples.
 ///
@@ -106,9 +106,9 @@ impl Memo for Table {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mdk::Error::EmptyFills;
-    use crate::mdk::operator::CommutativeOperator::{Add, Multiply};
-    use crate::mdk::operator::NonCommutativeOperator::{Divide, Subtract};
+    use crate::Error::EmptyFills;
+    use crate::operator::CommutativeOperator::{Add, Multiply};
+    use crate::operator::NonCommutativeOperator::{Divide, Subtract};
 
     // ---- get ----
 

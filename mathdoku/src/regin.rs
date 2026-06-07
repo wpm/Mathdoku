@@ -34,8 +34,8 @@
 
 #![allow(clippy::similar_names)] // var/val, ip/jp/kp are standard idioms in matching/SCC algorithms
 
-use crate::mdk::N;
-use crate::mdk::fill::Fill;
+use crate::N;
+use crate::fill::Fill;
 use std::collections::HashMap;
 
 /// Full Régin GAC for all-different.

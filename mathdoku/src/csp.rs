@@ -106,7 +106,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::{Constraint, State, generalized_arc_consistency};
-    use crate::mdk::csp::tests::Constraints::{Equal, Sum};
+    use crate::csp::tests::Constraints::{Equal, Sum};
     use std::collections::{HashMap, HashSet};
 
     #[test]

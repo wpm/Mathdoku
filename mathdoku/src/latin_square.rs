@@ -10,7 +10,7 @@
     clippy::cast_possible_truncation, // v+1 <= n <= 9 always fits in N (u8)
 )]
 
-use crate::mdk::N;
+use crate::N;
 use rand::{Rng, RngExt};
 
 /// Returns a uniformly random index `x` in `0..n` such that `line(x) == 1`.

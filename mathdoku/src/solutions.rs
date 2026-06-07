@@ -1,9 +1,9 @@
 //! The [`Solutions`] iterator: MAC search over a [`Puzzle`]'s constraint graph.
 
-use crate::mdk::Error;
-use crate::mdk::fill::Fill;
-use crate::mdk::polyomino::Cell;
-use crate::mdk::puzzle::Puzzle;
+use crate::Error;
+use crate::fill::Fill;
+use crate::polyomino::Cell;
+use crate::puzzle::Puzzle;
 
 /// An iterator over all solutions for a [`Puzzle`].
 ///

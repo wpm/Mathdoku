@@ -1,5 +1,5 @@
 //! Arithmetic operators and cage operations for Mathdoku constraints.
-use crate::mdk::{N, T};
+use crate::{N, T};
 use std::cmp::{max, min};
 use std::ops::Div;
 

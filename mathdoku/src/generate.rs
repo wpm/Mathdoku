@@ -8,9 +8,9 @@ use std::collections::HashSet;
 use rand::{Rng, RngExt};
 
 use crate::latin_square::generate_latin_square;
-use crate::mdk::polyomino::{Cell, Polyomino};
-use crate::mdk::puzzle::{CageOperator, Puzzle};
-use crate::mdk::{Error, N, T};
+use crate::polyomino::{Cell, Polyomino};
+use crate::puzzle::{CageOperator, Puzzle};
+use crate::{Error, N, T};
 
 /// A Poisson cage-size distribution truncated to `[1, n²]` by rejection sampling.
 ///

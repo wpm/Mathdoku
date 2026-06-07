@@ -1,6 +1,6 @@
 //! Candidate value sets.
-use crate::mdk::Error;
-use crate::mdk::N;
+use crate::Error;
+use crate::N;
 use serde::de::Error as DeError;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt::{Display, Formatter};
@@ -101,7 +101,7 @@ impl BitAnd for Fill {
     }
 }
 
-impl crate::mdk::csp::Domain for Fill {
+impl crate::csp::Domain for Fill {
     fn is_empty(&self) -> bool {
         Self::is_empty(*self)
     }

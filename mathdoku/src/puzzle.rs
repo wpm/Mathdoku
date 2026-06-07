@@ -1,16 +1,16 @@
 //! [`Puzzle`]: the top-level constraint-solving interface.
-use crate::mdk::Error::MissingCell;
-use crate::mdk::cage::Cage;
-pub use crate::mdk::cage::CageOperator;
-use crate::mdk::csp::{Constraint, generalized_arc_consistency};
-use crate::mdk::fill::Fill;
-use crate::mdk::grid::{AllDifferent, Grid as InternalGrid};
-use crate::mdk::mdd::Mdd;
-use crate::mdk::memo::Memo;
-use crate::mdk::operator::{CommutativeOperator, NonCommutativeOperator};
-use crate::mdk::polyomino::{Cell, Polyomino};
-use crate::mdk::table::Table;
-use crate::mdk::{Error, N, T};
+use crate::Error::MissingCell;
+use crate::cage::Cage;
+pub use crate::cage::CageOperator;
+use crate::csp::{Constraint, generalized_arc_consistency};
+use crate::fill::Fill;
+use crate::grid::{AllDifferent, Grid as InternalGrid};
+use crate::mdd::Mdd;
+use crate::memo::Memo;
+use crate::operator::{CommutativeOperator, NonCommutativeOperator};
+use crate::polyomino::{Cell, Polyomino};
+use crate::table::Table;
+use crate::{Error, N, T};
 use serde::de::Error as DeError;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::{HashMap, HashSet};
@@ -541,7 +541,7 @@ impl Puzzle {
     ///
     /// # Errors
     /// Returns an error if the polyomino is out of bounds or overlaps an existing cage.
-    pub fn insert_cage(&self, cage: &crate::mdk::cage::Cage) -> Result<Option<Self>, Error> {
+    pub fn insert_cage(&self, cage: &crate::cage::Cage) -> Result<Option<Self>, Error> {
         let (op, target) = cage.op_target();
         self.insert(&cage.polyomino, op, target)
     }
@@ -552,7 +552,7 @@ impl Puzzle {
     ///
     /// # Errors
     /// Returns an error if the cage is not in the puzzle.
-    pub fn remove_cage(&self, cage: &crate::mdk::cage::Cage) -> Result<Option<Self>, Error> {
+    pub fn remove_cage(&self, cage: &crate::cage::Cage) -> Result<Option<Self>, Error> {
         self.remove(cage)
     }
 }
@@ -659,9 +659,9 @@ fn target_is_feasible(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mdk::operator::CommutativeOperator::Add;
-    use crate::mdk::operator::NonCommutativeOperator::Subtract;
-    use crate::mdk::polyomino::Polyomino;
+    use crate::operator::CommutativeOperator::Add;
+    use crate::operator::NonCommutativeOperator::Subtract;
+    use crate::polyomino::Polyomino;
 
     impl Puzzle {
         fn from_parts(grid: InternalGrid, cage_list: Vec<Cage>) -> Self {

@@ -1,4 +1,4 @@
-use crate::mdk::Error;
+use crate::Error;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::fmt;
@@ -177,8 +177,8 @@ impl IntoIterator for Polyomino {
 
 #[cfg(test)]
 mod tests {
-    use crate::mdk::Error;
-    use crate::mdk::polyomino::{Cell, Polyomino};
+    use crate::Error;
+    use crate::polyomino::{Cell, Polyomino};
 
     #[test]
     fn cell_display_formats_as_row_column() {
