@@ -604,6 +604,35 @@ mod tests {
     use crate::polyomino::Polyomino;
 
     #[test]
+    fn add_cage_arm_cells_exclude_values_requiring_collinear_duplicates() {
+        // L-shape in a 7×7: corner=(1,1), arm1=(1,2), arm2=(2,1), target=6.
+        //
+        // For arm1 (1,2) to hold 4, the remaining two cells must sum to 2,
+        // which forces corner=1 and arm2=1. But corner and arm2 share column 1,
+        // violating AllDifferent. Likewise for arm2 (2,1) holding 4.
+        // Only the corner (1,1) can hold 4, via the tuple (4,1,1) where the
+        // two 1s sit at non-collinear arm cells.
+        let p = Puzzle::new(4).unwrap();
+        let poly = Polyomino::from([Cell(1, 1), Cell(1, 2), Cell(2, 1)]).unwrap();
+        let p = p.insert(&poly, CageOperator::Add, 6).unwrap().unwrap();
+        let corner = p.get(Cell(1, 1)).unwrap();
+        let arm1   = p.get(Cell(1, 2)).unwrap();
+        let arm2   = p.get(Cell(2, 1)).unwrap();
+        assert!(
+            corner.contains(4),
+            "corner (1,1) should admit 4 via tuple (4,1,1); got {corner}"
+        );
+        assert!(
+            !arm1.contains(4),
+            "arm (1,2) cannot be 4: forces two collinear 1s at (1,1) and (2,1); got {arm1}"
+        );
+        assert!(
+            !arm2.contains(4),
+            "arm (2,1) cannot be 4: forces two collinear 1s at (1,1) and (1,2); got {arm2}"
+        );
+    }
+
+    #[test]
     fn possible_targets_given_singleton() {
         let p = Puzzle::from_parts(InternalGrid::new(4).unwrap(), vec![]);
         let poly = Polyomino::from([Cell(1, 1)]).unwrap();

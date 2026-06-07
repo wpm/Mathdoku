@@ -36,6 +36,7 @@
 //!
 //! A given cage is a singleton cell whose value is fixed by the puzzle author.
 //! There is no arithmetic constraint and no memo: the value is stored directly.
+
 use crate::csp::Constraint;
 use crate::fill::Fill;
 use crate::grid::Grid;
@@ -45,6 +46,7 @@ use crate::operator::{CommutativeOperator, NonCommutativeOperator};
 use crate::polyomino::{Cell, Polyomino};
 use crate::table::Table;
 use crate::{Error, Error::EmptyFills, N, T};
+use std::fmt::{Display, Formatter};
 
 /// The arithmetic operation and target for a cage.
 #[derive(
@@ -144,7 +146,7 @@ impl Cage {
             }
         };
         result.map_err(|e| match e {
-            Error::EmptyFills => Error::InfeasibleCage(polyomino, u64::from(target)),
+            EmptyFills => Error::InfeasibleCage(polyomino, u64::from(target)),
             other => other,
         })
     }
@@ -276,6 +278,21 @@ impl Cage {
     }
 }
 
+impl Display for Cage {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Cage({} {})",
+            self.operation(),
+            self.cells()
+                .iter()
+                .map(|c| c.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    }
+}
+
 /// The arithmetic operation for a cage: operator and target value.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Operation {
@@ -293,8 +310,8 @@ impl Operation {
     }
 }
 
-impl std::fmt::Display for CageOperator {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Display for CageOperator {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Add => write!(f, "+"),
             Self::Subtract => write!(f, "−"),
@@ -305,8 +322,8 @@ impl std::fmt::Display for CageOperator {
     }
 }
 
-impl std::fmt::Display for Operation {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Display for Operation {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         if self.operator == CageOperator::Given {
             write!(f, "{}", self.target)
         } else {

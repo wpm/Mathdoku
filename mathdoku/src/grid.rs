@@ -89,15 +89,27 @@ pub struct AllDifferent {
 impl AllDifferent {
     /// Creates an all-different constraint over row `row` of an `n`×`n` grid.
     pub fn row(n: usize, row: usize) -> Self {
-        Self {
-            cells: (1..=n).map(|col| Cell(row, col)).collect(),
-        }
+        let cells: Vec<Cell> = (1..=n).map(|col| Cell(row, col)).collect();
+        debug_assert!(cells.len() != 1, "AllDifferent on a single cell is trivial");
+        Self { cells }
     }
 
     /// Creates an all-different constraint over column `col` of an `n`×`n` grid.
     pub fn column(n: usize, col: usize) -> Self {
-        Self {
-            cells: (1..=n).map(|row| Cell(row, col)).collect(),
+        let cells: Vec<Cell> = (1..=n).map(|row| Cell(row, col)).collect();
+        debug_assert!(cells.len() != 1, "AllDifferent on a single cell is trivial");
+        Self { cells }
+    }
+}
+
+impl Display for AllDifferent {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self.cells.first() {
+            None => write!(f, "AllDifferent (empty)"),
+            Some(&Cell(r, _)) if self.cells.iter().all(|&Cell(row, _)| row == r) => {
+                write!(f, "Row {r} all different")
+            }
+            Some(&Cell(_, c)) => write!(f, "Column {c} all different"),
         }
     }
 }
@@ -117,6 +129,7 @@ impl Constraint<Grid, Cell, Fill, Error> for AllDifferent {
         self.cells.contains(&variable)
     }
 }
+
 
 // Serde wire format: flat struct with an n×n `fills` array of cell fill sets.
 // `fills` is optional on deserialization; absent means full fill sets for all cells.
@@ -193,6 +206,16 @@ mod tests {
 
     fn grid_with_modified_cell(n: usize, cell: Cell, fill: Fill) -> Grid {
         Grid::new(n).unwrap().set(cell, fill)
+    }
+
+    #[test]
+    fn all_different_row_display() {
+        assert_eq!(AllDifferent::row(4, 3).to_string(), "Row 3 all different");
+    }
+
+    #[test]
+    fn all_different_column_display() {
+        assert_eq!(AllDifferent::column(4, 2).to_string(), "Column 2 all different");
     }
 
     #[test]
