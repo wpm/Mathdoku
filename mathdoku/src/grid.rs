@@ -6,12 +6,14 @@ use crate::fill::Fill;
 use crate::polyomino::Cell;
 use serde::de::Error as DeError;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::collections::BTreeMap;
 use std::fmt::{Display, Formatter};
 
 /// An n×n grid mapping each cell to its current candidate fill.
+///
+/// Cells are 1-based (`Cell(r, c)` with `1 ≤ r, c ≤ n`); internally stored
+/// as a `Vec<Vec<Fill>>` indexed by `[r-1][c-1]`.
 #[derive(Clone, Debug)]
-pub struct Grid(usize, BTreeMap<Cell, Fill>);
+pub struct Grid(usize, Vec<Vec<Fill>>);
 
 impl Grid {
     /// Creates a new grid of size `n` with every cell initialised to the full
@@ -20,20 +22,21 @@ impl Grid {
         if !(1..=9).contains(&n) {
             return Err(InvalidGridSize(n));
         }
-        let fills = (1..=n)
-            .flat_map(|i| (1..=n).map(move |j| Cell(i, j)))
-            .map(|cell| (cell, Fill::all(n)))
-            .collect();
-        Ok(Self(n, fills))
+        let full = Fill::all(n);
+        Ok(Self(n, vec![vec![full; n]; n]))
     }
 
     /// Returns the [`Fill`] for `cell`.
     ///
     /// # Errors
     ///
-    /// Returns [`MissingCell`] if `cell` is not in this grid.
+    /// Returns [`MissingCell`] if `cell` is out of bounds for this grid.
     pub fn get(&self, cell: Cell) -> Result<Fill, Error> {
-        self.1.get(&cell).copied().ok_or(MissingCell(cell))
+        let Cell(r, c) = cell;
+        if r < 1 || r > self.0 || c < 1 || c > self.0 {
+            return Err(MissingCell(cell));
+        }
+        Ok(self.1[r - 1][c - 1])
     }
 
     /// Returns the grid size `n`.
@@ -43,8 +46,9 @@ impl Grid {
 
     /// Returns a new grid with `cell` updated to `fill`.
     pub fn set(&self, cell: Cell, fill: Fill) -> Self {
+        let Cell(r, c) = cell;
         let mut grid = self.clone();
-        let _ = grid.1.insert(cell, fill);
+        grid.1[r - 1][c - 1] = fill;
         grid
     }
 
@@ -59,7 +63,8 @@ impl Grid {
         let mut changed = vec![];
         for ((&cell, old), new) in cells.iter().zip(old_fills).zip(new_fills) {
             if new != *old {
-                new_state = new_state.set(cell, new);
+                let Cell(r, c) = cell;
+                new_state.1[r - 1][c - 1] = new;
                 changed.push(cell);
             }
         }
@@ -69,8 +74,7 @@ impl Grid {
 
 impl State<Cell, Fill, Error> for Grid {
     fn get(&self, cell: Cell) -> Result<Fill, Error> {
-        let fill = self.1.get(&cell).ok_or(MissingCell(cell))?;
-        Ok(*fill)
+        Self::get(self, cell)
     }
 }
 
@@ -126,14 +130,8 @@ struct GridWire {
 impl Serialize for Grid {
     fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
         let full = Fill::all(self.0);
-        let is_full = self.1.values().all(|f| *f == full);
-        let fills = if is_full {
-            vec![]
-        } else {
-            (1..=self.0)
-                .map(|r| (1..=self.0).map(|c| self.1[&Cell(r, c)]).collect())
-                .collect()
-        };
+        let is_full = self.1.iter().all(|row| row.iter().all(|f| *f == full));
+        let fills = if is_full { vec![] } else { self.1.clone() };
         GridWire { n: self.0, fills }.serialize(s)
     }
 }
@@ -159,17 +157,7 @@ impl<'de> Deserialize<'de> for Grid {
                 )));
             }
         }
-        let fills = wire
-            .fills
-            .into_iter()
-            .enumerate()
-            .flat_map(|(r, row)| {
-                row.into_iter()
-                    .enumerate()
-                    .map(move |(c, f)| (Cell(r + 1, c + 1), f))
-            })
-            .collect();
-        Ok(Self(n, fills))
+        Ok(Self(n, wire.fills))
     }
 }
 
@@ -184,6 +172,7 @@ mod tests {
     use super::*;
     use crate::fill::Fill;
     use serde_json::{Value, from_str, json, to_string};
+
     fn assert_all_full(g: &Grid, n: usize) {
         for r in 1..=n {
             for c in 1..=n {
@@ -203,9 +192,7 @@ mod tests {
     }
 
     fn grid_with_modified_cell(n: usize, cell: Cell, fill: Fill) -> Grid {
-        let mut g = Grid::new(n).unwrap();
-        let _ = g.1.insert(cell, fill);
-        g
+        Grid::new(n).unwrap().set(cell, fill)
     }
 
     #[test]
