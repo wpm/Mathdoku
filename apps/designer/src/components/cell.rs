@@ -8,7 +8,7 @@
 
 use leptos::prelude::*;
 
-use crate::theme::{GREEN, INK, INK3, SANS};
+use crate::theme::{GREEN, INK, INK3, OP_INSET, SANS};
 
 /// Background rect and value digits for a single grid cell.
 #[component]
@@ -118,14 +118,15 @@ fn cell_glyphs(
             }
         }
 
-        // Small green solution-value badge in the upper-right corner.
+        // Green solution-value digit in the upper-right corner, aligned with
+        // the cage op label: same font size, same top inset (OP_INSET).
         if let Some(sv) = solution_value {
-            let corner_f = (value_f * 0.9).max(7.0);
+            let op_f = 2.0f64.mul_add(-OP_INSET, top_margin).max(7.0);
             glyphs.push((
-                x + cell - VALUE_EDGE - corner_f * 0.35,
-                y + top_margin + corner_f * 0.6,
+                x + cell - VALUE_EDGE - op_f * 0.35,
+                y + OP_INSET + op_f * 0.5,
                 sv.to_string(),
-                corner_f,
+                op_f,
                 GREEN,
                 "600",
             ));
@@ -269,6 +270,7 @@ mod tests {
 
     #[test]
     fn glyphs_solution_value_badge_in_upper_right_for_multi_value() {
+        // top_margin=16.0, OP_INSET=4.0 → op_f = 16.0 - 8.0 = 8.0
         let glyphs = cell_glyphs(0.0, 0.0, 60.0, &[1, 2, 3], 16.0, 4, Some(2));
         // Candidates are all rendered uniformly in INK3.
         let candidate_glyphs: Vec<_> = glyphs.iter().filter(|g| g.4 == INK3).collect();
@@ -279,9 +281,10 @@ mod tests {
         assert_eq!(badge.2, "2");
         assert_eq!(badge.4, GREEN);
         assert_eq!(badge.5, "600");
-        // Badge is in the right half of the cell and near the top.
+        // Badge is in the right half of the cell.
         assert!(badge.0 > 30.0, "badge should be in the right half");
-        assert!(badge.1 < 30.0, "badge should be near the top");
+        // Badge centre is at y + OP_INSET + op_f/2 = 0 + 4 + 4 = 8 — well above top_margin (16).
+        assert!(badge.1 < 16.0, "badge should be above the candidate zone");
     }
 
     #[test]
