@@ -1,6 +1,6 @@
 # ADR-0006: Commutative cage memos enforce collinear distinctness
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-06-08
 **Deciders:** Bill McNeill (Mathdoku owner)
 
