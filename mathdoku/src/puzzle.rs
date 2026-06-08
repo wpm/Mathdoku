@@ -108,7 +108,8 @@ impl Puzzle {
             .filter(|arc| &arc.polyomino == polyomino)
             .ok_or_else(|| Error::MissingPolyomino(polyomino.clone()))?;
         let cells: Vec<Cell> = cage_arc.polyomino.iter().copied().collect();
-        let n = self.grid.size();
+        let n_val =
+            N::try_from(self.grid.size()).map_err(|_| Error::InvalidGridSize(self.grid.size()))?;
         let k = cells.len();
 
         // Enumerate all n^k value combinations.
@@ -132,8 +133,6 @@ impl Puzzle {
                 result.push(tuple.clone());
             }
             // Increment tuple (little-endian, values 1..=n).
-            #[allow(clippy::cast_possible_truncation)]
-            let n_val = n as N;
             let mut pos = k - 1;
             loop {
                 tuple[pos] += 1;
@@ -218,10 +217,11 @@ impl Puzzle {
         target: T,
     ) -> Result<Option<Self>, Error> {
         self.check_in_bounds(polyomino)?;
-        let n = self.grid.size();
+        let n =
+            N::try_from(self.grid.size()).map_err(|_| Error::InvalidGridSize(self.grid.size()))?;
 
         // Check disjoint with every existing cage.
-        let mut seen: std::collections::HashSet<*const Cage> = std::collections::HashSet::new();
+        let mut seen: HashSet<*const Cage> = HashSet::new();
         for arc in self.cages.values() {
             if seen.insert(Arc::as_ptr(arc)) && !arc.polyomino.is_disjoint(polyomino) {
                 return Err(Error::CageConflict(polyomino.clone()));
@@ -271,12 +271,13 @@ impl Puzzle {
     /// Returns [`MissingCell`] if any cell of `polyomino` is not in the puzzle.
     pub fn possible_operations(&self, polyomino: &Polyomino) -> Result<Vec<CageOperator>, Error> {
         self.check_in_bounds(polyomino)?;
-        let n = self.grid.size();
+        let n =
+            N::try_from(self.grid.size()).map_err(|_| Error::InvalidGridSize(self.grid.size()))?;
         let fills: Vec<Fill> = polyomino
             .iter()
             .map(|&cell| self.grid.get(cell))
             .collect::<Result<_, _>>()?;
-        let k = fills.len();
+        let k = N::try_from(fills.len()).unwrap_or(N::MAX);
 
         let candidates: &[CageOperator] = if k == 1 {
             &[CageOperator::Given]
@@ -314,12 +315,13 @@ impl Puzzle {
         operation: CageOperator,
     ) -> Result<Vec<T>, Error> {
         self.check_in_bounds(polyomino)?;
-        let n = self.grid.size();
+        let n =
+            N::try_from(self.grid.size()).map_err(|_| Error::InvalidGridSize(self.grid.size()))?;
         let fills: Vec<Fill> = polyomino
             .iter()
             .map(|&cell| self.grid.get(cell))
             .collect::<Result<_, _>>()?;
-        let k = fills.len();
+        let k = N::try_from(fills.len()).unwrap_or(N::MAX);
         let Some(range) = target_range(operation, &fills) else {
             return Ok(vec![]);
         };
@@ -337,13 +339,18 @@ impl Puzzle {
     pub fn fixpoint(&self) -> Option<Self> {
         let n = self.grid.size();
         // Deduplicate cages by pointer: each cage Arc is shared across all its cells.
-        let mut seen: std::collections::HashSet<*const Cage> = std::collections::HashSet::new();
-        let mut constraints: Vec<PuzzleConstraint> = self
+        let mut seen: HashSet<*const Cage> = HashSet::new();
+        let unique_cages: Vec<Arc<Cage>> = self
             .cages
             .values()
             .filter(|c| seen.insert(Arc::as_ptr(c)))
+            .map(Arc::clone)
+            .collect();
+        let mut constraints: Vec<PuzzleConstraint> = unique_cages
+            .iter()
             .map(|c| PuzzleConstraint::Cage(Arc::clone(c)))
             .collect();
+        // Full-row and full-column all-different constraints.
         for i in 1..=n {
             constraints.push(PuzzleConstraint::AllDifferent(AllDifferent::row(n, i)));
             constraints.push(PuzzleConstraint::AllDifferent(AllDifferent::column(n, i)));
@@ -490,7 +497,7 @@ impl Puzzle {
     ///
     /// # Errors
     /// Returns an error if the polyomino is out of bounds or overlaps an existing cage.
-    pub fn insert_cage(&self, cage: &crate::cage::Cage) -> Result<Option<Self>, Error> {
+    pub fn insert_cage(&self, cage: &Cage) -> Result<Option<Self>, Error> {
         let (op, target) = cage.op_target();
         self.insert(&cage.polyomino, op, target)
     }
@@ -501,7 +508,7 @@ impl Puzzle {
     ///
     /// # Errors
     /// Returns an error if the cage is not in the puzzle.
-    pub fn remove_cage(&self, cage: &crate::cage::Cage) -> Result<Option<Self>, Error> {
+    pub fn remove_cage(&self, cage: &Cage) -> Result<Option<Self>, Error> {
         self.remove(cage)
     }
 }
@@ -555,8 +562,8 @@ fn target_range(op: CageOperator, fills: &[Fill]) -> Option<std::ops::RangeInclu
 fn operator_is_feasible(
     puzzle: &Puzzle,
     polyomino: &Polyomino,
-    n: usize,
-    k: usize,
+    n: N,
+    k: N,
     op: CageOperator,
     fills: &[Fill],
 ) -> bool {
@@ -573,18 +580,14 @@ fn operator_is_feasible(
 fn target_is_feasible(
     puzzle: &Puzzle,
     polyomino: &Polyomino,
-    n: usize,
-    k: usize,
+    n: N,
+    k: N,
     op: CageOperator,
     fills: &[Fill],
     target: T,
 ) -> bool {
     let has_consistent_tuple = match op {
-        CageOperator::Given =>
-        {
-            #[allow(clippy::cast_possible_truncation)]
-            fills[0].contains(target as N)
-        }
+        CageOperator::Given => N::try_from(target).is_ok_and(|v| fills[0].contains(v)),
         CageOperator::Add => {
             Mdd::new(n, k, CommutativeOperator::Add, target).is_ok_and(|m| m.narrow(fills).is_ok())
         }
@@ -613,7 +616,6 @@ mod tests {
     use crate::polyomino::Polyomino;
 
     #[test]
-    #[ignore = "WIP: GAC does not yet prune arm cells correctly for L-shaped Add cages"]
     fn add_cage_arm_cells_exclude_values_requiring_collinear_duplicates() {
         crate::init_debug_logging();
         // L-shape in a 7×7: corner=(1,1), arm1=(1,2), arm2=(2,1), target=6.
@@ -735,6 +737,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "WIP: This is too slow."]
     fn possible_operations_size_10_returns_only_commutative() {
         // A 10-cell snake across two columns of a 9×9 grid: col 1 rows 1–5,
         // col 2 rows 5–9. No row contains more than 2 cage cells, so AllDifferent

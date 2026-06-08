@@ -15,7 +15,7 @@ use crate::{Error, N, T};
 /// if no valid tuples exist.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Table {
-    n: usize,
+    n: N,
     constraint: ArithmeticConstraint,
     tuples: Vec<Vec<N>>,
     fills: Vec<Fill>,
@@ -28,8 +28,8 @@ impl Table {
     /// # Errors
     /// Returns [`EmptyFills`] if no tuples satisfy the constraint.
     pub fn commutative(
-        n: usize,
-        k: usize,
+        n: N,
+        k: N,
         operator: CommutativeOperator,
         target: T,
     ) -> Result<Self, Error> {
@@ -47,7 +47,7 @@ impl Table {
     /// # Errors
     /// Returns [`EmptyFills`] if no tuples satisfy the constraint.
     pub fn non_commutative(
-        n: usize,
+        n: N,
         operator: NonCommutativeOperator,
         target: T,
     ) -> Result<Self, Error> {
@@ -59,16 +59,16 @@ impl Table {
         )
     }
 
+    pub(crate) fn tuples(&self) -> &[Vec<N>] {
+        &self.tuples
+    }
+
     /// Constructs a `Table` from a pre-computed list of tuples, deriving fills.
     ///
     /// # Errors
     /// Returns [`EmptyFills`] if `tuples` is empty or any position's
     /// fill would be empty.
-    fn build(
-        n: usize,
-        constraint: ArithmeticConstraint,
-        tuples: Vec<Vec<N>>,
-    ) -> Result<Self, Error> {
+    fn build(n: N, constraint: ArithmeticConstraint, tuples: Vec<Vec<N>>) -> Result<Self, Error> {
         let fills = fills_from_tuples(&tuples)?;
         Ok(Self {
             n,

@@ -14,7 +14,7 @@ use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
-use mathdoku::{Cage, Error, Operator, Polyomino, Puzzle, Target};
+use mathdoku::{Cage, Error, N, Operator, Polyomino, Puzzle, Target};
 
 /// Returns `true` if the puzzle extended with `candidate` has at least one
 /// global completion.
@@ -44,7 +44,7 @@ pub fn feasible_op_targets(
     puzzle: &Puzzle,
     polyomino: &Polyomino,
 ) -> Result<Vec<(Operator, Target)>, Error> {
-    let n = puzzle.n();
+    let n = N::try_from(puzzle.n()).map_err(|_| Error::InvalidGridSize(puzzle.n()))?;
     let mut out = Vec::new();
     for op in puzzle.possible_operations(polyomino)? {
         for target in puzzle.possible_targets(polyomino, op)? {
@@ -129,14 +129,14 @@ mod tests {
     use super::{
         cached_feasible_op_targets, feasible_op_targets, group_by_operator, is_globally_feasible,
     };
-    use mathdoku::{Cage, Cell, Operator, Polyomino, Puzzle};
+    use mathdoku::{Cage, Cell, N, Operator, Polyomino, Puzzle};
 
     fn poly(positions: &[(usize, usize)]) -> Polyomino {
         let cells: Vec<Cell> = positions.iter().map(|&(r, c)| Cell::new(r, c)).collect();
         Polyomino::from_cells(&cells).unwrap()
     }
 
-    fn cage(n: usize, positions: &[(usize, usize)], op: Operator, target: mathdoku::T) -> Cage {
+    fn cage(n: N, positions: &[(usize, usize)], op: Operator, target: mathdoku::T) -> Cage {
         Cage::new(n, poly(positions), op, target).unwrap()
     }
 
@@ -205,7 +205,7 @@ mod tests {
         for (op, target) in feasible_op_targets(&puzzle, &p).unwrap() {
             assert!(is_globally_feasible(
                 &puzzle,
-                &Cage::new(puzzle.n(), p.clone(), op, target).unwrap()
+                &Cage::new(N::try_from(puzzle.n()).unwrap(), p.clone(), op, target).unwrap()
             ));
         }
     }

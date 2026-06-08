@@ -61,10 +61,22 @@ pub fn regin_gac(fills: &[Fill]) -> Vec<Fill> {
         .enumerate()
         .map(|(i, &v)| (v, i))
         .collect();
-    let indexed_values: Vec<Vec<usize>> = fills
+    let real_n = n;
+    // When there are more candidate values than variables (k < num_values), add
+    // virtual "not-assigned" variables — one per excess value — each able to absorb
+    // any value. This ensures a perfect matching over all values exists whenever the
+    // real variables can be matched, eliminating spurious free values that would
+    // otherwise keep every value reachable and prevent SCC-based pruning.
+    let virtual_count = num_values.saturating_sub(n);
+    let all_value_indices: Vec<usize> = (0..num_values).collect();
+    let mut indexed_values: Vec<Vec<usize>> = fills
         .iter()
         .map(|f| f.values().iter().map(|v| value_index[v]).collect())
         .collect();
+    for _ in 0..virtual_count {
+        indexed_values.push(all_value_indices.clone());
+    }
+    let n = indexed_values.len();
 
     // Maximum bipartite matching via augmenting paths.
     let mut var_match: Vec<Option<usize>> = vec![None; n];
@@ -81,10 +93,10 @@ pub fn regin_gac(fills: &[Fill]) -> Vec<Fill> {
         );
     }
 
-    // An unmatched variable means no system of distinct representatives exists:
+    // An unmatched real variable means no system of distinct representatives exists:
     // the constraint is unsatisfiable, so every fill empties.
-    if var_match.iter().any(Option::is_none) {
-        return vec![Fill::default(); n];
+    if var_match[..real_n].iter().any(Option::is_none) {
+        return vec![Fill::default(); real_n];
     }
 
     // Residual digraph. Node layout: variables 0..n, values n..n+num_values.
@@ -126,9 +138,9 @@ pub fn regin_gac(fills: &[Fill]) -> Vec<Fill> {
     }
 
     // Keep edge (var, val) iff matched, in an alternating cycle (same SCC), or on
-    // an alternating path from a free value.
-    let mut result = vec![Fill::default(); n];
-    for var in 0..n {
+    // an alternating path from a free value. Only emit results for real variables.
+    let mut result = vec![Fill::default(); real_n];
+    for var in 0..real_n {
         let matched = var_match[var];
         let surviving: Vec<N> = indexed_values[var]
             .iter()
@@ -262,6 +274,45 @@ mod tests {
     #[test]
     fn regin_keeps_free_value() {
         assert_eq!(regin_gac(&[Fill::from(&[1, 2])]), vec![Fill::from(&[1, 2])]);
+    }
+
+    // k < n tests: fewer variables than candidate values. Values that can only be
+    // assigned to a variable by forcing a duplicate elsewhere must be pruned.
+
+    #[test]
+    fn regin_two_vars_four_values_no_pruning() {
+        // x,y ∈ {1,2,3,4}: any two distinct values work — nothing prunable.
+        let fills = vec![Fill::from(&[1, 2, 3, 4]), Fill::from(&[1, 2, 3, 4])];
+        assert_eq!(
+            regin_gac(&fills),
+            vec![Fill::from(&[1, 2, 3, 4]), Fill::from(&[1, 2, 3, 4])]
+        );
+    }
+
+    #[test]
+    fn regin_one_var_two_values_no_pruning() {
+        // Single variable with {1,2}: both values are feasible assignments.
+        assert_eq!(regin_gac(&[Fill::from(&[1, 2])]), vec![Fill::from(&[1, 2])]);
+    }
+
+    #[test]
+    fn regin_two_vars_one_forced_prunes_partner() {
+        // x ∈ {1}, y ∈ {1,2,3,4}: x=1 forces y ≠ 1, so 1 is pruned from y.
+        let result = regin_gac(&[Fill::from(&[1]), Fill::from(&[1, 2, 3, 4])]);
+        assert_eq!(result[0], Fill::from(&[1]));
+        assert!(
+            !result[1].contains(1),
+            "1 should be pruned from y since x=1"
+        );
+    }
+
+    #[test]
+    fn regin_two_vars_overlap_forces_distinct() {
+        // x ∈ {1,2}, y ∈ {1,2}: with k=2 and only 2 values, both must be used —
+        // same as the k==n case. No extra pruning beyond what standard Regin does.
+        let result = regin_gac(&[Fill::from(&[1, 2]), Fill::from(&[1, 2])]);
+        assert_eq!(result[0], Fill::from(&[1, 2]));
+        assert_eq!(result[1], Fill::from(&[1, 2]));
     }
 
     #[test]

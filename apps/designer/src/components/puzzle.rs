@@ -11,7 +11,7 @@
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use mathdoku::{Cage, Cell, Operator, Polyomino, Target, operators_for};
+use mathdoku::{Cage, Cell, N, Operator, Polyomino, Target, operators_for};
 use mathdoku_designer_core::State;
 
 use super::cage::Cage as CageComponent;
@@ -43,7 +43,7 @@ pub fn Puzzle(
     /// that polyomino and clear the signal. Set by `demote_cage` so the
     /// newly-mounted Puzzle opens its own selector rather than calling back
     /// into the disposed old Puzzle's scope.
-    pending_selector: RwSignal<Option<mathdoku::Polyomino>>,
+    pending_selector: RwSignal<Option<Polyomino>>,
     on_puzzle_change: Callback<State>,
     on_state_change: Callback<State>,
     on_error: Callback<String>,
@@ -69,7 +69,7 @@ pub fn Puzzle(
     // propagated grid.
     let grid = state.current().unwrap_or_else(|_| state.puzzle.clone());
     let mut get_values = vec![vec![vec![]; n]; n];
-    let mut solution_values = vec![vec![None::<mathdoku::N>; n]; n];
+    let mut solution_values = vec![vec![None::<N>; n]; n];
     for (r, row) in get_values.iter_mut().enumerate() {
         for (c, slot) in row.iter_mut().enumerate() {
             let cell_ref = Cell::new(r, c);
@@ -705,7 +705,7 @@ fn singleton_digit_commit(state: &State, key: &str) -> Result<Option<SingletonDi
     if state.solution.is_some() || key.len() != 1 {
         return Ok(None);
     }
-    let Ok(value) = key.parse::<mathdoku::N>() else {
+    let Ok(value) = key.parse::<N>() else {
         return Ok(None);
     };
     let active = state.active;
@@ -723,8 +723,9 @@ fn singleton_digit_commit(state: &State, key: &str) -> Result<Option<SingletonDi
 
     let poly = Polyomino::from_cells(&[active])?;
     let target = Target::from(value);
-    #[allow(clippy::cast_possible_truncation)]
-    let cage = Cage::new(state.puzzle.n(), poly.clone(), Operator::Given, target)?;
+    let n = N::try_from(state.puzzle.n())
+        .map_err(|_| mathdoku::Error::InvalidGridSize(state.puzzle.n()))?;
+    let cage = Cage::new(n, poly.clone(), Operator::Given, target)?;
     if !crate::feasibility::is_globally_feasible(&state.puzzle, &cage) {
         return Ok(None);
     }
@@ -806,7 +807,7 @@ fn step_provisional_cage(r: usize, c: usize, tr: usize, tc: usize, state: State)
 #[allow(clippy::unwrap_used, clippy::panic)]
 mod tests {
     use super::{singleton_digit_commit, step_provisional_cage};
-    use mathdoku::{Cage, Cell, Operator, Polyomino};
+    use mathdoku::{Cage, Cell, N, Operator, Polyomino};
     use mathdoku_designer_core::State;
 
     fn poly(positions: &[(usize, usize)]) -> Polyomino {
@@ -814,8 +815,9 @@ mod tests {
         Polyomino::from_cells(&cells).unwrap()
     }
 
-    fn given_cage(n: usize, r: usize, c: usize, target: u64) -> Cage {
-        Cage::new(n, poly(&[(r, c)]), Operator::Given, target as mathdoku::T).unwrap()
+    fn given_cage(n: N, r: usize, c: usize, target: u64) -> Cage {
+        let target = mathdoku::T::try_from(target).unwrap();
+        Cage::new(n, poly(&[(r, c)]), Operator::Given, target).unwrap()
     }
 
     #[test]

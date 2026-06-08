@@ -14,7 +14,7 @@
 
 use std::collections::BTreeSet;
 
-use mathdoku::{Cage, Cell, Operator, Polyomino, Puzzle, T, generate_latin_square};
+use mathdoku::{Cage, Cell, N, Operator, Polyomino, Puzzle, T, generate_latin_square};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use serde_json::{from_str, to_string_pretty};
@@ -158,7 +158,7 @@ impl State {
         }
         drop(solutions);
         let n = first.n();
-        let square: Vec<Vec<mathdoku::N>> = (0..n)
+        let square: Vec<Vec<N>> = (0..n)
             .map(|r| {
                 (0..n)
                     .map(|c| {
@@ -337,8 +337,10 @@ pub fn insert_cage(
         }
     });
 
-    #[allow(clippy::cast_possible_truncation)]
-    let cage = Cage::new(n, poly, operator, target as T)?;
+    let n = N::try_from(n).map_err(|_| mathdoku::Error::InvalidGridSize(n))?;
+    let target =
+        T::try_from(target).map_err(|_| mathdoku::Error::InfeasibleCage(poly.clone(), target))?;
+    let cage = Cage::new(n, poly, operator, target)?;
     match puzzle.insert_cage(&cage)? {
         Some(new_puzzle) => commit_puzzle(state, new_puzzle),
         None => state.to_designer_state().ok_or(Error::NoPuzzle),
@@ -452,7 +454,7 @@ pub fn apply_loaded(state: &mut AppState, json: &str) -> Result<State, Error> {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::panic, clippy::cast_possible_truncation)]
+#[allow(clippy::unwrap_used, clippy::panic)]
 mod tests {
     //! Tests for the Designer command bodies.
     //!
@@ -467,18 +469,19 @@ mod tests {
     /// Shared fixtures.
     mod helpers {
         use crate::{AppState, State, apply_loaded, insert_cage, new_empty, serialize_save};
-        use mathdoku::{Cage, Cell, Operator, Polyomino, Puzzle, T};
+        use mathdoku::{Cage, Cell, N, Operator, Polyomino, Puzzle, T};
 
         /// Builds a [`Cage`] from `(row, column)` positions, an operator, and a target.
         pub(super) fn cage_at(
-            n: usize,
+            n: N,
             positions: &[(usize, usize)],
             op: Operator,
             target: u64,
         ) -> Cage {
             let cells: Vec<Cell> = positions.iter().map(|&(r, c)| Cell::new(r, c)).collect();
             let poly = Polyomino::from_cells(&cells).unwrap();
-            Cage::new(n, poly, op, target as T).unwrap()
+            let target = T::try_from(target).unwrap();
+            Cage::new(n, poly, op, target).unwrap()
         }
 
         /// Builds [`Cell`]s from `(row, column)` positions.

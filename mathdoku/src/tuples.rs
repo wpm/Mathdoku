@@ -11,8 +11,8 @@ pub type Tuple = Vec<N>;
 /// use the ring identity to prune the search; non-commutative operations
 /// enumerate all pairs without pruning.
 pub struct Tuples {
-    n: usize,
-    k: usize,
+    n: N,
+    k: N,
     constraint: ArithmeticConstraint,
     queue: VecDeque<Tuple>,
 }
@@ -20,7 +20,7 @@ pub struct Tuples {
 impl Tuples {
     /// Creates a `Tuples` iterator for a commutative (monotonic) operation.
     #[must_use]
-    pub fn commutative(n: usize, k: usize, operator: CommutativeOperator, target: T) -> Self {
+    pub fn commutative(n: N, k: N, operator: CommutativeOperator, target: T) -> Self {
         Self {
             n,
             k,
@@ -31,7 +31,7 @@ impl Tuples {
 
     /// Creates a `Tuples` iterator for a non-commutative operation over pairs (`k = 2`).
     #[must_use]
-    pub fn non_commutative(n: usize, operator: NonCommutativeOperator, target: T) -> Self {
+    pub fn non_commutative(n: N, operator: NonCommutativeOperator, target: T) -> Self {
         Self {
             n,
             k: 2,
@@ -49,7 +49,7 @@ impl Tuples {
         let Some(tuple) = self.queue.pop_front() else {
             return Step::Exhausted;
         };
-        if tuple.len() == self.k {
+        if tuple.len() == self.k as usize {
             if operator.apply_to_tuple(&tuple) == target {
                 Step::Yield(tuple)
             } else {
@@ -58,11 +58,11 @@ impl Tuples {
         } else {
             for i in 1..=self.n {
                 let mut new_tuple = tuple.clone();
-                #[allow(clippy::cast_possible_truncation)]
-                new_tuple.push(i as N);
+                new_tuple.push(i);
                 let s = operator.apply_to_tuple(&new_tuple);
+                // new_tuple.len() <= k <= 9, so this cast never truncates.
                 #[allow(clippy::cast_possible_truncation)]
-                let remaining = (self.k - new_tuple.len()) as N;
+                let remaining = self.k - new_tuple.len() as N;
                 let residual = operator.dual().identity() * T::from(remaining);
                 if s + residual <= target {
                     self.queue.push_back(new_tuple);
@@ -79,7 +79,7 @@ impl Tuples {
         let Some(tuple) = self.queue.pop_front() else {
             return Step::Exhausted;
         };
-        if tuple.len() == self.k {
+        if tuple.len() == self.k as usize {
             if operator.apply(tuple[0], tuple[1]) == target {
                 Step::Yield(tuple)
             } else {
@@ -88,8 +88,7 @@ impl Tuples {
         } else {
             for i in 1..=self.n {
                 let mut new_tuple = tuple.clone();
-                #[allow(clippy::cast_possible_truncation)]
-                new_tuple.push(i as N);
+                new_tuple.push(i);
                 self.queue.push_back(new_tuple);
             }
             Step::Continue

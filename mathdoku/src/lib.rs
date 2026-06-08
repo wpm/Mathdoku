@@ -65,7 +65,7 @@ pub fn init_debug_logging() {
     }
 }
 
-/// A cell value in the range `1..=9`.
+/// A [`Fill`] value or grid dimension in the range `1..=9`.
 pub type N = u8;
 
 /// The accumulated result of an arithmetic cage operation (sum or product of [`N`] values).

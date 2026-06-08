@@ -20,7 +20,7 @@ use std::collections::{HashMap, HashSet};
 /// and cached; construction fails with [`EmptyFills`] if no valid tuples exist.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Mdd {
-    n: usize,
+    n: N,
     constraint: Constraint,
     edges: HashMap<Node, Vec<(N, Node)>>,
     fills: Vec<Fill>,
@@ -32,17 +32,11 @@ impl Mdd {
     ///
     /// # Errors
     /// Returns [`Error::EmptyFills`] if no tuples satisfy the constraint.
-    pub fn new(
-        n: usize,
-        k: usize,
-        operator: CommutativeOperator,
-        target: T,
-    ) -> Result<Self, Error> {
+    pub fn new(n: N, k: N, operator: CommutativeOperator, target: T) -> Result<Self, Error> {
         let constraint = Constraint {
             operator,
             target,
-            #[allow(clippy::cast_possible_truncation)]
-            arity: k as T,
+            arity: T::from(k),
         };
         let mut mdd = Self {
             n,
@@ -67,24 +61,20 @@ impl Mdd {
         }
         debug!("{self}");
         let remaining = self.constraint.arity - head.depth - 1;
-        #[allow(clippy::cast_possible_truncation)]
-        for i in 1..=self.n as T {
+        let n_t = T::from(self.n);
+        for v in 1..=self.n {
+            let i = T::from(v);
             if self.constraint.pruned(head.value, i, remaining) {
                 break;
             }
-            #[allow(clippy::cast_possible_truncation)]
-            if self
-                .constraint
-                .skipped(head.value, i, remaining, self.n as T)
-            {
+            if self.constraint.skipped(head.value, i, remaining, n_t) {
                 continue;
             }
             let tail = Node {
                 depth: head.depth + 1,
                 value: self.constraint.operation(head.value, i),
             };
-            #[allow(clippy::cast_possible_truncation)]
-            self.insert_edge(head, i as N, tail);
+            self.insert_edge(head, v, tail);
             if !self.at_target(tail) && !self.at_arity(tail) {
                 self.subtree(tail);
             }
@@ -151,10 +141,7 @@ impl Mdd {
         q_down: &mut Vec<Node>,
         q_up: &mut Vec<Node>,
     ) {
-        #[allow(clippy::cast_possible_truncation)]
-        let surviving: HashSet<N> = (1..=self.n as N)
-            .filter(|v| !forbidden.contains(v))
-            .collect();
+        let surviving: HashSet<N> = (1..=self.n).filter(|v| !forbidden.contains(v)).collect();
         let tails_before = Self::tails_of(&self.edges, heads);
 
         let orig: Vec<(Node, Vec<(N, Node)>)> = heads
@@ -295,7 +282,7 @@ impl Mdd {
         condition
     }
 
-    fn tuples(&self) -> Vec<Vec<N>> {
+    pub(crate) fn tuples(&self) -> Vec<Vec<N>> {
         let root = Node {
             depth: 0,
             value: self.constraint.unit(),
@@ -338,17 +325,17 @@ impl Memo for Mdd {
     }
 
     fn narrow(&self, support: &[Fill]) -> Result<Self, Error> {
-        #[allow(clippy::cast_possible_truncation)]
         let forbidden: HashMap<T, HashSet<N>> = support
             .iter()
             .enumerate()
             .filter_map(|(i, fill)| {
-                let excluded: HashSet<N> =
-                    (1..=self.n as N).filter(|v| !fill.contains(*v)).collect();
+                let excluded: HashSet<N> = (1..=self.n).filter(|v| !fill.contains(*v)).collect();
                 if excluded.is_empty() {
                     None
                 } else {
-                    Some((i as T, excluded))
+                    // i is a cage position index, bounded by k <= 9.
+                    #[allow(clippy::cast_possible_truncation)]
+                    Some((T::from(i as N), excluded))
                 }
             })
             .collect();
@@ -669,7 +656,7 @@ mod tests {
     fn constructed_mdd_is_reduced() {
         setup();
         let cases = [
-            (4usize, Add, 5u32, 2usize),
+            (4u8, Add, 5u32, 2u8),
             (6, Add, 10, 3),
             (9, Add, 20, 4),
             (4, Multiply, 6, 2),
@@ -694,15 +681,13 @@ mod tests {
     #[ignore = "exhaustive property test; run with --include-ignored on merge to main"]
     fn matches_brute_force_across_n_arity_and_target() {
         setup();
-        for n in 3usize..=9 {
-            for k in 2usize..=5 {
-                #[allow(clippy::cast_possible_truncation)]
-                let max_sum = (n * k + 1) as T;
+        for n in 3u8..=9 {
+            for k in 2u8..=5 {
+                let max_sum = T::from(n) * T::from(k) + 1;
                 for target in 1..=max_sum {
                     assert_equiv(n, Add, target, k);
                 }
-                #[allow(clippy::cast_possible_truncation)]
-                let max_product = (n as T).pow(k as u32) + 1;
+                let max_product = T::from(n).pow(u32::from(k)) + 1;
                 for target in 1..=max_product {
                     assert_equiv(n, Multiply, target, k);
                 }
@@ -725,20 +710,19 @@ mod tests {
         t
     }
 
-    fn ref_tuples(n: usize, op: CommutativeOperator, target: T, k: usize) -> Vec<Vec<N>> {
+    fn ref_tuples(n: N, op: CommutativeOperator, target: T, k: N) -> Vec<Vec<N>> {
         let mut out = Vec::new();
-        let mut t = vec![1u8; k];
+        let mut t = vec![1u8; k as usize];
         loop {
             if op.apply_to_tuple(&t) == target {
                 out.push(t.clone());
             }
             let mut i = 0;
-            #[allow(clippy::cast_possible_truncation)]
-            while i < k && t[i] == n as N {
+            while i < k as usize && t[i] == n {
                 t[i] = 1;
                 i += 1;
             }
-            if i == k {
+            if i == k as usize {
                 break;
             }
             t[i] += 1;
@@ -747,7 +731,7 @@ mod tests {
         out
     }
 
-    fn assert_equiv(n: usize, op: CommutativeOperator, target: T, k: usize) {
+    fn assert_equiv(n: N, op: CommutativeOperator, target: T, k: N) {
         let expected = ref_tuples(n, op, target, k);
         match Mdd::new(n, k, op, target) {
             Ok(m) => {

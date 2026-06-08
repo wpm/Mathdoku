@@ -6,8 +6,7 @@
 //! squares", *Journal of Combinatorial Designs* 4(6), 1996, pp. 405–437.
 
 #![allow(
-    clippy::many_single_char_names,   // r/c/v/i/j/k are conventional for Latin-square indices
-    clippy::cast_possible_truncation, // v+1 <= n <= 9 always fits in N (u8)
+    clippy::many_single_char_names, // r/c/v/i/j/k are conventional for Latin-square indices
 )]
 
 use crate::N;
@@ -109,7 +108,11 @@ pub fn generate_latin_square(n: usize, rng: &mut impl Rng) -> Vec<Vec<N>> {
                 .map(|c| {
                     // The invariant guarantees exactly one 1 per line; this cannot be None.
                     let v = (0..n).position(|v| m[r][c][v] == 1).unwrap_or(0);
-                    (v + 1) as N
+                    // v+1 <= n <= 9, always fits in N (u8).
+                    #[allow(clippy::cast_possible_truncation)]
+                    {
+                        (v + 1) as N
+                    }
                 })
                 .collect()
         })
@@ -129,6 +132,8 @@ mod tests {
     /// column contains each value in `1..=n` exactly once.
     fn validate_latin_square(ls: &[Vec<N>]) -> bool {
         let n = ls.len();
+        // n <= 9, always fits in N (u8).
+        #[allow(clippy::cast_possible_truncation)]
         let expected: HashSet<N> = (1..=(n as N)).collect();
         for row in ls {
             if row.iter().copied().collect::<HashSet<N>>() != expected {

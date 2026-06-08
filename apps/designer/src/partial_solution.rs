@@ -98,13 +98,13 @@ impl PartialSolution {
 #[allow(clippy::unwrap_used, clippy::panic)]
 mod tests {
     use super::PartialSolution;
-    use mathdoku::{Cage, Cell, Operator, Polyomino, Puzzle};
+    use mathdoku::{Cage, Cell, N, Operator, Polyomino, Puzzle};
 
-    #[allow(clippy::cast_possible_truncation)]
-    fn cage_at(n: usize, positions: &[(usize, usize)], op: Operator, target: u64) -> Cage {
+    fn cage_at(n: N, positions: &[(usize, usize)], op: Operator, target: u64) -> Cage {
         let cells: Vec<Cell> = positions.iter().map(|&(r, c)| Cell::new(r, c)).collect();
         let poly = Polyomino::from_cells(&cells).unwrap();
-        Cage::new(n, poly, op, target as mathdoku::T).unwrap()
+        let target = mathdoku::T::try_from(target).unwrap();
+        Cage::new(n, poly, op, target).unwrap()
     }
 
     /// A 3×3 puzzle whose cells are pinned to the Latin square
@@ -170,7 +170,7 @@ mod tests {
 
     #[test]
     fn cell_value_singleton_reads_pinned_grid() {
-        let square: Vec<Vec<mathdoku::N>> = vec![vec![1, 2, 3], vec![2, 3, 1], vec![3, 1, 2]];
+        let square: Vec<Vec<N>> = vec![vec![1, 2, 3], vec![2, 3, 1], vec![3, 1, 2]];
         let grid = Puzzle::from_latin_square(3, &square).unwrap();
         let ps = PartialSolution::new(Puzzle::new(3).unwrap(), grid);
         assert_eq!(ps.cell_value_singleton(Cell::new(0, 0)), Some(1));
