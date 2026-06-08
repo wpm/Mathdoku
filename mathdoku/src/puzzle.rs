@@ -1,7 +1,7 @@
 //! [`Puzzle`]: the top-level constraint-solving interface.
 use crate::Error::MissingCell;
-use crate::cage::Cage;
 pub use crate::cage::CageOperator;
+use crate::cage::{Cage, collinear_groups};
 use crate::csp::{Constraint, generalized_arc_consistency};
 use crate::fill::Fill;
 use crate::grid::{AllDifferent, Grid as InternalGrid};
@@ -589,10 +589,15 @@ fn target_is_feasible(
     let has_consistent_tuple = match op {
         CageOperator::Given => N::try_from(target).is_ok_and(|v| fills[0].contains(v)),
         CageOperator::Add => {
-            Mdd::new(n, k, CommutativeOperator::Add, target).is_ok_and(|m| m.narrow(fills).is_ok())
+            let lines = collinear_groups(polyomino);
+            Mdd::new(n, k, CommutativeOperator::Add, target, &lines)
+                .is_ok_and(|m| m.narrow(fills).is_ok())
         }
-        CageOperator::Multiply => Mdd::new(n, k, CommutativeOperator::Multiply, target)
-            .is_ok_and(|m| m.narrow(fills).is_ok()),
+        CageOperator::Multiply => {
+            let lines = collinear_groups(polyomino);
+            Mdd::new(n, k, CommutativeOperator::Multiply, target, &lines)
+                .is_ok_and(|m| m.narrow(fills).is_ok())
+        }
         CageOperator::Subtract => {
             Table::non_commutative(n, NonCommutativeOperator::Subtract, target)
                 .is_ok_and(|t| t.narrow(fills).is_ok())

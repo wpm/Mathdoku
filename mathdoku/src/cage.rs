@@ -22,6 +22,8 @@
 //! partial result already exceeds the target, or can no longer reach it, are cut
 //! immediately. The result is stored as a [`Mdd`]: a DAG whose paths are exactly
 //! the valid tuples, compressed by sharing common prefixes and suffixes.
+//! Collinear distinctness (cells sharing a row or column must hold distinct values)
+//! is encoded directly in the MDD's DP state during construction.
 //!
 //! ## Non-commutative (subtract, divide)
 //!
@@ -30,7 +32,8 @@
 //! `|a − b|` and divide as `max(a, b) / min(a, b)`, neither of which generalises
 //! meaningfully beyond a pair. Non-commutative cages are therefore always
 //! dominoes (exactly 2 cells), and their constraint is stored as a [`Table`] —
-//! the explicit list of valid pairs.
+//! the explicit list of valid pairs. Their operators (`|a−b| ≥ 1`, `max/min ≥ 2`)
+//! already guarantee the two values differ, so no separate distinctness step is needed.
 //!
 //! ## Given
 //!
@@ -88,9 +91,6 @@ pub struct Cage {
     pub polyomino: Polyomino,
     /// The constraint for this cage and its supporting values.
     support: CageSupport,
-    /// Groups of cell indices (into `polyomino` order) that must hold distinct values
-    /// because they share a row or column. Used to apply Regin within `propagate`.
-    collinear_groups: Vec<Vec<usize>>,
 }
 
 impl Cage {
@@ -158,7 +158,8 @@ impl Cage {
     /// Constructs a cage for a commutative constraint over `polyomino`.
     ///
     /// Builds an MDD representing all `polyomino.len()`-tuples of values in
-    /// `1..=n` whose `operation` equals `target`.
+    /// `1..=n` whose `operation` equals `target`, with collinear distinctness
+    /// baked into the MDD's DP state.
     ///
     /// # Errors
     /// Returns [`EmptyFills`] if no tuples satisfy the constraint.
@@ -169,20 +170,18 @@ impl Cage {
         target: T,
     ) -> Result<Self, Error> {
         let k = N::try_from(polyomino.len()).map_err(|_| EmptyFills)?;
-        let mdd = Mdd::new(n, k, operation, target)?;
+        let lines = collinear_groups(&polyomino);
+        let mdd = Mdd::new(n, k, operation, target, &lines)?;
         let support = CageSupport::Commutative(operation, target, mdd);
-        let collinear_groups = collinear_groups(&polyomino);
-        Ok(Self {
-            polyomino,
-            support,
-            collinear_groups,
-        })
+        Ok(Self { polyomino, support })
     }
 
     /// Constructs a cage for a non-commutative constraint over `polyomino`.
     ///
     /// Builds a `Table` of all pairs of values in `1..=n` whose `operation`
     /// equals `target`. Non-commutative cages must be exactly 2 cells.
+    /// Their operators (`|a−b| ≥ 1`, `max/min ≥ 2`) already guarantee distinct
+    /// values, so no collinear distinctness step is needed.
     ///
     /// # Errors
     /// Returns [`EmptyFills`] if no pairs satisfy the constraint.
@@ -194,12 +193,7 @@ impl Cage {
     ) -> Result<Self, Error> {
         let table = Table::non_commutative(n, operation, target)?;
         let support = CageSupport::NonCommutative(operation, target, table);
-        let collinear_groups = collinear_groups(&polyomino);
-        Ok(Self {
-            polyomino,
-            support,
-            collinear_groups,
-        })
+        Ok(Self { polyomino, support })
     }
 
     /// Constructs a given cage: a single cell whose value is fixed to `target`.
@@ -214,7 +208,6 @@ impl Cage {
         Ok(Self {
             polyomino: Polyomino::from(vec![cell])?,
             support: CageSupport::Given(n),
-            collinear_groups: vec![],
         })
     }
 
@@ -350,7 +343,7 @@ impl Display for Operation {
 
 /// Computes groups of cell indices (into the polyomino's iteration order) that share
 /// a row or column and therefore must hold distinct values.
-fn collinear_groups(polyomino: &Polyomino) -> Vec<Vec<usize>> {
+pub fn collinear_groups(polyomino: &Polyomino) -> Vec<Vec<usize>> {
     let cells: Vec<Cell> = polyomino.iter().copied().collect();
     let mut by_row: std::collections::HashMap<usize, Vec<usize>> = std::collections::HashMap::new();
     let mut by_col: std::collections::HashMap<usize, Vec<usize>> = std::collections::HashMap::new();
@@ -363,30 +356,6 @@ fn collinear_groups(polyomino: &Polyomino) -> Vec<Vec<usize>> {
         .chain(by_col.into_values())
         .filter(|g| g.len() >= 2)
         .collect()
-}
-
-/// From a list of tuples, derives per-position fills keeping only values that appear in
-/// at least one tuple where all collinear pairs hold distinct values.
-fn fills_from_tuples_with_collinear_distinctness(
-    tuples: &[Vec<N>],
-    k: usize,
-    collinear_groups: &[Vec<usize>],
-) -> Vec<Fill> {
-    let mut supported = vec![Fill::default(); k];
-    for tuple in tuples {
-        let distinct = collinear_groups.iter().all(|group| {
-            group
-                .iter()
-                .enumerate()
-                .all(|(a, &ia)| group[..a].iter().all(|&ib| tuple[ia] != tuple[ib]))
-        });
-        if distinct {
-            for (i, &v) in tuple.iter().enumerate() {
-                supported[i] = supported[i] | Fill::from(&[v]);
-            }
-        }
-    }
-    supported
 }
 
 fn narrow_fills<M: Memo>(memo: &M, old_fills: &[Fill], n: usize) -> Result<Vec<Fill>, Error> {
@@ -417,36 +386,10 @@ impl Constraint<Grid, Cell, Fill, Error> for Cage {
                     Fill::default()
                 }]
             }
-            CageSupport::Commutative(_, _, memo) => {
-                if self.collinear_groups.is_empty() {
-                    narrow_fills(memo, &old_fills, k)?
-                } else {
-                    match memo.narrow(&old_fills) {
-                        Ok(narrowed) => fills_from_tuples_with_collinear_distinctness(
-                            &narrowed.tuples(),
-                            k,
-                            &self.collinear_groups,
-                        ),
-                        Err(EmptyFills) => vec![Fill::default(); k],
-                        Err(e) => return Err(e),
-                    }
-                }
-            }
-            CageSupport::NonCommutative(_, _, memo) => {
-                if self.collinear_groups.is_empty() {
-                    narrow_fills(memo, &old_fills, k)?
-                } else {
-                    match memo.narrow(&old_fills) {
-                        Ok(narrowed) => fills_from_tuples_with_collinear_distinctness(
-                            narrowed.tuples(),
-                            k,
-                            &self.collinear_groups,
-                        ),
-                        Err(EmptyFills) => vec![Fill::default(); k],
-                        Err(e) => return Err(e),
-                    }
-                }
-            }
+            // Commutative: collinear distinctness is encoded in the MDD — use narrow directly.
+            CageSupport::Commutative(_, _, memo) => narrow_fills(memo, &old_fills, k)?,
+            // Non-commutative operators already guarantee distinct values (|a−b|≥1, max/min≥2).
+            CageSupport::NonCommutative(_, _, memo) => narrow_fills(memo, &old_fills, k)?,
         };
         Ok(state.apply_fills(&cells, &old_fills, new_fills))
     }

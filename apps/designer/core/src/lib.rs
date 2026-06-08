@@ -741,16 +741,15 @@ mod tests {
 
         #[test]
         fn insert_cage_infeasible_target_returns_err() {
-            // Two distinct collinear cells cannot sum to 2 (min distinct sum is 1+2=3),
-            // so propagation empties cell domains — insert_cage returns Ok(None) and the
-            // designer abandons the operation, returning the unchanged state.
+            // Two collinear cells (same row) with Add 2: no pair of distinct values
+            // in 1..=3 sums to 2 (min is 1+2=3). The MDD construction detects this
+            // immediately and returns InfeasibleCage — insert_cage propagates the error.
             let mut state = AppState::default();
             let _ = new_empty(&mut state, 3).unwrap();
-            assert!(
-                insert_cage(&mut state, poly(&[(0, 0), (0, 1)]), Operator::Add, Some(2)).is_ok()
-            );
-            // The state is unchanged (no cage was committed).
-            assert_eq!(state.puzzle.as_ref().unwrap().cages().count(), 0);
+            assert!(matches!(
+                insert_cage(&mut state, poly(&[(0, 0), (0, 1)]), Operator::Add, Some(2)),
+                Err(Error::Mathdoku(mathdoku::Error::InfeasibleCage(_, _)))
+            ));
         }
 
         // --- remove_cage_at ---

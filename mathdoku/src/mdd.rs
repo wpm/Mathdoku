@@ -4,7 +4,7 @@
 //! constraints (subtract, divide), use `Table` instead.
 use crate::Error::InvalidCellCageIndex;
 use crate::fill::Fill;
-use crate::memo::{Memo, fills_from_tuples};
+use crate::memo::Memo;
 use crate::operator::CommutativeOperator;
 use crate::{Error, N, T};
 use log::debug;
@@ -12,56 +12,85 @@ use std::collections::{HashMap, HashSet};
 
 /// A cage constraint stored as a multivalued decision diagram.
 ///
-/// Nodes are keyed by `(depth, accumulated_value)`. Edges are labelled with the
-/// cell value chosen at that depth. Valid tuples correspond to paths from the
-/// root to a terminal node where `value == target` and `depth == arity`.
+/// Nodes are keyed by `(depth, accumulated_value, used_sets)` where `used_sets`
+/// tracks which values have been placed in each still-open collinear line.
+/// Edges are labelled with the cell value chosen at that depth. Valid tuples
+/// correspond to paths from the root to a terminal node where `value == target`
+/// and `depth == arity`.
 ///
-/// Per-position candidate sets ([`Fill`]s) are derived from the surviving paths
-/// and cached; construction fails with [`EmptyFills`] if no valid tuples exist.
+/// Per-position candidate sets ([`Fill`]s) are derived from surviving edge
+/// labels and cached; construction fails with [`EmptyFills`] if no valid
+/// tuples exist.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Mdd {
     n: N,
     constraint: Constraint,
+    /// Collinear-line metadata: for each depth `d`, which line indices include
+    /// cell `d`, and what the set of depths for each line is.
+    line_meta: LineMeta,
     edges: HashMap<Node, Vec<(N, Node)>>,
     fills: Vec<Fill>,
 }
 
 impl Mdd {
     /// Constructs an MDD for all `k`-tuples of values in `1..=n` satisfying
-    /// `operator` applied to the tuple equals `target`.
+    /// `operator` applied to the tuple equals `target`, with the given
+    /// collinear distinctness constraints.
+    ///
+    /// `lines` is a list of groups of cell positions (0-indexed depths); cells
+    /// in the same group share a row or column and must hold distinct values.
+    /// Pass an empty slice for arithmetic-only (no collinear constraints).
     ///
     /// # Errors
     /// Returns [`Error::EmptyFills`] if no tuples satisfy the constraint.
-    pub fn new(n: N, k: N, operator: CommutativeOperator, target: T) -> Result<Self, Error> {
+    pub fn new(
+        n: N,
+        k: N,
+        operator: CommutativeOperator,
+        target: T,
+        lines: &[Vec<usize>],
+    ) -> Result<Self, Error> {
         let constraint = Constraint {
             operator,
             target,
             arity: T::from(k),
         };
-        let mut mdd = Self {
-            n,
-            constraint,
-            edges: HashMap::new(),
-            fills: Vec::new(),
-        };
+        let line_meta = LineMeta::new(lines, k as usize);
+        let num_lines = line_meta.num_lines();
         let root = Node {
             depth: 0,
             value: constraint.unit(),
+            used: vec![Fill::default(); num_lines].into_boxed_slice(),
         };
-        mdd.subtree(root);
-        mdd.fills = fills_from_tuples(&mdd.tuples())?;
+        let mut mdd = Self {
+            n,
+            constraint,
+            line_meta,
+            edges: HashMap::new(),
+            fills: Vec::new(),
+        };
+        mdd.subtree(&root);
+        mdd.fills = mdd.fills_from_edges()?;
         Ok(mdd)
     }
 
     /// Recursively builds the MDD rooted at `head`, adding edges for all values
-    /// that are not pruned by the constraint's monotonicity bounds.
-    fn subtree(&mut self, head: Node) {
-        if self.edges.contains_key(&head) {
+    /// that are not pruned by the constraint's monotonicity bounds or collinear
+    /// distinctness.
+    ///
+    /// An edge is only inserted if the tail node is either a valid terminal
+    /// (`depth == arity` and `value == target`) or itself has outgoing edges.
+    /// This ensures the diagram contains no dead paths.
+    fn subtree(&mut self, head: &Node) {
+        if self.edges.contains_key(head) {
             return;
         }
         debug!("{self}");
         let remaining = self.constraint.arity - head.depth - 1;
         let n_t = T::from(self.n);
+        let depth_idx = head.depth as usize;
+        let lines_at_depth = self.line_meta.lines_at_depth(depth_idx).to_vec();
+
         for v in 1..=self.n {
             let i = T::from(v);
             if self.constraint.pruned(head.value, i, remaining) {
@@ -70,15 +99,41 @@ impl Mdd {
             if self.constraint.skipped(head.value, i, remaining, n_t) {
                 continue;
             }
+            // Collinear distinctness: skip v if already used in any open line at this depth.
+            if lines_at_depth
+                .iter()
+                .any(|&(line_idx, _)| head.used[line_idx].contains(v))
+            {
+                continue;
+            }
+
+            let tail_used = self.line_meta.advance_used(&head.used, depth_idx, v);
             let tail = Node {
                 depth: head.depth + 1,
                 value: self.constraint.operation(head.value, i),
+                used: tail_used,
             };
-            self.insert_edge(head, v, tail);
-            if !self.at_target(tail) && !self.at_arity(tail) {
-                self.subtree(tail);
+
+            // Recursively build tail's subtree before deciding whether to link it.
+            let tail_is_terminal = self.is_valid_terminal(&tail);
+            let tail_at_arity = self.at_arity(&tail);
+            let tail_at_target = self.at_target(&tail);
+            if !tail_at_target && !tail_at_arity {
+                self.subtree(&tail);
+            }
+
+            // Only insert the edge if tail is live: a valid terminal or has children.
+            let tail_is_live = tail_is_terminal || self.edges.contains_key(&tail);
+            if tail_is_live {
+                self.insert_edge(head.clone(), v, tail);
             }
         }
+    }
+
+    /// Returns true if `node` is a valid accepting terminal: depth equals arity
+    /// and accumulated value equals target.
+    const fn is_valid_terminal(&self, node: &Node) -> bool {
+        node.depth == self.constraint.arity && node.value == self.constraint.target
     }
 
     /// Returns a copy of this MDD with edges for forbidden values removed and
@@ -87,6 +142,7 @@ impl Mdd {
         let mut mdd = Self {
             n: self.n,
             constraint: self.constraint,
+            line_meta: self.line_meta.clone(),
             edges: self.edges.clone(),
             fills: Vec::new(),
         };
@@ -121,7 +177,7 @@ impl Mdd {
         self.edges
             .keys()
             .filter(|n| n.depth == depth)
-            .copied()
+            .cloned()
             .collect()
     }
 
@@ -130,7 +186,7 @@ impl Mdd {
             .iter()
             .filter_map(|h| edges.get(h))
             .flat_map(|es| es.iter())
-            .map(|(_, t)| *t)
+            .map(|(_, t)| t.clone())
             .collect()
     }
 
@@ -146,7 +202,7 @@ impl Mdd {
 
         let orig: Vec<(Node, Vec<(N, Node)>)> = heads
             .iter()
-            .filter_map(|h| self.edges.remove(h).map(|es| (*h, es)))
+            .filter_map(|h| self.edges.remove(h).map(|es| (h.clone(), es)))
             .collect();
         for (head, orig_edges) in orig {
             let new_edges: Vec<(N, Node)> = orig_edges
@@ -167,8 +223,8 @@ impl Mdd {
         q_up.extend(
             heads
                 .iter()
-                .filter(|h| !self.edges.contains_key(h))
-                .copied(),
+                .filter(|h| !self.edges.contains_key(*h))
+                .cloned(),
         );
     }
 
@@ -184,12 +240,12 @@ impl Mdd {
                 let dead_tails: Vec<Node> = es
                     .iter()
                     .filter(|(label, _)| forbidden.contains(label))
-                    .map(|(_, t)| *t)
+                    .map(|(_, t)| t.clone())
                     .collect(); // collect before retain to avoid borrow conflict
                 es.retain(|(label, _)| !forbidden.contains(label));
                 if es.is_empty() {
                     let _ = self.edges.remove(head);
-                    q_up.push(*head);
+                    q_up.push(head.clone());
                 }
                 for tail in dead_tails {
                     let still_reachable = heads.iter().any(|h| {
@@ -237,14 +293,15 @@ impl Mdd {
                     .edges
                     .keys()
                     .filter(|h| h.depth + 1 == node.depth)
-                    .copied()
+                    .cloned()
                     .collect();
                 for head in heads {
                     if let Some(es) = self.edges.get_mut(&head) {
                         es.retain(|(_, t)| *t != node);
                         if es.is_empty() {
+                            let head_clone = head.clone();
                             let _ = self.edges.remove(&head);
-                            q.push(head);
+                            q.push(head_clone);
                         }
                     }
                 }
@@ -261,13 +318,13 @@ impl Mdd {
         self.edges.entry(head).or_default().push((value, tail));
     }
 
-    fn at_arity(&self, tail: Node) -> bool {
+    fn at_arity(&self, tail: &Node) -> bool {
         let (d, a) = (u64::from(tail.depth), u64::from(self.constraint.arity));
         debug_assert!(d <= a, "depth {d} > arity {a}");
         Self::log_if(d == a, tail.depth, &format!("{tail} Arity limit met"))
     }
 
-    fn at_target(&self, node: Node) -> bool {
+    fn at_target(&self, node: &Node) -> bool {
         Self::log_if(
             self.constraint.target_reached(node.value),
             node.depth,
@@ -282,26 +339,51 @@ impl Mdd {
         condition
     }
 
+    /// Derives per-position fills by scanning edge labels at each depth.
+    ///
+    /// Returns `Err(EmptyFills)` if no edges exist at any depth (empty diagram).
+    fn fills_from_edges(&self) -> Result<Vec<Fill>, Error> {
+        let k = self.constraint.arity as usize;
+        if k == 0 {
+            return Err(Error::EmptyFills);
+        }
+        let mut fills = vec![Fill::default(); k];
+        for (node, edges) in &self.edges {
+            let depth = node.depth as usize;
+            if depth < k {
+                for &(label, _) in edges {
+                    fills[depth] = fills[depth] | Fill::singleton(label);
+                }
+            }
+        }
+        if fills.iter().any(|f| f.is_empty()) {
+            return Err(Error::EmptyFills);
+        }
+        Ok(fills)
+    }
+
     pub(crate) fn tuples(&self) -> Vec<Vec<N>> {
+        let num_lines = self.line_meta.num_lines();
         let root = Node {
             depth: 0,
             value: self.constraint.unit(),
+            used: vec![Fill::default(); num_lines].into_boxed_slice(),
         };
         let mut result = Vec::new();
-        self.collect_paths(root, &mut Vec::new(), &mut result);
+        self.collect_paths(&root, &mut Vec::new(), &mut result);
         result
     }
 
-    fn collect_paths(&self, head: Node, path: &mut Vec<N>, result: &mut Vec<Vec<N>>) {
-        match self.edges.get(&head) {
+    fn collect_paths(&self, head: &Node, path: &mut Vec<N>, result: &mut Vec<Vec<N>>) {
+        match self.edges.get(head) {
             None => {
                 if head.value == self.constraint.target && head.depth == self.constraint.arity {
                     result.push(path.clone());
                 }
             }
             Some(edges) => {
-                for &(label, tail) in edges {
-                    path.push(label);
+                for (label, tail) in edges {
+                    path.push(*label);
                     self.collect_paths(tail, path, result);
                     let _ = path.pop();
                 }
@@ -340,7 +422,7 @@ impl Memo for Mdd {
             })
             .collect();
         let mut narrowed = self.remove_support(&forbidden);
-        narrowed.fills = fills_from_tuples(&narrowed.tuples())?;
+        narrowed.fills = narrowed.fills_from_edges()?;
         Ok(narrowed)
     }
 }
@@ -394,10 +476,64 @@ impl std::fmt::Display for Constraint {
     }
 }
 
-#[derive(Eq, PartialEq, Hash, Debug, Copy, Clone)]
+/// Precomputed collinear-line metadata for MDD construction.
+///
+/// For each depth (cell position in polyomino order), stores which line indices
+/// that depth belongs to and whether the line closes at that depth.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct LineMeta {
+    /// For each depth: list of `(line_idx, is_last_in_line)` pairs.
+    depth_info: Vec<Vec<(usize, bool)>>,
+    num_lines: usize,
+}
+
+impl LineMeta {
+    fn new(lines: &[Vec<usize>], k: usize) -> Self {
+        let num_lines = lines.len();
+        let mut depth_info: Vec<Vec<(usize, bool)>> = vec![Vec::new(); k];
+        for (line_idx, line) in lines.iter().enumerate() {
+            let last_depth = line.iter().copied().max().unwrap_or(0);
+            for &depth in line {
+                depth_info[depth].push((line_idx, depth == last_depth));
+            }
+        }
+        Self {
+            depth_info,
+            num_lines,
+        }
+    }
+
+    const fn num_lines(&self) -> usize {
+        self.num_lines
+    }
+
+    fn lines_at_depth(&self, depth: usize) -> &[(usize, bool)] {
+        self.depth_info.get(depth).map_or(&[], Vec::as_slice)
+    }
+
+    /// Returns the updated `used` sets after placing `value` at `depth`.
+    ///
+    /// Adds `value` to each line containing `depth`, then zeroes out lines
+    /// that close at `depth` (all their cells have been placed).
+    fn advance_used(&self, used: &[Fill], depth: usize, value: N) -> Box<[Fill]> {
+        let mut next = used.to_vec();
+        for &(line_idx, closes) in self.lines_at_depth(depth) {
+            next[line_idx] = next[line_idx] | Fill::singleton(value);
+            if closes {
+                next[line_idx] = Fill::default();
+            }
+        }
+        next.into_boxed_slice()
+    }
+}
+
+#[derive(Eq, PartialEq, Hash, Debug, Clone)]
 struct Node {
     depth: T,
     value: T,
+    /// Used-value sets for still-open collinear lines (indexed by line index).
+    /// Closed lines are zeroed out so that they don't inflate the key space.
+    used: Box<[Fill]>,
 }
 
 impl std::fmt::Display for Node {
@@ -418,12 +554,16 @@ mod tests {
         let () = *LOGGING.get_or_init(crate::init_debug_logging);
     }
 
+    fn no_lines() -> Vec<Vec<usize>> {
+        vec![]
+    }
+
     // ---- get ----
 
     #[test]
     fn add_fills_are_union_of_column_values() {
         setup();
-        let m = Mdd::new(4, 2, Add, 6).unwrap();
+        let m = Mdd::new(4, 2, Add, 6, &no_lines()).unwrap();
         assert_eq!(m.get(0).unwrap(), Fill::from(&[2, 3, 4]));
         assert_eq!(m.get(1).unwrap(), Fill::from(&[2, 3, 4]));
     }
@@ -431,7 +571,7 @@ mod tests {
     #[test]
     fn multiply_fills_contain_expected_values() {
         setup();
-        let m = Mdd::new(6, 2, Multiply, 6).unwrap();
+        let m = Mdd::new(6, 2, Multiply, 6, &no_lines()).unwrap();
         assert_eq!(m.get(0).unwrap(), Fill::from(&[1, 2, 3, 6]));
         assert_eq!(m.get(1).unwrap(), Fill::from(&[1, 2, 3, 6]));
     }
@@ -439,13 +579,16 @@ mod tests {
     #[test]
     fn commutative_no_solutions_returns_empty_fills_error() {
         setup();
-        assert!(matches!(Mdd::new(4, 2, Add, 9), Err(EmptyFills)));
+        assert!(matches!(
+            Mdd::new(4, 2, Add, 9, &no_lines()),
+            Err(EmptyFills)
+        ));
     }
 
     #[test]
     fn fill_out_of_bounds_returns_index_error() {
         setup();
-        let m = Mdd::new(4, 2, Add, 5).unwrap();
+        let m = Mdd::new(4, 2, Add, 5, &no_lines()).unwrap();
         assert!(matches!(m.get(2), Err(InvalidCellCageIndex(2))));
     }
 
@@ -454,7 +597,7 @@ mod tests {
     #[test]
     fn narrow_with_full_support_is_identity() {
         setup();
-        let m = Mdd::new(4, 2, Add, 5).unwrap();
+        let m = Mdd::new(4, 2, Add, 5, &no_lines()).unwrap();
         assert_eq!(m.narrow(&[Fill::all(4), Fill::all(4)]).unwrap(), m);
     }
 
@@ -463,7 +606,7 @@ mod tests {
         setup();
         // add to 5 in n=4: (1,4),(2,3),(3,2),(4,1)
         // restrict pos 0 to {1,2} → surviving: (1,4),(2,3)
-        let m = Mdd::new(4, 2, Add, 5).unwrap();
+        let m = Mdd::new(4, 2, Add, 5, &no_lines()).unwrap();
         let narrowed = m
             .narrow(&[Fill::from(&[1, 2]), Fill::from(&[1, 2, 3, 4])])
             .unwrap();
@@ -474,7 +617,7 @@ mod tests {
     #[test]
     fn narrow_eliminating_all_tuples_returns_empty_fills_error() {
         setup();
-        let m = Mdd::new(4, 2, Add, 5).unwrap();
+        let m = Mdd::new(4, 2, Add, 5, &no_lines()).unwrap();
         assert!(matches!(
             m.narrow(&[Fill::from(&[1]), Fill::from(&[1])]),
             Err(EmptyFills)
@@ -489,7 +632,7 @@ mod tests {
     fn sum_pair_display() {
         setup();
         assert_eq!(
-            Mdd::new(3, 2, Add, 4).unwrap().to_string(),
+            Mdd::new(3, 2, Add, 4, &no_lines()).unwrap().to_string(),
             "MDD(+4 [2] 4 nodes)"
         );
     }
@@ -498,7 +641,7 @@ mod tests {
     fn sum_triple_display() {
         setup();
         assert_eq!(
-            Mdd::new(3, 3, Add, 5).unwrap().to_string(),
+            Mdd::new(3, 3, Add, 5, &no_lines()).unwrap().to_string(),
             "MDD(+5 [3] 7 nodes)"
         );
     }
@@ -507,7 +650,7 @@ mod tests {
     fn sum_triple_larger_n_display() {
         setup();
         assert_eq!(
-            Mdd::new(4, 3, Add, 6).unwrap().to_string(),
+            Mdd::new(4, 3, Add, 6, &no_lines()).unwrap().to_string(),
             "MDD(+6 [3] 9 nodes)"
         );
     }
@@ -516,8 +659,10 @@ mod tests {
     fn product_pair_display() {
         setup();
         assert_eq!(
-            Mdd::new(4, 2, Multiply, 6).unwrap().to_string(),
-            "MDD(×6 [2] 4 nodes)"
+            Mdd::new(4, 2, Multiply, 6, &no_lines())
+                .unwrap()
+                .to_string(),
+            "MDD(×6 [2] 3 nodes)"
         );
     }
 
@@ -525,7 +670,9 @@ mod tests {
     fn product_triple_display() {
         setup();
         assert_eq!(
-            Mdd::new(4, 3, Multiply, 4).unwrap().to_string(),
+            Mdd::new(4, 3, Multiply, 4, &no_lines())
+                .unwrap()
+                .to_string(),
             "MDD(×4 [3] 7 nodes)"
         );
     }
@@ -535,7 +682,7 @@ mod tests {
     #[test]
     fn sum_pair_fills() {
         setup();
-        let m = Mdd::new(3, 2, Add, 4).unwrap();
+        let m = Mdd::new(3, 2, Add, 4, &no_lines()).unwrap();
         assert_eq!(m.get(0).unwrap(), Fill::from(&[1, 2, 3]));
         assert_eq!(m.get(1).unwrap(), Fill::from(&[1, 2, 3]));
     }
@@ -543,7 +690,7 @@ mod tests {
     #[test]
     fn sum_triple_fills() {
         setup();
-        let m = Mdd::new(3, 3, Add, 5).unwrap();
+        let m = Mdd::new(3, 3, Add, 5, &no_lines()).unwrap();
         assert_eq!(m.get(0).unwrap(), Fill::from(&[1, 2, 3]));
         assert_eq!(m.get(1).unwrap(), Fill::from(&[1, 2, 3]));
         assert_eq!(m.get(2).unwrap(), Fill::from(&[1, 2, 3]));
@@ -552,7 +699,7 @@ mod tests {
     #[test]
     fn product_pair_fills() {
         setup();
-        let m = Mdd::new(4, 2, Multiply, 6).unwrap();
+        let m = Mdd::new(4, 2, Multiply, 6, &no_lines()).unwrap();
         assert_eq!(m.get(0).unwrap(), Fill::from(&[2, 3]));
         assert_eq!(m.get(1).unwrap(), Fill::from(&[2, 3]));
     }
@@ -560,7 +707,7 @@ mod tests {
     #[test]
     fn product_triple_fills() {
         setup();
-        let m = Mdd::new(4, 3, Multiply, 4).unwrap();
+        let m = Mdd::new(4, 3, Multiply, 4, &no_lines()).unwrap();
         assert_eq!(m.get(0).unwrap(), Fill::from(&[1, 2, 4]));
         assert_eq!(m.get(1).unwrap(), Fill::from(&[1, 2, 4]));
         assert_eq!(m.get(2).unwrap(), Fill::from(&[1, 2, 4]));
@@ -571,14 +718,23 @@ mod tests {
     #[test]
     fn sum_target_out_of_range_is_empty_fills() {
         setup();
-        assert!(matches!(Mdd::new(3, 3, Add, 1), Err(EmptyFills)));
-        assert!(matches!(Mdd::new(3, 3, Add, 10), Err(EmptyFills)));
+        assert!(matches!(
+            Mdd::new(3, 3, Add, 1, &no_lines()),
+            Err(EmptyFills)
+        ));
+        assert!(matches!(
+            Mdd::new(3, 3, Add, 10, &no_lines()),
+            Err(EmptyFills)
+        ));
     }
 
     #[test]
     fn product_target_out_of_range_is_empty_fills() {
         setup();
-        assert!(matches!(Mdd::new(3, 3, Multiply, 28), Err(EmptyFills)));
+        assert!(matches!(
+            Mdd::new(3, 3, Multiply, 28, &no_lines()),
+            Err(EmptyFills)
+        ));
     }
 
     // ---- remove_support ----
@@ -586,7 +742,7 @@ mod tests {
     #[test]
     fn remove_support_empty_is_identity() {
         setup();
-        let m = Mdd::new(3, 3, Add, 5).unwrap();
+        let m = Mdd::new(3, 3, Add, 5, &no_lines()).unwrap();
         assert_eq!(
             sorted_tuples(&m.remove_support(&HashMap::<T, HashSet<N>>::new())),
             sorted_tuples(&m)
@@ -596,7 +752,7 @@ mod tests {
     #[test]
     fn remove_support_sum_triple_delete_var0() {
         setup();
-        let m = Mdd::new(3, 3, Add, 5)
+        let m = Mdd::new(3, 3, Add, 5, &no_lines())
             .unwrap()
             .remove_support(&forbidden(&[(0, &[1])]));
         assert_eq!(
@@ -608,7 +764,7 @@ mod tests {
     #[test]
     fn remove_support_sum_pair_delete_var0() {
         setup();
-        let m = Mdd::new(3, 2, Add, 4)
+        let m = Mdd::new(3, 2, Add, 4, &no_lines())
             .unwrap()
             .remove_support(&forbidden(&[(0, &[2])]));
         assert_eq!(sorted_tuples(&m), vec![vec![1, 3], vec![3, 1]]);
@@ -617,7 +773,7 @@ mod tests {
     #[test]
     fn remove_support_product_pair_delete_var0() {
         setup();
-        let m = Mdd::new(4, 2, Multiply, 6)
+        let m = Mdd::new(4, 2, Multiply, 6, &no_lines())
             .unwrap()
             .remove_support(&forbidden(&[(0, &[3])]));
         assert_eq!(sorted_tuples(&m), vec![vec![2, 3]]);
@@ -626,7 +782,7 @@ mod tests {
     #[test]
     fn remove_support_sum_triple_reset_var1() {
         setup();
-        let m = Mdd::new(3, 3, Add, 5)
+        let m = Mdd::new(3, 3, Add, 5, &no_lines())
             .unwrap()
             .remove_support(&forbidden(&[(1, &[1, 2])]));
         assert_eq!(sorted_tuples(&m), vec![vec![1, 3, 1]]);
@@ -635,7 +791,7 @@ mod tests {
     #[test]
     fn remove_support_sum_triple_two_layers() {
         setup();
-        let m = Mdd::new(3, 3, Add, 5)
+        let m = Mdd::new(3, 3, Add, 5, &no_lines())
             .unwrap()
             .remove_support(&forbidden(&[(0, &[1]), (2, &[1])]));
         assert_eq!(sorted_tuples(&m), vec![vec![2, 1, 2]]);
@@ -644,7 +800,7 @@ mod tests {
     #[test]
     fn remove_support_all_removed() {
         setup();
-        let m = Mdd::new(3, 3, Add, 5)
+        let m = Mdd::new(3, 3, Add, 5, &no_lines())
             .unwrap()
             .remove_support(&forbidden(&[(1, &[1, 2, 3])]));
         assert_eq!(sorted_tuples(&m), vec![] as Vec<Vec<N>>);
@@ -663,16 +819,68 @@ mod tests {
             (6, Multiply, 24, 3),
         ];
         for (n, op, target, k) in cases {
-            assert_reduced(&Mdd::new(n, k, op, target).unwrap());
+            assert_reduced(&Mdd::new(n, k, op, target, &no_lines()).unwrap());
         }
     }
 
     #[test]
     fn mdd_is_reduced_after_remove_support() {
         setup();
-        let m = Mdd::new(4, 3, Add, 6).unwrap();
+        let m = Mdd::new(4, 3, Add, 6, &no_lines()).unwrap();
         let pruned = m.remove_support(&forbidden(&[(0, &[1])]));
         assert_reduced(&pruned);
+    }
+
+    // ---- collinear distinctness ----
+
+    #[test]
+    fn domino_add_collinear_excludes_equal_values() {
+        setup();
+        // +4 domino with both cells in the same row (line = [0, 1]).
+        // Arithmetic tuples: (1,3),(2,2),(3,1). (2,2) repeats in the line → excluded.
+        let m = Mdd::new(4, 2, Add, 4, &[vec![0, 1]]).unwrap();
+        let mut t = m.tuples();
+        t.sort();
+        assert_eq!(t, vec![vec![1, 3], vec![3, 1]]);
+        assert!(!m.get(0).unwrap().contains(2));
+        assert!(!m.get(1).unwrap().contains(2));
+    }
+
+    #[test]
+    fn domino_no_line_retains_equal_value_tuples() {
+        setup();
+        // Same arithmetic, no collinear constraint: (2,2) survives.
+        let m = Mdd::new(4, 2, Add, 4, &no_lines()).unwrap();
+        assert!(m.get(0).unwrap().contains(2));
+        assert!(m.get(1).unwrap().contains(2));
+    }
+
+    #[test]
+    fn l_cage_collinear_corner_admits_4_arms_do_not() {
+        setup();
+        // L-shape: cells at positions 0=(1,1), 1=(1,2), 2=(2,1) in a 4×4 grid.
+        // Polyomino sorted order: (1,1)=depth0, (1,2)=depth1, (2,1)=depth2.
+        // Collinear lines: row1 = [0,1] (depths 0 and 1), col1 = [0,2] (depths 0 and 2).
+        // Target = 6, n = 4.
+        //
+        // Only corner (depth 0) should admit value 4, via tuple (4,1,1) where
+        // the two 1s sit at non-collinear positions 1 and 2.
+        let lines = vec![vec![0, 1], vec![0, 2]]; // row line, col line
+        let m = Mdd::new(4, 3, Add, 6, &lines).unwrap();
+        // corner (depth 0) can be 4
+        assert!(
+            m.get(0).unwrap().contains(4),
+            "corner should admit 4 via (4,1,1)"
+        );
+        // arms (depths 1 and 2) cannot be 4
+        assert!(
+            !m.get(1).unwrap().contains(4),
+            "arm at depth 1 must not admit 4"
+        );
+        assert!(
+            !m.get(2).unwrap().contains(4),
+            "arm at depth 2 must not admit 4"
+        );
     }
 
     // ---- brute-force oracle cross-check ----
@@ -733,7 +941,7 @@ mod tests {
 
     fn assert_equiv(n: N, op: CommutativeOperator, target: T, k: N) {
         let expected = ref_tuples(n, op, target, k);
-        match Mdd::new(n, k, op, target) {
+        match Mdd::new(n, k, op, target, &no_lines()) {
             Ok(m) => {
                 let mut actual = m.tuples();
                 actual.sort();
@@ -755,7 +963,7 @@ mod tests {
     fn assert_reduced(m: &Mdd) {
         let mut seen = HashSet::new();
         for node in m.edges.keys() {
-            assert!(seen.insert(*node), "duplicate node {node} in MDD");
+            assert!(seen.insert(node.clone()), "duplicate node {node} in MDD");
         }
     }
 }
