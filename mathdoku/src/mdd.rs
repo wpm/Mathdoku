@@ -1,4 +1,4 @@
-//! Multivalued Decision Diagram (MDD) implementation of [`Memo`] and `Narrow`.
+//! Multivalued Decision Diagram (MDD) implementation of [`Memo`].
 //!
 //! Only commutative (add, multiply) constraints are supported. For non-commutative
 //! constraints (subtract, divide), use `Table` instead.
@@ -533,6 +533,9 @@ struct Node {
     value: T,
     /// Used-value sets for still-open collinear lines (indexed by line index).
     /// Closed lines are zeroed out so that they don't inflate the key space.
+    /// `Fill` doubles as a compact bitset (u16) for tracking which values have
+    /// been placed in a line; its bitmap operations serve set-membership here,
+    /// not candidate-fill semantics.
     used: Box<[Fill]>,
 }
 

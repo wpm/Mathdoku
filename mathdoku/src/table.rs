@@ -1,9 +1,9 @@
 //! Explicit-tuple implementation of [`Memo`].
-use crate::Error::InvalidCellCageIndex;
+use crate::Error::{EmptyFills, InvalidCellCageIndex};
 use crate::fill::Fill;
-use crate::memo::{Memo, fills_from_tuples};
+use crate::memo::Memo;
 use crate::operator::{ArithmeticConstraint, CommutativeOperator, NonCommutativeOperator};
-use crate::tuples::Tuples;
+use crate::tuples::{Tuple, Tuples};
 use crate::{Error, N, T};
 
 /// A cage constraint stored as an explicit list of valid value tuples.
@@ -101,6 +101,23 @@ impl Memo for Table {
             .collect::<Vec<_>>();
         Self::build(self.n, self.constraint, tuples)
     }
+}
+
+/// Derives per-position fills from a non-empty tuple list.
+///
+/// Returns `Err(EmptyFills)` if `tuples` is empty or any column's fill is empty.
+pub fn fills_from_tuples(tuples: &[Tuple]) -> Result<Vec<Fill>, Error> {
+    if tuples.is_empty() {
+        return Err(EmptyFills);
+    }
+    let k = tuples[0].len();
+    let fills: Vec<Fill> = (0..k)
+        .map(|i| Fill::from(&tuples.iter().map(|t| t[i]).collect::<Tuple>()))
+        .collect();
+    if fills.iter().any(|f| f.is_empty()) {
+        return Err(EmptyFills);
+    }
+    Ok(fills)
 }
 
 #[cfg(test)]

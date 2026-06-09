@@ -8,10 +8,7 @@
 //! stores tuples explicitly, and will be implemented by `Mdd`, which stores
 //! them as a multivalued decision diagram.
 use crate::Error;
-use crate::Error::EmptyFills;
 use crate::fill::Fill;
-use crate::tuples::Tuple;
-
 /// A cage constraint representation that can be constructed from an arithmetic operation.
 ///
 /// Implementors store the set of value tuples satisfying the constraint and
@@ -32,21 +29,4 @@ pub trait Memo: Sized {
     /// # Errors
     /// Returns [`EmptyFills`] if no tuples survive the filter.
     fn narrow(&self, support: &[Fill]) -> Result<Self, Error>;
-}
-
-/// Derives per-position fills from a non-empty tuple list.
-///
-/// Returns `Err(EmptyFills)` if `tuples` is empty or any column's fill is empty.
-pub fn fills_from_tuples(tuples: &[Tuple]) -> Result<Vec<Fill>, Error> {
-    if tuples.is_empty() {
-        return Err(EmptyFills);
-    }
-    let k = tuples[0].len();
-    let fills: Vec<Fill> = (0..k)
-        .map(|i| Fill::from(&tuples.iter().map(|t| t[i]).collect::<Tuple>()))
-        .collect();
-    if fills.iter().any(|f| f.is_empty()) {
-        return Err(EmptyFills);
-    }
-    Ok(fills)
 }
