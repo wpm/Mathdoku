@@ -78,6 +78,15 @@ impl Puzzle {
         self.grid.size()
     }
 
+    /// Returns `true` if every cell of the grid is covered by a cage.
+    ///
+    /// Cages are disjoint, so the cell-to-cage map covers the grid exactly
+    /// when it has one entry per cell.
+    #[must_use]
+    pub fn is_fully_covered(&self) -> bool {
+        self.cages.len() == self.n() * self.n()
+    }
+
     /// Returns an iterator over the unique cages in this puzzle, sorted by anchor cell.
     pub fn cages(&self) -> impl Iterator<Item = &Cage> {
         let mut seen: HashSet<*const Cage> = HashSet::new();
@@ -1116,6 +1125,33 @@ mod tests {
         let p = Puzzle::from_parts(InternalGrid::new(2).unwrap(), vec![cage]);
         // Should be feasible and not panic.
         assert!(p.fixpoint().is_some());
+    }
+
+    #[test]
+    fn is_fully_covered_empty_puzzle_is_false() {
+        let p = Puzzle::new(2).unwrap();
+        assert!(!p.is_fully_covered());
+    }
+
+    #[test]
+    fn is_fully_covered_partial_coverage_is_false() {
+        let p = Puzzle::new(2)
+            .unwrap()
+            .insert(
+                &Polyomino::from([Cell(1, 1)]).unwrap(),
+                CageOperator::Given,
+                1,
+            )
+            .unwrap()
+            .unwrap();
+        assert!(!p.is_fully_covered());
+    }
+
+    #[test]
+    fn is_fully_covered_full_coverage_is_true() {
+        let square: Vec<Vec<N>> = vec![vec![1, 2], vec![2, 1]];
+        let p = Puzzle::from_latin_square(2, &square).unwrap();
+        assert!(p.is_fully_covered());
     }
 
     #[test]
