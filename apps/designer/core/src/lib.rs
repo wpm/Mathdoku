@@ -560,7 +560,7 @@ mod tests {
         pub(super) fn unique_3x3_app_state() -> AppState {
             let mut state = AppState::default();
             let _ = new_empty(&mut state, 3).unwrap();
-            let square = [[1u64, 2, 3], [2, 3, 1], [3, 1, 2]];
+            let square = [[1u32, 2, 3], [2, 3, 1], [3, 1, 2]];
             for (r, row) in square.iter().enumerate() {
                 for (c, &v) in row.iter().enumerate() {
                     let _ =
@@ -802,12 +802,11 @@ mod tests {
             let _ = new_empty(&mut state, 3).unwrap();
             let cage_before = insert_cage(&mut state, poly(&[(0, 0)]), Operator::Given, Some(1))
                 .unwrap()
-                .puzzle
-                .unwrap();
+                .puzzle;
             // Second Given(1) in the same row makes the puzzle infeasible: fixpoint returns
             // None, so insert_cage succeeds (Ok) but leaves the puzzle unchanged.
             let st = insert_cage(&mut state, poly(&[(0, 1)]), Operator::Given, Some(1)).unwrap();
-            assert_eq!(st.puzzle.unwrap(), cage_before);
+            assert_eq!(st.puzzle, cage_before);
             assert_eq!(state.puzzle.as_ref().unwrap().cages().count(), 1);
         }
 
@@ -1190,7 +1189,7 @@ mod tests {
     mod mode_transitions {
         use super::helpers::{all_cells, poly, unique_3x3_app_state};
         use crate::{AppState, Error, fix, insert_cage, new_empty, new_latin_square, unfix};
-        use mathdoku::{Cell, Operator, Polyomino};
+        use mathdoku::{Cell, Operator, Polyomino, T};
         use rand::{SeedableRng, rngs::StdRng};
 
         #[test]
@@ -1225,7 +1224,7 @@ mod tests {
             let _ = new_latin_square(&mut state, 3, &mut rng).unwrap();
             let original = state.solution.clone().unwrap();
             for cell in all_cells(3) {
-                let v = u64::from(original.get(cell).unwrap().values()[0]);
+                let v = T::from(original.get(cell).unwrap().values()[0]);
                 let p = Polyomino::from_cells(&[cell]).unwrap();
                 let _ = insert_cage(&mut state, p, Operator::Given, Some(v)).unwrap();
             }
@@ -1279,7 +1278,7 @@ mod tests {
                 &mut state,
                 Polyomino::from_cells(&[Cell::new(0, 1)]).unwrap(),
                 Operator::Given,
-                Some(value_at(0, 1)),
+                Some(T::try_from(value_at(0, 1)).unwrap()),
             )
             .unwrap();
 
@@ -1809,7 +1808,7 @@ mod tests {
             AppState, apply_loaded, insert_cage, new_empty, new_latin_square, remove_cage_at,
             serialize_save, unfix,
         };
-        use mathdoku::{Cell, Operator};
+        use mathdoku::{Cell, Operator, T};
         use proptest::prelude::*;
         use rand::{SeedableRng, rngs::StdRng};
 
@@ -1818,13 +1817,13 @@ mod tests {
             Given {
                 r: usize,
                 c: usize,
-                target: u64,
+                target: T,
             },
             AddPair {
                 r: usize,
                 c: usize,
                 horizontal: bool,
-                target: u64,
+                target: T,
             },
             Remove {
                 r: usize,
@@ -1834,15 +1833,20 @@ mod tests {
 
         fn op_strategy(n: usize) -> impl Strategy<Value = Op> {
             prop_oneof![
-                (0..n, 0..n, 1u64..=n as u64).prop_map(|(r, c, target)| Op::Given { r, c, target }),
-                (0..n, 0..n, any::<bool>(), 2u64..=2 * n as u64).prop_map(
-                    |(r, c, horizontal, target)| Op::AddPair {
+                (0..n, 0..n, 1u32..=u32::try_from(n).unwrap())
+                    .prop_map(|(r, c, target)| Op::Given { r, c, target }),
+                (
+                    0..n,
+                    0..n,
+                    any::<bool>(),
+                    2u32..=2 * u32::try_from(n).unwrap()
+                )
+                    .prop_map(|(r, c, horizontal, target)| Op::AddPair {
                         r,
                         c,
                         horizontal,
                         target
-                    }
-                ),
+                    }),
                 (0..n, 0..n).prop_map(|(r, c)| Op::Remove { r, c }),
             ]
         }
