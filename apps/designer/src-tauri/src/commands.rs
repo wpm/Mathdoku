@@ -10,7 +10,7 @@ use std::sync::{Mutex, PoisonError};
 use serde::{Deserialize, Serialize};
 use serde_json::{from_str, to_string};
 
-use mathdoku::{Cell, Operator, Polyomino};
+use mathdoku::{Cell, Operator, Polyomino, T};
 use mathdoku_designer_core::{self as core, AppState, DocState, SaveResult, State};
 use tauri::menu::MenuItem;
 use tauri::{AppHandle, Manager, Runtime, State as TauriState};
@@ -195,7 +195,7 @@ pub fn set_window_title<R: Runtime>(title: String, app: AppHandle<R>) -> Result<
 pub fn insert_cage(
     polyomino: Polyomino,
     operator: Operator,
-    target: Option<u64>,
+    target: Option<T>,
     state: TauriState<Mutex<AppState>>,
 ) -> Result<State, String> {
     let mut s = state.lock().map_err(|e| e.to_string())?;
