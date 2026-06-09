@@ -285,16 +285,23 @@ mod tests {
         assert_eq!(grouped[1].1, vec![1]);
     }
 
+    /// Perf baseline body shared by the `perf_feasible_op_targets_2x2_*`
+    /// tests: run `feasible_op_targets` for a 2×2 square polyomino in an
+    /// empty n×n Without-Solution puzzle.
+    fn perf_2x2_square(n: usize) {
+        let puzzle = Puzzle::new(n).unwrap();
+        let square = poly(&[(0, 0), (0, 1), (1, 0), (1, 1)]);
+        let pairs = feasible_op_targets(&puzzle, &square).unwrap();
+        assert!(!pairs.is_empty());
+    }
+
     /// Perf baseline: `feasible_op_targets` for a 2×2 square polyomino in an
     /// empty 7×7 Without-Solution puzzle. This mirrors what happens when the
     /// user draws a 2×2 cage and presses Enter in the designer — the operation
     /// selector triggers this call to populate its operator/target picker.
     #[test]
     fn perf_feasible_op_targets_2x2_in_empty_7x7() {
-        let puzzle = Puzzle::new(7).unwrap();
-        let square = poly(&[(0, 0), (0, 1), (1, 0), (1, 1)]);
-        let pairs = feasible_op_targets(&puzzle, &square).unwrap();
-        assert!(!pairs.is_empty());
+        perf_2x2_square(7);
     }
 
     /// Perf baseline: the 9×9 fat-cage analogue of the 7×7 case above. Before
@@ -303,9 +310,6 @@ mod tests {
     /// on fat cages in 9×9.
     #[test]
     fn perf_feasible_op_targets_2x2_in_empty_9x9() {
-        let puzzle = Puzzle::new(9).unwrap();
-        let square = poly(&[(0, 0), (0, 1), (1, 0), (1, 1)]);
-        let pairs = feasible_op_targets(&puzzle, &square).unwrap();
-        assert!(!pairs.is_empty());
+        perf_2x2_square(9);
     }
 }
