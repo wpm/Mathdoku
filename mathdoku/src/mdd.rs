@@ -393,9 +393,9 @@ impl Memo for Mdd {
     }
 }
 
-/// The cage dynamic program specified by ADR-0006: the conjunction of a
-/// commutative arithmetic constraint and collinear distinctness, expressed as
-/// an explicit `root`/`step`/`accept` transition over [`State`].
+/// The cage dynamic program: the conjunction of a commutative arithmetic
+/// constraint and collinear distinctness, expressed as an explicit
+/// `root`/`step`/`accept` transition over [`State`].
 ///
 /// [`Mdd`] construction consumes this DP, but the DP itself is standalone:
 /// it can be driven directly without building a diagram.
@@ -954,7 +954,7 @@ mod tests {
     #[test]
     fn cage_dp_enumerates_l_cage_tuples_without_an_mdd() {
         setup();
-        // The +6 L-cage from ADR-0006 in n=4: row line [0,1], column line [0,2].
+        // The +6 L-cage in n=4: row line [0,1], column line [0,2].
         // Driven through root/step/accept alone — no Mdd is constructed.
         let lines = vec![vec![0, 1], vec![0, 2]];
         let dp = CageDp::new(4, 3, Add, 6, &lines);
