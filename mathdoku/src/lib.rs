@@ -19,7 +19,6 @@
 //! - **Query valid operators** for a polyomino with [`operators_for`].
 
 #![deny(missing_docs)]
-#![allow(dead_code)]
 #![cfg_attr(
     test,
     allow(

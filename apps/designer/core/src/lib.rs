@@ -308,14 +308,19 @@ pub fn insert_cage(
     state: &mut AppState,
     poly: Polyomino,
     operator: Operator,
-    target: Option<u64>,
+    target: Option<T>,
 ) -> Result<State, Error> {
     let puzzle = state.puzzle.as_ref().ok_or(Error::NoPuzzle)?;
     let n = puzzle.n();
 
     // `Some` in Without-Solution mode (author-chosen target); `None` in
     // With-Solution mode, where the target is derived from the fixed solution.
-    let target = target.unwrap_or_else(|| {
+    // u64 arithmetic avoids intermediate overflow (max product 9^9 = 387M fits T=u32,
+    // but partial products during iteration can reach 9^8 * 9 = same bound — still safe,
+    // but widening to u64 keeps the arithmetic unambiguous).
+    let target: T = if let Some(t) = target {
+        t
+    } else {
         let cells: Vec<Cell> = poly.iter().copied().collect();
         let true_values: Option<Vec<u64>> = state.solution.as_ref().and_then(|grid| {
             cells
@@ -327,19 +332,18 @@ pub fn insert_cage(
                 })
                 .collect()
         });
-        match (&operator, true_values.as_deref()) {
+        let raw: u64 = match (&operator, true_values.as_deref()) {
             (Operator::Given, Some(vals)) => vals[0],
             (Operator::Add, Some(vals)) => vals.iter().sum(),
             (Operator::Multiply, Some(vals)) => vals.iter().product(),
             (Operator::Subtract, Some(vals)) => vals[0].abs_diff(vals[1]),
             (Operator::Divide, Some(vals)) => vals[0].max(vals[1]) / vals[0].min(vals[1]),
             _ => 0,
-        }
-    });
+        };
+        T::try_from(raw).map_err(|_| mathdoku::Error::InfeasibleCage(poly.clone(), raw))?
+    };
 
     let n = N::try_from(n).map_err(|_| mathdoku::Error::InvalidGridSize(n))?;
-    let target =
-        T::try_from(target).map_err(|_| mathdoku::Error::InfeasibleCage(poly.clone(), target))?;
     let cage = Cage::new(n, poly, operator, target)?;
     match puzzle.insert_cage(&cage)? {
         Some(new_puzzle) => commit_puzzle(state, new_puzzle),
@@ -796,9 +800,14 @@ mod tests {
             // conflict and insert_cage returns Ok(None); the designer abandons the operation.
             let mut state = AppState::default();
             let _ = new_empty(&mut state, 3).unwrap();
-            let _ = insert_cage(&mut state, poly(&[(0, 0)]), Operator::Given, Some(1)).unwrap();
-            assert!(insert_cage(&mut state, poly(&[(0, 1)]), Operator::Given, Some(1)).is_ok());
-            // Only the first cage was committed.
+            let cage_before = insert_cage(&mut state, poly(&[(0, 0)]), Operator::Given, Some(1))
+                .unwrap()
+                .puzzle
+                .unwrap();
+            // Second Given(1) in the same row makes the puzzle infeasible: fixpoint returns
+            // None, so insert_cage succeeds (Ok) but leaves the puzzle unchanged.
+            let st = insert_cage(&mut state, poly(&[(0, 1)]), Operator::Given, Some(1)).unwrap();
+            assert_eq!(st.puzzle.unwrap(), cage_before);
             assert_eq!(state.puzzle.as_ref().unwrap().cages().count(), 1);
         }
 

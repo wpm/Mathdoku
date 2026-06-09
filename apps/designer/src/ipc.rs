@@ -258,7 +258,7 @@ pub async fn insert_cage(
     target: Option<Target>,
 ) -> Result<State, IpcError> {
     crate::web_state::with_state_mut(|s| {
-        mathdoku_designer_core::insert_cage(s, polyomino, operator, target.map(u64::from))
+        mathdoku_designer_core::insert_cage(s, polyomino, operator, target)
     })
     .map_err(|e| IpcError::Command(e.to_string()))
 }

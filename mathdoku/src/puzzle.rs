@@ -21,6 +21,10 @@ use std::sync::Arc;
 #[derive(Clone, Debug)]
 pub struct Puzzle {
     grid: InternalGrid,
+    // INVARIANT: all k cells of a k-cell cage map to the same Arc<Cage> — one object, k aliases.
+    // Never call Arc::make_mut on values in this map: when refcount > 1 it silently clones,
+    // breaking the aliasing and producing k independent copies that diverge under propagation.
+    // Propagation must follow replace-never-mutate: build a new Cage, then re-insert all k cells.
     cages: HashMap<Cell, Arc<Cage>>,
 }
 

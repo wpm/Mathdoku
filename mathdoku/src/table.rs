@@ -25,8 +25,12 @@ impl Table {
     /// Constructs a representation of all `k`-tuples of values in `1..=n`
     /// satisfying a commutative (add or multiply) constraint.
     ///
+    /// Commutative cages use [`Mdd`] in production; this constructor exists as a
+    /// test utility to verify `Table` behaviour independently of operator class.
+    ///
     /// # Errors
     /// Returns [`EmptyFills`] if no tuples satisfy the constraint.
+    #[allow(dead_code)]
     pub fn commutative(
         n: N,
         k: N,
@@ -59,6 +63,7 @@ impl Table {
         )
     }
 
+    #[allow(dead_code)] // used only in tests to inspect Table contents
     pub(crate) fn tuples(&self) -> &[Vec<N>] {
         &self.tuples
     }

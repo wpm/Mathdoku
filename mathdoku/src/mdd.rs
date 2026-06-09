@@ -362,6 +362,7 @@ impl Mdd {
         Ok(fills)
     }
 
+    #[allow(dead_code)] // used only in tests to verify MDD contents
     pub(crate) fn tuples(&self) -> Vec<Vec<N>> {
         let num_lines = self.line_meta.num_lines();
         let root = Node {
