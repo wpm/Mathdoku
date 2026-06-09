@@ -51,7 +51,8 @@ pub fn is_globally_feasible(puzzle: &Puzzle, candidate: &Cage) -> bool {
 ///
 /// For each locally-feasible operator and target (from [`Puzzle::possible_operations`]
 /// and [`Puzzle::possible_targets`]), tests global feasibility with
-/// [`is_globally_feasible`]. Only pairs that admit a completion are returned.
+/// [`is_globally_feasible`]. Only pairs that pass [`is_globally_feasible`] are
+/// returned.
 ///
 /// # Errors
 /// Returns [`Error`] if constructing a candidate cage fails.
