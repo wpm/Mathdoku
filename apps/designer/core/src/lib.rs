@@ -1026,7 +1026,7 @@ mod tests {
             assert!(state.puzzle.is_some());
             assert!(state.solution.is_some());
             // New puzzle with no user cages — current() is the unconstrained puzzle grid.
-            assert_eq!(st.current().unwrap(), state.puzzle.unwrap().clone());
+            assert_eq!(st.current().unwrap(), state.puzzle.unwrap());
             assert!(state.path.is_none());
             assert!(state.dirty);
         }
@@ -1470,7 +1470,7 @@ mod tests {
         }
 
         fn is_valid_latin_square(grid: &Puzzle, n: usize) -> bool {
-            let expected: Vec<mathdoku::N> = (1..=n as mathdoku::N).collect();
+            let expected: Vec<mathdoku::N> = (1..=mathdoku::N::try_from(n).unwrap()).collect();
             let line_ok = |cells: Vec<mathdoku::N>| {
                 let mut sorted = cells;
                 sorted.sort_unstable();
