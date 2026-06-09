@@ -5,7 +5,7 @@
 //!
 //! The underlying cage dynamic program ([`CageDp`]) has two drivers: the [`Mdd`]
 //! builder (compile once, narrow many — for propagation) and the lazy
-//! [`Solutions`] iterator (one-shot existence and enumeration queries).
+//! [`CageSolutions`] iterator (one-shot existence and enumeration queries).
 use crate::Error::InvalidCellCageIndex;
 use crate::fill::Fill;
 use crate::memo::Memo;
@@ -493,9 +493,9 @@ impl CageDp {
     /// the iterator exits early: existence is `solutions(..).next().is_some()`
     /// without ever building a diagram. `support` must have one [`Fill`] per
     /// cage cell.
-    pub fn solutions<'a>(&'a self, support: &'a [Fill]) -> Solutions<'a> {
+    pub fn solutions<'a>(&'a self, support: &'a [Fill]) -> CageSolutions<'a> {
         debug_assert_eq!(support.len(), self.constraint.arity as usize);
-        Solutions {
+        CageSolutions {
             dp: self,
             support,
             stack: vec![Frame {
@@ -519,7 +519,7 @@ impl CageDp {
 ///
 /// Obtained via [`CageDp::solutions`].
 #[must_use]
-pub struct Solutions<'a> {
+pub struct CageSolutions<'a> {
     dp: &'a CageDp,
     /// Per-depth allowed values; guards each step.
     support: &'a [Fill],
@@ -529,7 +529,7 @@ pub struct Solutions<'a> {
     dead: HashSet<Node>,
 }
 
-/// One depth of the [`Solutions`] DFS path.
+/// One depth of the [`CageSolutions`] DFS path.
 struct Frame {
     state: State,
     /// The value on the edge from the parent frame (unused for the root).
@@ -540,7 +540,7 @@ struct Frame {
     found: bool,
 }
 
-impl Solutions<'_> {
+impl CageSolutions<'_> {
     /// Pops the exhausted top frame: memoizes it as dead if no accepting
     /// descendant was found, otherwise propagates `found` to its parent.
     fn pop_frame(&mut self) {
@@ -562,7 +562,7 @@ impl Solutions<'_> {
     }
 }
 
-impl Iterator for Solutions<'_> {
+impl Iterator for CageSolutions<'_> {
     type Item = Vec<N>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -1092,7 +1092,7 @@ mod tests {
         );
     }
 
-    // ---- Solutions iterator ----
+    // ---- CageSolutions iterator ----
 
     #[test]
     fn solutions_enumerates_l_cage_tuples_without_an_mdd() {
