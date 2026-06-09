@@ -1,9 +1,13 @@
 //! Global-feasibility queries for Without-Solution authoring.
 //!
 //! In Without-Solution mode every operator and target the author picks must
-//! leave at least one global completion of the puzzle. These queries reuse the
-//! existing CSP/MDD solver ([`Puzzle::solutions`]) rather than introducing a
-//! parallel engine, with an early exit at the first completion.
+//! leave the puzzle viable. While cells remain uncovered by cages, viability
+//! means reaching a GAC fixpoint without a domain wipeout — "has a global
+//! completion" is only asked once the puzzle is fully covered, mirroring the
+//! coverage gate in `partial_solution.rs::solution_count`. The complete-puzzle
+//! check reuses the existing CSP/MDD solver ([`Puzzle::solutions`]) rather
+//! than introducing a parallel engine, with an early exit at the first
+//! completion.
 //!
 //! [`feasible_op_targets`] enumerates the globally-feasible `(operator, target)`
 //! pairs for a candidate cage; [`cached_feasible_op_targets`] memoizes that
@@ -16,18 +20,29 @@ use std::hash::{Hash, Hasher};
 
 use mathdoku::{Cage, Error, N, Operator, Polyomino, Puzzle, Target};
 
-/// Returns `true` if the puzzle extended with `candidate` has at least one
-/// global completion.
+/// Returns `true` if the puzzle extended with `candidate` is viable.
 ///
-/// The query constrains a fresh grid by the extended puzzle and asks the
-/// solution iterator for its first completion, stopping immediately once one
-/// is found. A cage conflict, a propagation wipeout, or an empty solution
-/// stream all mean infeasible.
+/// A cage conflict or a propagation wipeout (from [`Puzzle::insert_cage`])
+/// means infeasible. While the extended puzzle still has uncovered cells, a
+/// clean GAC fixpoint is the whole test: searching for a completion over
+/// cells with no cage constraint yet is both expensive and the wrong
+/// question. Once the puzzle is fully covered, the query asks the solution
+/// iterator for its first completion, stopping immediately once one is found;
+/// an empty solution stream means infeasible.
+///
+/// A clean fixpoint is necessary but not sufficient for completion (GAC is
+/// incomplete), so mid-build feasibility may admit an `(op, target)` with no
+/// eventual completion — the intended trade: block only immediate
+/// contradictions while authoring, defer true solvability to the complete
+/// grid.
 #[must_use]
 pub fn is_globally_feasible(puzzle: &Puzzle, candidate: &Cage) -> bool {
     let Ok(Some(extended)) = puzzle.insert_cage(candidate) else {
         return false;
     };
+    if !extended.is_fully_covered() {
+        return true;
+    }
     matches!(extended.solutions().next(), Some(Ok(_)))
 }
 
@@ -36,7 +51,8 @@ pub fn is_globally_feasible(puzzle: &Puzzle, candidate: &Cage) -> bool {
 ///
 /// For each locally-feasible operator and target (from [`Puzzle::possible_operations`]
 /// and [`Puzzle::possible_targets`]), tests global feasibility with
-/// [`is_globally_feasible`]. Only pairs that admit a completion are returned.
+/// [`is_globally_feasible`]. Only pairs that pass [`is_globally_feasible`] are
+/// returned.
 ///
 /// # Errors
 /// Returns [`Error`] if constructing a candidate cage fails.
@@ -173,6 +189,40 @@ mod tests {
     }
 
     #[test]
+    fn incomplete_puzzle_feasibility_matches_insert_cage_success() {
+        // While coverage is incomplete, feasibility is exactly "insert_cage
+        // reached a clean fixpoint": in-range Givens succeed, out-of-range
+        // Givens fail, with no completion search either way.
+        let puzzle = Puzzle::new(4).unwrap();
+        for target in 1..=6 {
+            let candidate = cage(4, &[(0, 0)], Operator::Given, target);
+            assert_eq!(
+                is_globally_feasible(&puzzle, &candidate),
+                matches!(puzzle.insert_cage(&candidate), Ok(Some(_)))
+            );
+        }
+    }
+
+    #[test]
+    fn completing_cage_with_solution_is_feasible() {
+        // Two Add-6 row cages; the candidate third row cage completes
+        // coverage, so the full solution search runs — and the 12 order-3
+        // Latin squares all satisfy it.
+        let puzzle = Puzzle::new(3)
+            .unwrap()
+            .insert_cage(&cage(3, &[(0, 0), (0, 1), (0, 2)], Operator::Add, 6))
+            .unwrap()
+            .unwrap()
+            .insert_cage(&cage(3, &[(1, 0), (1, 1), (1, 2)], Operator::Add, 6))
+            .unwrap()
+            .unwrap();
+        assert!(is_globally_feasible(
+            &puzzle,
+            &cage(3, &[(2, 0), (2, 1), (2, 2)], Operator::Add, 6)
+        ));
+    }
+
+    #[test]
     fn given_singleton_offers_every_value_in_an_empty_grid() {
         let puzzle = Puzzle::new(4).unwrap();
         let pairs = feasible_op_targets(&puzzle, &poly(&[(1, 1)])).unwrap();
@@ -242,6 +292,18 @@ mod tests {
     #[test]
     fn perf_feasible_op_targets_2x2_in_empty_7x7() {
         let puzzle = Puzzle::new(7).unwrap();
+        let square = poly(&[(0, 0), (0, 1), (1, 0), (1, 1)]);
+        let pairs = feasible_op_targets(&puzzle, &square).unwrap();
+        assert!(!pairs.is_empty());
+    }
+
+    /// Perf baseline: the 9×9 fat-cage analogue of the 7×7 case above. Before
+    /// the coverage gate this fired a full MAC solve over 77 uncovered cells
+    /// for every candidate `(op, target)` — the prohibitive Designer slowness
+    /// on fat cages in 9×9.
+    #[test]
+    fn perf_feasible_op_targets_2x2_in_empty_9x9() {
+        let puzzle = Puzzle::new(9).unwrap();
         let square = poly(&[(0, 0), (0, 1), (1, 0), (1, 1)]);
         let pairs = feasible_op_targets(&puzzle, &square).unwrap();
         assert!(!pairs.is_empty());
