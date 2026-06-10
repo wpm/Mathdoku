@@ -158,7 +158,7 @@ fn with_solution_view(
                     >
                         // Native SVG tooltip explaining the operator's constraint
                         // (ADR-0007): identical behavior on desktop and web.
-                        <title>{operator_tooltip(op)}</title>
+                        {leptos::svg::title().child(operator_tooltip(op))}
                         <rect
                             x={tab_x} y={tab_y}
                             width={tab_w} height={tab_h}
@@ -289,7 +289,7 @@ fn operator_strip_view(
                     >
                         // Native SVG tooltip explaining the operator's constraint
                         // (ADR-0007): identical behavior on desktop and web.
-                        <title>{operator_tooltip(op)}</title>
+                        {leptos::svg::title().child(operator_tooltip(op))}
                         <rect
                             x={tab_x} y={tab_y} width={tab_w} height={tab_h}
                             rx="3"
