@@ -58,10 +58,28 @@ main,
   border-bottom: 1px solid var(--paper-line);
 }
 
+.site-header nav a {
+  margin-left: 1.25rem;
+}
+
+.site-header nav a[aria-current='page'] {
+  color: var(--paper-ink);
+  font-weight: 600;
+}
+
 .brand {
   font-family: var(--font-serif);
   font-size: 1.35rem;
   font-weight: 700;
+}
+
+.brand a {
+  color: var(--paper-ink);
+}
+
+.brand a:hover {
+  color: var(--paper-accent);
+  text-decoration: none;
 }
 
 .hero {
@@ -151,6 +169,51 @@ main,
   color: var(--paper-ink-2);
   max-width: 44rem;
   margin: 0;
+}
+
+/* Documentation pages (rules/, guide/): a readable single column of prose.
+ * The Help menu in the desktop app deep-links to ids on these pages, so the
+ * scroll-margin keeps anchored headings clear of the viewport edge. */
+.doc {
+  max-width: 44rem;
+  padding-top: 2rem;
+  padding-bottom: 2rem;
+}
+
+.doc h1 {
+  font-size: clamp(1.75rem, 4vw, 2.5rem);
+  font-weight: 600;
+  margin: 0 0 1rem;
+}
+
+.doc h2 {
+  font-size: 1.4rem;
+  margin: 2rem 0 0.5rem;
+  scroll-margin-top: 1rem;
+}
+
+.doc p,
+.doc li,
+.doc dd {
+  color: var(--paper-ink-2);
+}
+
+.doc .lede-left {
+  font-size: 1.15rem;
+}
+
+.doc dt {
+  font-weight: 600;
+  margin-top: 0.75rem;
+}
+
+.doc dd {
+  margin: 0.25rem 0 0 1.5rem;
+}
+
+.doc code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
 }
 
 .site-footer {
