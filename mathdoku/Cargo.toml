@@ -6,6 +6,7 @@ authors.workspace = true
 repository.workspace = true
 license.workspace = true
 rust-version = "1.94"
+readme = "README.md"
 description = "Generate and solve Mathdoku puzzles: grid representation, constraint propagation, solver, and generator"
 keywords = ["puzzle", "solver", "generator", "constraint", "game"]
 categories = ["games", "algorithms"]

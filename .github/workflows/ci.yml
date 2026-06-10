@@ -103,10 +103,22 @@ jobs:
       - name: cargo llvm-cov (mathdoku-designer)
         run: cd apps/designer && cargo llvm-cov --lcov --output-path ../../lcov-designer.info
 
-      - name: Upload coverage to Codecov
+      # Separate uploads per flag so Codecov can report (and badge) the
+      # library and the designer independently.
+      - name: Upload library coverage to Codecov
         uses: codecov/codecov-action@v4
         with:
-          files: lcov-mathdoku.info,lcov-designer.info
+          files: lcov-mathdoku.info
+          flags: mathdoku
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Upload designer coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: lcov-designer.info
+          flags: designer
           fail_ci_if_error: false
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
