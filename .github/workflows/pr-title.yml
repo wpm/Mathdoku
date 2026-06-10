@@ -1,0 +1,20 @@
+# Validates that PR titles follow Conventional Commits. PRs are squash-merged
+# with the PR title as the commit message, so this is what guarantees that
+# every commit on main parses for release-plz (version bumps + changelog).
+name: PR title
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  pull-requests: read
+
+jobs:
+  conventional-title:
+    name: Conventional Commits PR title
+    runs-on: ubuntu-latest
+    steps:
+      - uses: amannn/action-semantic-pull-request@v6
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
