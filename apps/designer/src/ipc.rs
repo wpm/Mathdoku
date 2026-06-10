@@ -98,7 +98,7 @@ struct TitleArgs {
     title: String,
 }
 
-#[cfg(not(feature = "web"))]
+#[cfg(all(not(feature = "web"), feature = "without-solution"))]
 #[derive(Serialize)]
 struct MenuEnabledArgs {
     fix_enabled: bool,
@@ -145,9 +145,9 @@ async fn call_unit<A: Serialize>(cmd: &str, args: A) -> Result<(), IpcError> {
 
 /// Invokes a no-argument command returning `Result<R, String>`.
 ///
-/// Only `fix` / `unfix` used this, and both are migrated, so it is dead on the
-/// `web` path.
-#[cfg(not(feature = "web"))]
+/// Only `fix` / `unfix` use this, and both are migrated, so it is dead on the
+/// `web` path (and absent entirely without the `without-solution` feature).
+#[cfg(all(not(feature = "web"), feature = "without-solution"))]
 async fn call_no_args<R: DeserializeOwned>(cmd: &str) -> Result<R, IpcError> {
     let result = raw_invoke(cmd, JsValue::NULL).await;
     if let Some(err) = command_error(&result) {
@@ -201,12 +201,12 @@ pub async fn new_latin_square(n: usize) -> Result<State, IpcError> {
     .map_err(|e| IpcError::Command(e.to_string()))
 }
 
-#[cfg(not(feature = "web"))]
+#[cfg(all(not(feature = "web"), feature = "without-solution"))]
 pub async fn new_empty(n: usize) -> Result<State, IpcError> {
     call("new_empty", NewPuzzleArgs { n }).await
 }
 
-#[cfg(feature = "web")]
+#[cfg(all(feature = "web", feature = "without-solution"))]
 // WASM-only: no Tauri command bus on web — call core directly against thread-local state.
 pub async fn new_empty(n: usize) -> Result<State, IpcError> {
     crate::web_state::with_state_mut(|s| mathdoku_designer_core::new_empty(s, n))
@@ -277,14 +277,14 @@ pub async fn remove_cage_at(polyomino: Polyomino) -> Result<State, IpcError> {
 
 /// Snapshots the unique completion into the solution (Without-Solution →
 /// With-Solution). Errors if the puzzle does not have exactly one completion.
-#[cfg(not(feature = "web"))]
+#[cfg(all(not(feature = "web"), feature = "without-solution"))]
 pub async fn fix() -> Result<State, IpcError> {
     call_no_args("fix").await
 }
 
 /// Snapshots the unique completion into the solution (Without-Solution →
 /// With-Solution). Errors if the puzzle does not have exactly one completion.
-#[cfg(feature = "web")]
+#[cfg(all(feature = "web", feature = "without-solution"))]
 // WASM-only: no Tauri command bus on web — call core directly against thread-local state.
 pub async fn fix() -> Result<State, IpcError> {
     crate::web_state::with_state_mut(mathdoku_designer_core::fix)
@@ -292,13 +292,13 @@ pub async fn fix() -> Result<State, IpcError> {
 }
 
 /// Discards the solution (With-Solution → Without-Solution).
-#[cfg(not(feature = "web"))]
+#[cfg(all(not(feature = "web"), feature = "without-solution"))]
 pub async fn unfix() -> Result<State, IpcError> {
     call_no_args("unfix").await
 }
 
 /// Discards the solution (With-Solution → Without-Solution).
-#[cfg(feature = "web")]
+#[cfg(all(feature = "web", feature = "without-solution"))]
 // WASM-only: no Tauri command bus on web — call core directly against thread-local state.
 pub async fn unfix() -> Result<State, IpcError> {
     crate::web_state::with_state_mut(mathdoku_designer_core::unfix)
@@ -312,7 +312,7 @@ pub async fn set_window_title(title: String) -> Result<(), IpcError> {
 
 /// Pushes the enabled state of the native Puzzle menu's Fix / Unfix items.
 /// Exactly one is enabled at a time, mirroring the frontend's mode predicates.
-#[cfg(not(feature = "web"))]
+#[cfg(all(not(feature = "web"), feature = "without-solution"))]
 pub async fn set_puzzle_menu_enabled(
     fix_enabled: bool,
     unfix_enabled: bool,
@@ -328,7 +328,7 @@ pub async fn set_puzzle_menu_enabled(
 }
 
 /// Web build: there is no native menu bar, so this is a no-op.
-#[cfg(feature = "web")]
+#[cfg(all(feature = "web", feature = "without-solution"))]
 // WASM-only: no native menu to enable/disable on web.
 pub async fn set_puzzle_menu_enabled(
     _fix_enabled: bool,

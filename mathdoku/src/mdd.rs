@@ -571,6 +571,7 @@ impl CageDp {
     /// the iterator exits early: existence is `solutions(..).next().is_some()`
     /// without ever building a diagram. `support` must have one [`Fill`] per
     /// cage cell.
+    #[cfg(feature = "without-solution")]
     pub fn solutions<'a>(&'a self, support: &'a [Fill]) -> CageSolutions<'a> {
         debug_assert_eq!(support.len(), self.constraint.arity as usize);
         CageSolutions {
@@ -596,6 +597,7 @@ impl CageDp {
 /// `dead`, keeping exhaustion `O(states)` instead of `O(paths)`.
 ///
 /// Obtained via [`CageDp::solutions`].
+#[cfg(feature = "without-solution")]
 #[must_use]
 pub struct CageSolutions<'a> {
     dp: &'a CageDp,
@@ -608,6 +610,7 @@ pub struct CageSolutions<'a> {
 }
 
 /// One depth of the [`CageSolutions`] DFS path.
+#[cfg(feature = "without-solution")]
 struct Frame {
     state: State,
     /// The value on the edge from the parent frame (unused for the root).
@@ -618,6 +621,7 @@ struct Frame {
     found: bool,
 }
 
+#[cfg(feature = "without-solution")]
 impl CageSolutions<'_> {
     /// Pops the exhausted top frame: memoizes it as dead if no accepting
     /// descendant was found, otherwise propagates `found` to its parent.
@@ -640,6 +644,7 @@ impl CageSolutions<'_> {
     }
 }
 
+#[cfg(feature = "without-solution")]
 impl Iterator for CageSolutions<'_> {
     type Item = Vec<N>;
 
@@ -1172,6 +1177,7 @@ mod tests {
 
     // ---- CageSolutions iterator ----
 
+    #[cfg(feature = "without-solution")]
     #[test]
     fn solutions_enumerates_l_cage_tuples_without_an_mdd() {
         setup();
@@ -1195,6 +1201,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "without-solution")]
     #[test]
     fn solutions_agree_with_mdd_tuples_across_cage_shapes() {
         setup();
@@ -1214,6 +1221,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "without-solution")]
     #[test]
     fn solutions_existence_matches_mdd_construction_over_grid() {
         setup();
@@ -1232,6 +1240,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "without-solution")]
     #[test]
     fn solutions_feasibility_under_support_matches_build_and_narrow() {
         setup();
@@ -1260,6 +1269,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "without-solution")]
     #[test]
     fn solutions_is_exhausted_after_last_tuple() {
         setup();
@@ -1397,6 +1407,7 @@ mod tests {
         vec![Fill::all(usize::from(n)); usize::from(k)]
     }
 
+    #[cfg(feature = "without-solution")]
     fn assert_existence_matches_mdd(
         n: N,
         k: N,

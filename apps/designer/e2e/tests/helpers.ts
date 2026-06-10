@@ -74,14 +74,6 @@ export async function installTauriStubs(
               puzzle = { n, cages: [] };
               return Promise.resolve(wrapState(puzzle as BareP));
             }
-            if (cmd === 'fix') {
-              hasSolution = true;
-              return Promise.resolve(wrapState(puzzle as BareP));
-            }
-            if (cmd === 'unfix') {
-              hasSolution = false;
-              return Promise.resolve(wrapState(puzzle as BareP));
-            }
             if (cmd === 'save_puzzle') {
               const path =
                 (args as { path?: string } | undefined)?.path ?? saveDialogPath;

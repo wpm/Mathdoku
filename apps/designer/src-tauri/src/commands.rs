@@ -12,11 +12,13 @@ use serde_json::{from_str, to_string};
 
 use mathdoku::{Cell, Operator, Polyomino, T};
 use mathdoku_designer_core::{self as core, AppState, DocState, SaveResult, State};
+#[cfg(feature = "without-solution")]
 use tauri::menu::MenuItem;
 use tauri::{AppHandle, Manager, Runtime, State as TauriState};
 
 /// Handles to the native Puzzle menu's Fix / Unfix items, stored in app state so
 /// [`set_puzzle_menu_enabled`] can toggle their enabled state from the frontend.
+#[cfg(feature = "without-solution")]
 pub struct PuzzleMenu<R: Runtime> {
     pub fix: MenuItem<R>,
     pub unfix: MenuItem<R>,
@@ -82,6 +84,7 @@ pub fn read_recent<R: Runtime>(app: &AppHandle<R>) -> Option<RecentRecord> {
 ///
 /// # Errors
 /// Returns an error string if `n` is invalid or the state lock is poisoned.
+#[cfg(feature = "without-solution")]
 #[tauri::command]
 pub fn new_empty(n: usize, state: TauriState<Mutex<AppState>>) -> Result<State, String> {
     let mut s = state.lock().map_err(|e| e.to_string())?;
@@ -208,6 +211,7 @@ pub fn insert_cage(
 /// # Errors
 /// Returns an error string if no puzzle is loaded or the puzzle does not have
 /// exactly one global completion.
+#[cfg(feature = "without-solution")]
 #[tauri::command]
 pub fn fix(state: TauriState<Mutex<AppState>>) -> Result<State, String> {
     let mut s = state.lock().map_err(|e| e.to_string())?;
@@ -219,6 +223,7 @@ pub fn fix(state: TauriState<Mutex<AppState>>) -> Result<State, String> {
 ///
 /// # Errors
 /// Returns an error string if no puzzle is loaded.
+#[cfg(feature = "without-solution")]
 #[tauri::command]
 pub fn unfix(state: TauriState<Mutex<AppState>>) -> Result<State, String> {
     let mut s = state.lock().map_err(|e| e.to_string())?;
@@ -232,6 +237,7 @@ pub fn unfix(state: TauriState<Mutex<AppState>>) -> Result<State, String> {
 ///
 /// # Errors
 /// Returns an error string if setting either item's enabled state fails.
+#[cfg(feature = "without-solution")]
 #[tauri::command]
 pub fn set_puzzle_menu_enabled<R: Runtime>(
     fix_enabled: bool,

@@ -1,14 +1,20 @@
 //! [`Puzzle`]: the top-level constraint-solving interface.
 use crate::Error::MissingCell;
+use crate::cage::Cage;
 pub use crate::cage::CageOperator;
-use crate::cage::{Cage, collinear_groups};
+#[cfg(feature = "without-solution")]
+use crate::cage::collinear_groups;
 use crate::csp::{Constraint, generalized_arc_consistency};
 use crate::fill::Fill;
 use crate::grid::{AllDifferent, Grid as InternalGrid};
+#[cfg(feature = "without-solution")]
 use crate::mdd::CageDp;
+#[cfg(feature = "without-solution")]
 use crate::memo::Memo;
+#[cfg(feature = "without-solution")]
 use crate::operator::{CommutativeOperator, NonCommutativeOperator};
 use crate::polyomino::{Cell, Polyomino};
+#[cfg(feature = "without-solution")]
 use crate::table::Table;
 use crate::{Error, N, T};
 use serde::de::Error as DeError;
@@ -253,6 +259,7 @@ impl Puzzle {
     /// # Errors
     ///
     /// Returns [`MissingCell`] if any cell of `polyomino` is not in the puzzle.
+    #[cfg(feature = "without-solution")]
     pub fn possible_operations(&self, polyomino: &Polyomino) -> Result<Vec<CageOperator>, Error> {
         self.check_in_bounds(polyomino)?;
         let n =
@@ -293,6 +300,7 @@ impl Puzzle {
     /// # Errors
     ///
     /// Returns [`MissingCell`] if any cell of `polyomino` is not in the puzzle.
+    #[cfg(feature = "without-solution")]
     pub fn possible_targets(
         &self,
         polyomino: &Polyomino,
@@ -517,6 +525,7 @@ pub fn operators_for(polyomino: &Polyomino) -> Vec<CageOperator> {
 
 /// Returns the tight target range for `op` derived from the fills' actual min/max values.
 /// Returns `None` if any fill is empty or no valid target exists.
+#[cfg(feature = "without-solution")]
 fn target_range(op: CageOperator, fills: &[Fill]) -> Option<std::ops::RangeInclusive<T>> {
     let mins: Option<Vec<T>> = fills.iter().map(|f| f.min_value().map(T::from)).collect();
     let maxs: Option<Vec<T>> = fills.iter().map(|f| f.max_value().map(T::from)).collect();
@@ -546,6 +555,7 @@ fn target_range(op: CageOperator, fills: &[Fill]) -> Option<std::ops::RangeInclu
 /// For each target in the fill-derived range: checks for a tuple consistent
 /// with the fills, and if one exists checks the fixpoint. The collinear lines
 /// are target-independent, so they are computed once before the scan.
+#[cfg(feature = "without-solution")]
 fn operator_is_feasible(
     puzzle: &Puzzle,
     polyomino: &Polyomino,
@@ -578,6 +588,7 @@ fn operator_is_feasible(
 /// would silently admit infeasible pairs there; the designer's
 /// `mid_build_results_match_filtering_through_is_globally_feasible` test
 /// guards the equivalence.
+#[cfg(feature = "without-solution")]
 fn target_is_feasible(
     puzzle: &Puzzle,
     polyomino: &Polyomino,
@@ -728,6 +739,7 @@ mod tests {
         assert!(tuples >= multisets);
     }
 
+    #[cfg(feature = "without-solution")]
     #[test]
     fn possible_targets_given_singleton() {
         let p = Puzzle::from_parts(InternalGrid::new(4).unwrap(), vec![]);
@@ -736,6 +748,7 @@ mod tests {
         assert_eq!(targets, vec![1, 2, 3, 4]);
     }
 
+    #[cfg(feature = "without-solution")]
     #[test]
     fn possible_targets_add_domino() {
         let p = Puzzle::from_parts(InternalGrid::new(4).unwrap(), vec![]);
@@ -750,6 +763,7 @@ mod tests {
         assert!(!targets.contains(&8));
     }
 
+    #[cfg(feature = "without-solution")]
     #[test]
     fn possible_targets_subtract_excludes_zero() {
         let p = Puzzle::from_parts(InternalGrid::new(4).unwrap(), vec![]);
@@ -759,6 +773,7 @@ mod tests {
         assert!(!targets.contains(&0));
     }
 
+    #[cfg(feature = "without-solution")]
     #[test]
     fn possible_targets_divide_starts_at_two() {
         let p = Puzzle::from_parts(InternalGrid::new(4).unwrap(), vec![]);
@@ -769,6 +784,7 @@ mod tests {
         assert!(targets.iter().all(|&t| t >= 2));
     }
 
+    #[cfg(feature = "without-solution")]
     #[test]
     fn possible_targets_multiply_domino() {
         let p = Puzzle::from_parts(InternalGrid::new(4).unwrap(), vec![]);
@@ -782,6 +798,7 @@ mod tests {
         assert!(!targets.contains(&1));
     }
 
+    #[cfg(feature = "without-solution")]
     #[test]
     fn possible_targets_narrows_with_constrained_cell() {
         let p = Puzzle::from_parts(InternalGrid::new(4).unwrap(), vec![]);
@@ -794,6 +811,7 @@ mod tests {
         assert!(!pinned_targets.contains(&7)); // 3+4=7, not reachable when cell is pinned to 1
     }
 
+    #[cfg(feature = "without-solution")]
     #[test]
     fn possible_targets_missing_cell_error() {
         let p = Puzzle::from_parts(InternalGrid::new(4).unwrap(), vec![]);
@@ -819,6 +837,7 @@ mod tests {
         Polyomino::from([Cell(r0, c0), Cell(r1, c1)]).unwrap()
     }
 
+    #[cfg(feature = "without-solution")]
     #[test]
     fn possible_operations_size_10_returns_only_commutative() {
         // A 10-cell snake across two columns of a 9×9 grid: col 1 rows 1–5,
@@ -836,6 +855,7 @@ mod tests {
         assert!(!ops.iter().any(|o| matches!(o, CageOperator::Given)));
     }
 
+    #[cfg(feature = "without-solution")]
     #[test]
     fn possible_operations_singleton_returns_only_given() {
         let p = Puzzle::from_parts(InternalGrid::new(4).unwrap(), vec![]);
@@ -845,6 +865,7 @@ mod tests {
         assert!(matches!(ops[0], CageOperator::Given));
     }
 
+    #[cfg(feature = "without-solution")]
     #[test]
     fn possible_operations_domino_includes_all_four() {
         let p = Puzzle::from_parts(InternalGrid::new(4).unwrap(), vec![]);
@@ -870,6 +891,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "without-solution")]
     #[test]
     fn possible_operations_triomino_excludes_non_commutative() {
         let p = Puzzle::from_parts(InternalGrid::new(4).unwrap(), vec![]);
@@ -881,6 +903,7 @@ mod tests {
         assert!(!ops.iter().any(|o| matches!(o, CageOperator::Divide)));
     }
 
+    #[cfg(feature = "without-solution")]
     #[test]
     fn possible_operations_returns_error_for_out_of_grid_cell() {
         let p = Puzzle::from_parts(InternalGrid::new(2).unwrap(), vec![]);
@@ -891,6 +914,7 @@ mod tests {
         ));
     }
 
+    #[cfg(feature = "without-solution")]
     #[test]
     fn possible_operations_given_only_returns_values_in_fill() {
         // Pin (1,1)=3; cell (1,2) loses 3 from its fill via AllDifferent.
@@ -907,6 +931,7 @@ mod tests {
         assert!(ops.iter().any(|o| matches!(o, CageOperator::Given)));
     }
 
+    #[cfg(feature = "without-solution")]
     #[test]
     fn possible_operations_given_not_feasible_when_fill_empty() {
         // Force a 2×2 grid to become infeasible for a specific cell by
@@ -930,6 +955,7 @@ mod tests {
         assert!(ops.iter().any(|o| matches!(o, CageOperator::Given)));
     }
 
+    #[cfg(feature = "without-solution")]
     #[test]
     fn possible_operations_subtract_excluded_in_2x2_with_only_one_unit_pair() {
         // In a 2×2 grid the subtract target range is [1, 1]. Pin (1,3)…
@@ -954,6 +980,7 @@ mod tests {
         assert!(matches!(ops[0], CageOperator::Given));
     }
 
+    #[cfg(feature = "without-solution")]
     #[test]
     fn possible_operations_fixpoint_check_excludes_infeasible_operator() {
         // In a 2×2 grid, (1,1) and (1,2) form a domino. Pin (2,1)=1 and (2,2)=2.
@@ -1429,6 +1456,7 @@ mod tests {
 
     /// A 4×4 where both cells of the (1,1)-(1,2) domino are pinned to 2 via
     /// `set` (no propagation), so subtract/divide target ranges are empty.
+    #[cfg(feature = "without-solution")]
     fn equal_pinned_domino() -> (Puzzle, Polyomino) {
         let p = Puzzle::new(4)
             .unwrap()
@@ -1439,6 +1467,7 @@ mod tests {
         (p, domino(1, 1, 1, 2))
     }
 
+    #[cfg(feature = "without-solution")]
     #[test]
     fn possible_targets_subtract_empty_when_range_collapses() {
         // |2-2| = 0 is not a valid subtract target, so the range is empty.
@@ -1449,6 +1478,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "without-solution")]
     #[test]
     fn possible_targets_divide_empty_when_range_collapses() {
         // 2/2 = 1 < 2, the minimum divide target, so the range is empty.
@@ -1459,6 +1489,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "without-solution")]
     #[test]
     fn possible_operations_excludes_ops_with_empty_target_range() {
         let (p, poly) = equal_pinned_domino();

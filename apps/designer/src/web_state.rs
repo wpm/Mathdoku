@@ -37,9 +37,10 @@ pub fn with_state<R>(f: impl FnOnce(&AppState) -> R) -> R {
 
 /// Borrows the thread-local [`AppState`] mutably and runs `f` against it.
 ///
-/// Used by the mutating web IPC bodies (`new_empty`, `new_latin_square`,
-/// `set_active_cell`, `insert_cage`, `remove_cage_at`, `fix`, `unfix`), which
-/// hand `&mut AppState` straight to the matching core function.
+/// Used by the mutating web IPC bodies (`new_latin_square`, `set_active_cell`,
+/// `insert_cage`, `remove_cage_at`, and — with the `without-solution` feature —
+/// `new_empty`, `fix`, `unfix`), which hand `&mut AppState` straight to the
+/// matching core function.
 pub fn with_state_mut<R>(f: impl FnOnce(&mut AppState) -> R) -> R {
     APP_STATE.with(|cell| f(&mut cell.borrow_mut()))
 }
@@ -84,17 +85,31 @@ mod tests {
     //! calls without aliasing the `RefCell`, and surviving a
     //! `serialize_save` / `apply_loaded` round trip.
     //!
-    //! Each test re-seeds the puzzle through `ipc::new_empty` first, since the
+    //! Each test re-seeds the puzzle through `seed_blank_4x4` first, since the
     //! thread-local is shared across tests on the single wasm thread.
 
-    use mathdoku::{Cell, Operator, Polyomino};
-    use mathdoku_designer_core::{apply_loaded, serialize_save};
+    use mathdoku::{Cell, Operator, Polyomino, Puzzle};
+    use mathdoku_designer_core::{AppState, apply_loaded, serialize_save};
     use wasm_bindgen_test::{wasm_bindgen_test, wasm_bindgen_test_configure};
 
     use super::with_state;
     use crate::ipc;
 
     wasm_bindgen_test_configure!(run_in_browser);
+
+    /// Replaces the store contents with a fresh blank 4×4 puzzle. Seeds the
+    /// store directly rather than through `ipc::new_empty`, which only exists
+    /// with the `without-solution` feature — these tests exercise the store,
+    /// not that command.
+    fn seed_blank_4x4() {
+        super::with_state_mut(|s| {
+            *s = AppState {
+                puzzle: Some(Puzzle::new(4).unwrap()),
+                dirty: true,
+                ..AppState::default()
+            };
+        });
+    }
 
     #[wasm_bindgen_test]
     fn init_on_first_access_has_no_puzzle() {
@@ -109,7 +124,7 @@ mod tests {
         // Each `ipc::*` call takes its own `borrow_mut`; running several in
         // sequence must not panic on an outstanding borrow and must accumulate
         // into the same `AppState`.
-        let _ = ipc::new_empty(4).await.unwrap();
+        seed_blank_4x4();
         ipc::set_active_cell(Cell::new(1, 2)).await.unwrap();
         let poly = Polyomino::from_cells(&[Cell::new(0, 0), Cell::new(0, 1)]).unwrap();
         let state = ipc::insert_cage(poly, Operator::Add, Some(3))
@@ -125,7 +140,7 @@ mod tests {
 
     #[wasm_bindgen_test]
     async fn store_survives_save_load_round_trip() {
-        let _ = ipc::new_empty(4).await.unwrap();
+        seed_blank_4x4();
         let poly = Polyomino::from_cells(&[Cell::new(0, 0), Cell::new(0, 1)]).unwrap();
         let _ = ipc::insert_cage(poly, Operator::Add, Some(3))
             .await

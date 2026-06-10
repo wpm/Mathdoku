@@ -10,21 +10,28 @@ use std::sync::Mutex;
 
 use mathdoku::Puzzle;
 use mathdoku_designer_core::{self as core, AppState};
+// Only the macOS app menu (About panel) uses these.
+#[cfg(target_os = "macos")]
 use tauri::image::Image;
-use tauri::menu::{AboutMetadata, Menu, MenuItemBuilder, PredefinedMenuItem, Submenu};
+#[cfg(target_os = "macos")]
+use tauri::menu::AboutMetadata;
+use tauri::menu::{Menu, MenuItemBuilder, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Emitter, Manager, Runtime, WindowEvent};
 
+#[cfg(feature = "without-solution")]
+use commands::{PuzzleMenu, fix, new_empty, set_puzzle_menu_enabled, unfix};
 use commands::{
-    PuzzleMenu, fix, get_doc_state, get_puzzle, insert_cage, load_puzzle, new_empty,
-    new_latin_square, quit_app, read_recent, remove_cage_at, save_puzzle, set_active_cell,
-    set_puzzle_menu_enabled, set_window_title, unfix,
+    get_doc_state, get_puzzle, insert_cage, load_puzzle, new_latin_square, quit_app, read_recent,
+    remove_cage_at, save_puzzle, set_active_cell, set_window_title,
 };
 
 const EVENT_NEW: &str = "menu-new";
 const EVENT_OPEN: &str = "menu-open";
 const EVENT_SAVE: &str = "menu-save";
 const EVENT_SAVE_AS: &str = "menu-save-as";
+#[cfg(feature = "without-solution")]
 const EVENT_FIX: &str = "menu-fix";
+#[cfg(feature = "without-solution")]
 const EVENT_UNFIX: &str = "menu-unfix";
 const EVENT_REQUEST_CLOSE: &str = "request-close";
 
@@ -72,6 +79,7 @@ fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
             &PredefinedMenuItem::select_all(app, None)?,
         ],
     )?;
+    #[cfg(feature = "without-solution")]
     let puzzle_menu = build_puzzle_menu(app)?;
 
     let window_menu = Submenu::with_items(
@@ -116,21 +124,23 @@ fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
             true,
             &[&PredefinedMenuItem::fullscreen(app, None)?],
         )?;
-        Menu::with_items(
-            app,
-            &[
-                &app_menu,
-                &file_menu,
-                &edit_menu,
-                &puzzle_menu,
-                &view_menu,
-                &window_menu,
-            ],
-        )
+        let mut items: Vec<&dyn tauri::menu::IsMenuItem<R>> =
+            vec![&app_menu, &file_menu, &edit_menu];
+        #[cfg(feature = "without-solution")]
+        items.push(&puzzle_menu);
+        items.push(&view_menu);
+        items.push(&window_menu);
+        Menu::with_items(app, &items)
     }
 
     #[cfg(not(target_os = "macos"))]
-    Menu::with_items(app, &[&file_menu, &edit_menu, &puzzle_menu, &window_menu])
+    {
+        let mut items: Vec<&dyn tauri::menu::IsMenuItem<R>> = vec![&file_menu, &edit_menu];
+        #[cfg(feature = "without-solution")]
+        items.push(&puzzle_menu);
+        items.push(&window_menu);
+        Menu::with_items(app, &items)
+    }
 }
 
 /// Builds the Puzzle submenu (Fix / Unfix mode switching).
@@ -138,6 +148,7 @@ fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
 /// Both items are always visible; exactly one is enabled at a time, pushed from
 /// the frontend via [`set_puzzle_menu_enabled`]. The item handles are
 /// stashed in app state so that command can reach them to toggle `set_enabled`.
+#[cfg(feature = "without-solution")]
 fn build_puzzle_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Submenu<R>> {
     let fix = MenuItemBuilder::with_id("fix", "Fix Solution")
         .accelerator("CmdOrCtrl+L")
@@ -158,7 +169,9 @@ fn handle_menu_event<R: Runtime>(app: &AppHandle<R>, event: tauri::menu::MenuEve
         "open" => EVENT_OPEN,
         "save" => EVENT_SAVE,
         "save_as" => EVENT_SAVE_AS,
+        #[cfg(feature = "without-solution")]
         "fix" => EVENT_FIX,
+        #[cfg(feature = "without-solution")]
         "unfix" => EVENT_UNFIX,
         _ => return,
     };
@@ -213,6 +226,38 @@ fn try_restore<R: Runtime>(app: &AppHandle<R>) -> Option<Puzzle> {
 #[allow(clippy::expect_used)]
 pub fn run() {
     mathdoku::init_debug_logging();
+    // `generate_handler!` cannot carry `#[cfg]` on entries, so the command
+    // list is forked on the feature.
+    #[cfg(feature = "without-solution")]
+    let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
+        new_empty,
+        new_latin_square,
+        save_puzzle,
+        load_puzzle,
+        get_doc_state,
+        get_puzzle,
+        set_active_cell,
+        set_window_title,
+        quit_app,
+        insert_cage,
+        remove_cage_at,
+        fix,
+        unfix,
+        set_puzzle_menu_enabled,
+    ];
+    #[cfg(not(feature = "without-solution"))]
+    let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
+        new_latin_square,
+        save_puzzle,
+        load_puzzle,
+        get_doc_state,
+        get_puzzle,
+        set_active_cell,
+        set_window_title,
+        quit_app,
+        insert_cage,
+        remove_cage_at,
+    ];
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(Mutex::new(AppState::default()))
@@ -220,29 +265,20 @@ pub fn run() {
         .on_menu_event(handle_menu_event)
         .on_window_event(handle_window_event)
         .setup(|app| {
+            // With the feature, an unrestored session parks a blank 9×9
+            // Without-Solution puzzle. Without it, no puzzle is left in state,
+            // so the frontend shows the mandatory New-puzzle modal instead.
+            #[cfg(feature = "without-solution")]
             if try_restore(app.handle()).is_none()
                 && let Ok(mut s) = app.state::<Mutex<AppState>>().lock()
             {
                 s.puzzle = Some(Puzzle::new(9).expect("9 is a valid puzzle size"));
             }
+            #[cfg(not(feature = "without-solution"))]
+            let _ = try_restore(app.handle());
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![
-            new_empty,
-            new_latin_square,
-            save_puzzle,
-            load_puzzle,
-            get_doc_state,
-            get_puzzle,
-            set_active_cell,
-            set_window_title,
-            quit_app,
-            insert_cage,
-            remove_cage_at,
-            fix,
-            unfix,
-            set_puzzle_menu_enabled,
-        ])
+        .invoke_handler(handler)
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
