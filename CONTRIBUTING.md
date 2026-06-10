@@ -2,14 +2,6 @@
 
 Thanks for your interest in the project.
 
-## Expectations
-
-This is a personal project. Forks are welcome, and pull requests will be
-considered, but there is no commitment to review or merge external
-contributions on any timeline — or at all. If you need a change for your own
-use, forking is often the fastest path. For anything beyond a small fix, open
-an issue first so effort isn't wasted on a change that won't land.
-
 By submitting a contribution you agree to license it under the project's
 [Apache-2.0 license](LICENSE).
 
