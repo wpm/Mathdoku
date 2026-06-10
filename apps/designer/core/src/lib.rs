@@ -12,6 +12,8 @@
 //! the free functions take `&mut AppState` and leave synchronization to the
 //! caller.
 
+#![deny(missing_docs)]
+
 use std::collections::BTreeSet;
 
 use mathdoku::{Cage, Cell, N, Operator, Polyomino, Puzzle, T, generate_latin_square};
@@ -35,17 +37,23 @@ pub const SAVE_VERSION: u32 = 1;
 /// inside command bodies.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// An error propagated from the underlying [`mathdoku`] library.
     #[error(transparent)]
     Mathdoku(#[from] mathdoku::Error),
+    /// A command body that requires a puzzle ran while [`AppState::puzzle`] was `None`.
     #[error("no puzzle loaded")]
     NoPuzzle,
+    /// No cage covers the cell passed to [`remove_cage_at`].
     #[error("cage not found")]
     CageNotFound,
+    /// The completed Without-Solution puzzle does not have exactly one solution.
     #[cfg(feature = "without-solution")]
     #[error("puzzle does not have exactly one completion")]
     NotUnique,
+    /// Serializing or deserializing a save file failed.
     #[error("serialization failed: {0}")]
     Serde(String),
+    /// The save file's [`SaveEnvelope::version`] does not match [`SAVE_VERSION`].
     #[error("unsupported save version: {0}")]
     UnsupportedVersion(u32),
 }
@@ -55,13 +63,16 @@ pub enum Error {
 /// Document state returned by [`get_doc_state`].
 #[derive(Clone, Default, Serialize, Deserialize)]
 pub struct DocState {
+    /// Whether the puzzle has unsaved changes.
     pub dirty: bool,
+    /// Path of the backing save file, or `None` if the puzzle has never been saved.
     pub path: Option<String>,
 }
 
 /// Result of a save, carrying the path that was written.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct SaveResult {
+    /// Path of the file that was written.
     pub path: String,
 }
 
@@ -236,8 +247,11 @@ impl AppState {
 /// With-Solution save files carry a non-null `solution` and load unchanged.
 #[derive(Serialize, Deserialize)]
 pub struct SaveEnvelope {
+    /// Format version of the save file; see [`SAVE_VERSION`].
     pub version: u32,
+    /// The cage structure being designed.
     pub puzzle: Puzzle,
+    /// The fixed Latin-square solution, or `None` for Without-Solution puzzles.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub solution: Option<Puzzle>,
 }
