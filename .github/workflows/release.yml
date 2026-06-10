@@ -1,0 +1,66 @@
+name: Release
+
+# release-plz drives crate releases (see release-plz.toml and RELEASING.md):
+#   - `release-pr` opens/updates a release PR with the version bump and
+#     changelog whenever releasable commits land on main.
+#   - `release` runs after every push to main; when the release PR has been
+#     merged it tags, publishes `mathdoku` to crates.io, and creates the
+#     GitHub release. Publishing authenticates via crates.io Trusted
+#     Publishing (GitHub OIDC, hence `id-token: write`) — there is no
+#     CARGO_REGISTRY_TOKEN secret.
+
+on:
+  push:
+    branches:
+      - main
+
+permissions: {}
+
+# Two pushes to main racing each other would double-process a release;
+# queue them instead.
+concurrency:
+  group: release-plz-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release-plz-release:
+    name: release-plz release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # push tags, create GitHub releases
+      id-token: write # crates.io Trusted Publishing (OIDC)
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Run release-plz release
+        uses: release-plz/action@v0.5
+        with:
+          command: release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  release-plz-pr:
+    name: release-plz release-pr
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # push the release branch
+      pull-requests: write # open/update the release PR
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Run release-plz release-pr
+        uses: release-plz/action@v0.5
+        with:
+          command: release-pr
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

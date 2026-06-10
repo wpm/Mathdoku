@@ -20,5 +20,5 @@ _Placeholder for the first published release. Entries from [Unreleased] will be
 moved here, and a release date added, when `mathdoku` 0.1.0 is tagged and
 published to crates.io._
 
-[Unreleased]: https://github.com/wpm/Mathdoku/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/wpm/Mathdoku/releases/tag/v0.1.0
+[Unreleased]: https://github.com/wpm/Mathdoku/compare/mathdoku-v0.1.0...HEAD
+[0.1.0]: https://github.com/wpm/Mathdoku/releases/tag/mathdoku-v0.1.0
