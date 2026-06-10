@@ -36,6 +36,10 @@ use crate::theme::{BG, CAGE_PALETTE, INK, LINE, OP_INSET};
 #[allow(clippy::needless_pass_by_value, clippy::too_many_lines)]
 pub fn Puzzle(
     state: State,
+    /// The state displayed before the change that mounted this Puzzle, if any.
+    /// Cells whose candidates shrank flash the removed digits, and cells that
+    /// collapsed to a single value flash the singleton (see `Cell`).
+    prev_state: Option<State>,
     undo_stack: RwSignal<Vec<State>>,
     redo_stack: RwSignal<Vec<State>>,
     pending_commit: RwSignal<Option<PendingCommit>>,
@@ -84,6 +88,8 @@ pub fn Puzzle(
             }
         }
     }
+
+    let prev_values = previous_cell_values(prev_state, n);
 
     let partial_solution = PartialSolution::new(
         state.puzzle.clone(),
@@ -532,7 +538,8 @@ pub fn Puzzle(
             let fill = cage_index[r][c].map_or(BG, |i| CAGE_PALETTE[colors[i] % CAGE_PALETTE.len()]);
             let values = get_values[r][c].clone();
             let solution_value = solution_values[r][c];
-            view! { <CellComponent x=x y=y cell=cell values=values fill=fill top_margin=top_margin n=n solution_value=solution_value /> }
+            let prev = prev_values[r][c].clone();
+            view! { <CellComponent x=x y=y cell=cell values=values fill=fill top_margin=top_margin n=n solution_value=solution_value prev_values=prev /> }
         })
         .collect();
 
@@ -677,6 +684,26 @@ fn parked_cages(state: &State, poly: &Polyomino) -> std::collections::BTreeSet<P
         .collect()
 }
 
+/// Candidate values shown before the change that mounted this Puzzle, used by
+/// each `Cell` to flash candidates the change removed.
+///
+/// Every cell is empty when there is no comparable previous state: a missing
+/// `prev_state` (first mount, New, Open) or a grid-size change.
+fn previous_cell_values(prev_state: Option<State>, n: usize) -> Vec<Vec<Vec<N>>> {
+    let mut prev_values = vec![vec![Vec::new(); n]; n];
+    if let Some(prev) = prev_state.filter(|p| p.puzzle.n() == n) {
+        let prev_grid = prev.current().unwrap_or_else(|_| prev.puzzle.clone());
+        for (r, row) in prev_values.iter_mut().enumerate() {
+            for (c, slot) in row.iter_mut().enumerate() {
+                if let Ok(vals) = prev_grid.get(Cell::new(r, c)) {
+                    *slot = vals.values();
+                }
+            }
+        }
+    }
+    prev_values
+}
+
 /// A singleton `Given` cage to commit from a digit keypress, with the
 /// provisional cages to retain afterwards.
 struct SingletonDigitCommit {
@@ -806,7 +833,7 @@ fn step_provisional_cage(r: usize, c: usize, tr: usize, tc: usize, state: State)
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::panic)]
 mod tests {
-    use super::{singleton_digit_commit, step_provisional_cage};
+    use super::{previous_cell_values, singleton_digit_commit, step_provisional_cage};
     use mathdoku::{Cage, Cell, N, Operator, Polyomino};
     use mathdoku_designer_core::State;
 
@@ -907,6 +934,36 @@ mod tests {
             .into_iter()
             .map(|c| (c.row(), c.column()))
             .collect()
+    }
+
+    #[test]
+    fn previous_cell_values_empty_without_prior_state() {
+        let vals = previous_cell_values(None, 4);
+        assert_eq!(vals.len(), 4);
+        assert!(vals.iter().flatten().all(Vec::is_empty));
+    }
+
+    #[test]
+    fn previous_cell_values_empty_on_grid_size_change() {
+        let prev = State::new(4).unwrap();
+        let vals = previous_cell_values(Some(prev), 5);
+        assert_eq!(vals.len(), 5);
+        assert!(vals.iter().flatten().all(Vec::is_empty));
+    }
+
+    #[test]
+    fn previous_cell_values_reads_propagated_grid() {
+        let mut prev = State::new(4).unwrap();
+        prev.puzzle = prev
+            .puzzle
+            .insert_cage(&given_cage(4, 0, 0, 2))
+            .unwrap()
+            .unwrap();
+        let vals = previous_cell_values(Some(prev), 4);
+        // The Given cell is a singleton; its row loses 2; other cells are full.
+        assert_eq!(vals[0][0], vec![2]);
+        assert_eq!(vals[0][1], vec![1, 3, 4]);
+        assert_eq!(vals[1][1], vec![1, 2, 3, 4]);
     }
 
     #[test]

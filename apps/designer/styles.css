@@ -1,7 +1,7 @@
 /* The --paper-* and --font-* brand tokens live in site/theme.css, shared
    with the website and loaded before this file via index.html. */
 :root {
-  --flash-duration: 300ms;
+  --flash-duration: 600ms;
   --flash-removed-color: var(--c-warning, #c0392b);
   --flash-added-glow: var(--c-accent, #1f77b4);
 
@@ -141,23 +141,31 @@ a:hover {
   padding-left: calc(var(--grid-size) * 14 / 600);
 }
 
-/* Flash overlay animations */
+/* Flash overlay animations.
+
+   Ghost glyphs for candidates removed by the latest change hold at full
+   opacity for the first part of the flash, then fade; `forwards` keeps them
+   invisible afterwards (they stay in the DOM until the next re-mount). A cell
+   that collapsed to a single value flashes that digit from the accent color
+   back to its normal ink (the end frame matches the SVG fill attribute, so no
+   `forwards` is needed). */
 @keyframes flash-remove {
-  from {
+  0%,
+  60% {
     opacity: 1;
-    text-decoration: line-through;
   }
-  to {
+  100% {
     opacity: 0;
-    text-decoration: line-through;
   }
 }
 
 @keyframes flash-add {
   from {
+    fill: var(--flash-added-glow);
     text-shadow: 0 0 6px color-mix(in srgb, var(--flash-added-glow) 60%, transparent);
   }
   to {
+    fill: var(--paper-ink);
     text-shadow: none;
   }
 }
@@ -170,8 +178,7 @@ a:hover {
 }
 
 .flash-added {
-  fill: var(--flash-added-glow);
-  animation: flash-add var(--flash-duration) ease-out forwards;
+  animation: flash-add var(--flash-duration) ease-out;
   pointer-events: none;
 }
 
