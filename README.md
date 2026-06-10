@@ -5,10 +5,6 @@
 
 A Rust workspace for generating, solving, and designing Mathdoku puzzles.
 
-> **Want to _play_ Mathdoku?** End-user gameplay documentation will live on the
-> project website (coming soon). This README is for contributors and for
-> developers consuming the `mathdoku` crate.
-
 ## Workspace layout
 
 | Path | Crate | Description |
@@ -35,32 +31,9 @@ are marked `publish = false`.
 [Trunk]: https://trunkrs.dev/
 [Tauri CLI]: https://tauri.app/
 
-## Using the `mathdoku` library
-
-The crate is not yet published to crates.io, so depend on it via git for now:
-
-```toml
-[dependencies]
-mathdoku = { git = "https://github.com/wpm/Mathdoku" }
-```
-
-Generate a random puzzle and solve it:
-
-```rust
-use mathdoku::{generate, Grid};
-
-let mut rng = rand::rng();
-let puzzle = generate(4, &mut rng)?;        // random 4×4 cage structure
-let empty = Grid::new(4)?;                  // grid with every cell holding all candidates
-let solved = empty
-    .solutions(&puzzle)
-    .next()
-    .expect("a generated puzzle has at least one solution")?;
-```
-
-See the crate-level documentation (`cargo doc -p mathdoku --open`) for the full
-API, including programmatic puzzle construction with `Puzzle::new` /
-`Puzzle::insert_cage`.
+See the crate's [README](mathdoku/README.md) and the
+[API documentation](https://docs.rs/mathdoku) for the full surface, including
+programmatic puzzle construction with `Puzzle::new` / `Puzzle::insert`.
 
 ## Building and testing
 
