@@ -16,6 +16,16 @@ publish = false
 # build omits it and keeps going through `raw_invoke`.
 web = ["dep:rand"]
 
+# Without-Solution authoring mode (ADR-0001): the "No Solution" creation path,
+# the global-feasibility two-step operation picker, the singleton-digit
+# shortcut, and the Fix/Unfix mode transitions. Off by default — the shipped
+# Designer offers only With-Solution authoring; enable with
+# `--features without-solution`.
+without-solution = [
+    "mathdoku/without-solution",
+    "mathdoku-designer-core/without-solution",
+]
+
 [dependencies]
 mathdoku-designer-core = { path = "core" }
 leptos = { version = "0.8", features = ["csr"] }

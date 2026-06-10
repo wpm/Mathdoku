@@ -24,13 +24,17 @@ use leptos::prelude::*;
 use mathdoku::{Operation, Operator, Polyomino, Target};
 
 use super::puzzle::InteractionState;
+#[cfg(feature = "without-solution")]
 use crate::feasibility::group_by_operator;
 use crate::geometry::{anchor, origin};
-use crate::theme::{ACCENT, BG, INK, INK2, LINE, SERIF};
+#[cfg(feature = "without-solution")]
+use crate::theme::INK2;
+use crate::theme::{ACCENT, BG, INK, LINE, SERIF};
 
 /// Without-Solution dropdown computation state. The set of feasible
 /// `(operator, target)` pairs is computed asynchronously so the picker can show
 /// a spinner during a cache miss instead of blocking the UI.
+#[cfg(feature = "without-solution")]
 #[derive(Clone)]
 pub enum FeasibilityState {
     /// Feasibility is being computed; the picker shows a spinner.
@@ -55,28 +59,29 @@ pub fn OperationSelector() -> impl IntoView {
         let a = anchor(&pending.polyomino.cells());
         let (x, y) = origin(cell_size, a.row(), a.column());
 
+        #[cfg(feature = "without-solution")]
         if let Some(feasible) = pending.feasible {
-            without_solution_view(&pending, feasible, cell_size, x, y)
-        } else {
-            // Extract solution values for the cage cells so the operator
-            // strip can use the actual solution digits (singletons) for
-            // target derivation and operator filtering, rather than the
-            // puzzle-grid fills which may be multi-value.
-            let solution_vals: Vec<Option<mathdoku::N>> = {
-                let st = ctx.designer_state.get_untracked();
-                pending
-                    .polyomino
-                    .cells()
-                    .iter()
-                    .map(|&cell| {
-                        st.solution.as_ref().and_then(|g| {
-                            g.get(cell).ok().and_then(|f| f.values().first().copied())
-                        })
-                    })
-                    .collect()
-            };
-            with_solution_view(&pending, &solution_vals, cell_size, x, y)
+            return without_solution_view(&pending, feasible, cell_size, x, y);
         }
+
+        // Extract solution values for the cage cells so the operator
+        // strip can use the actual solution digits (singletons) for
+        // target derivation and operator filtering, rather than the
+        // puzzle-grid fills which may be multi-value.
+        let solution_vals: Vec<Option<mathdoku::N>> = {
+            let st = ctx.designer_state.get_untracked();
+            pending
+                .polyomino
+                .cells()
+                .iter()
+                .map(|&cell| {
+                    st.solution
+                        .as_ref()
+                        .and_then(|g| g.get(cell).ok().and_then(|f| f.values().first().copied()))
+                })
+                .collect()
+        };
+        with_solution_view(&pending, &solution_vals, cell_size, x, y)
     }
 }
 
@@ -118,7 +123,13 @@ fn with_solution_view(
         })
         .collect();
 
+    // No operator yields a valid target (possible only when the state carries
+    // no solution, e.g. a legacy Without-Solution save opened in a build with
+    // the feature off): render nothing rather than an empty well.
     let n_tabs = ops.len();
+    if n_tabs == 0 {
+        return ().into_any();
+    }
     let total_w = tab_w * n_tabs as f64 + gap * (n_tabs - 1) as f64 + pad * 2.0;
     let total_h = tab_h + pad * 2.0;
 
@@ -169,6 +180,7 @@ fn with_solution_view(
 
 /// Without-Solution rendering: spinner, empty-state message, operator strip, or
 /// target sub-picker depending on the computation state and current selection.
+#[cfg(feature = "without-solution")]
 fn without_solution_view(
     pending: &PendingCommit,
     feasible: RwSignal<FeasibilityState>,
@@ -195,6 +207,7 @@ fn without_solution_view(
 }
 
 /// A small spinner shown in the anchor while feasibility is computing.
+#[cfg(feature = "without-solution")]
 fn spinner_view(x: f64, y: f64, tab_w: f64, tab_h: f64, pad: f64) -> AnyView {
     let w = tab_w + pad * 2.0;
     let h = tab_h + pad * 2.0;
@@ -212,6 +225,7 @@ fn spinner_view(x: f64, y: f64, tab_w: f64, tab_h: f64, pad: f64) -> AnyView {
 }
 
 /// The inline "no operation possible — redraw cage" message.
+#[cfg(feature = "without-solution")]
 fn empty_message_view(x: f64, y: f64) -> AnyView {
     let w = 220.0;
     let h = 30.0;
@@ -229,6 +243,7 @@ fn empty_message_view(x: f64, y: f64) -> AnyView {
 }
 
 /// Step one: the operator strip. Clicking an operator opens its target picker.
+#[cfg(feature = "without-solution")]
 #[allow(clippy::too_many_arguments)]
 fn operator_strip_view(
     pairs: &[(Operator, Target)],
@@ -292,6 +307,7 @@ fn operator_strip_view(
 /// focus, arrow-key, mouse, and type-to-select navigation for free. Options carry
 /// the bare target number (so typing the number jumps to it); the operator symbol
 /// is the placeholder. Choosing an option commits the cage with `(operator, target)`.
+#[cfg(feature = "without-solution")]
 #[allow(clippy::too_many_arguments)]
 fn target_select_view(
     pairs: &[(Operator, Target)],
@@ -369,8 +385,10 @@ pub struct PendingCommit {
     /// is `None` in With-Solution mode and `Some` in Without-Solution mode.
     pub on_commit: Callback<(Operator, Option<Target>)>,
     /// Without-Solution feasibility state. `None` selects With-Solution rendering.
+    #[cfg(feature = "without-solution")]
     pub feasible: Option<RwSignal<FeasibilityState>>,
     /// Without-Solution: the operator whose target sub-picker is open.
+    #[cfg(feature = "without-solution")]
     pub picked_operator: RwSignal<Option<Operator>>,
 }
 
@@ -435,6 +453,7 @@ fn cancel_pending(
 /// then target list). Both steps support focus highlighting, Tab / arrow
 /// navigation, Enter, and operator shortcut keys. All keys are consumed by the
 /// caller so they don't leak to grid navigation behind the picker.
+#[cfg(feature = "without-solution")]
 #[allow(clippy::too_many_arguments)]
 fn handle_key_without_solution(
     key: &str,
@@ -530,6 +549,7 @@ pub fn handle_key(
     use crate::keys::{ARROW_LEFT, ARROW_RIGHT, ENTER, ESCAPE, TAB};
 
     // Without-Solution mode is a two-step picker handled separately.
+    #[cfg(feature = "without-solution")]
     if let Some(feasible) = pending.feasible {
         handle_key_without_solution(
             key,
@@ -771,7 +791,9 @@ mod tests {
                 allowed: ALL_OPS.to_vec(),
                 selected_idx: RwSignal::new(0usize),
                 on_commit,
+                #[cfg(feature = "without-solution")]
                 feasible: None,
+                #[cfg(feature = "without-solution")]
                 picked_operator: RwSignal::new(None),
             }
         }
@@ -782,7 +804,7 @@ mod tests {
                 let committed = RwSignal::new(None);
                 let p = pending(committed);
 
-                let mut st = State::new(4).unwrap();
+                let mut st = State::new_with_solution(4).unwrap();
                 let _ = st.provisional_cages.insert(p.polyomino.clone());
                 let designer_state = RwSignal::new(st);
                 let pending_commit = RwSignal::new(Some(p.clone()));
@@ -811,7 +833,7 @@ mod tests {
             Owner::new().with(|| {
                 let committed = RwSignal::new(None);
                 let p = pending(committed);
-                let designer_state = RwSignal::new(State::new(4).unwrap());
+                let designer_state = RwSignal::new(State::new_with_solution(4).unwrap());
                 let pending_commit = RwSignal::new(Some(p.clone()));
                 let on_state_change = Callback::new(|_: State| {});
 
@@ -835,7 +857,7 @@ mod tests {
                 let committed = RwSignal::new(None);
                 let p = pending(committed);
                 p.selected_idx.set(0);
-                let designer_state = RwSignal::new(State::new(4).unwrap());
+                let designer_state = RwSignal::new(State::new_with_solution(4).unwrap());
                 let pending_commit = RwSignal::new(Some(p.clone()));
                 let on_state_change = Callback::new(|_: State| {});
 
@@ -858,7 +880,7 @@ mod tests {
             Owner::new().with(|| {
                 let committed = RwSignal::new(None);
                 let p = pending(committed);
-                let designer_state = RwSignal::new(State::new(4).unwrap());
+                let designer_state = RwSignal::new(State::new_with_solution(4).unwrap());
                 let pending_commit = RwSignal::new(Some(p.clone()));
                 let on_state_change = Callback::new(|_: State| {});
 
@@ -891,7 +913,7 @@ mod tests {
                 let committed = RwSignal::new(None);
                 let p = pending(committed);
                 p.selected_idx.set(2); // Multiply
-                let designer_state = RwSignal::new(State::new(4).unwrap());
+                let designer_state = RwSignal::new(State::new_with_solution(4).unwrap());
                 let pending_commit = RwSignal::new(Some(p.clone()));
                 let on_state_change = Callback::new(|_: State| {});
 
@@ -914,7 +936,7 @@ mod tests {
             Owner::new().with(|| {
                 let committed = RwSignal::new(None);
                 let p = pending(committed);
-                let designer_state = RwSignal::new(State::new(4).unwrap());
+                let designer_state = RwSignal::new(State::new_with_solution(4).unwrap());
                 let pending_commit = RwSignal::new(Some(p.clone()));
                 let on_state_change = Callback::new(|_: State| {});
 
@@ -937,7 +959,7 @@ mod tests {
             Owner::new().with(|| {
                 let committed = RwSignal::new(None);
                 let p = pending(committed);
-                let designer_state = RwSignal::new(State::new(4).unwrap());
+                let designer_state = RwSignal::new(State::new_with_solution(4).unwrap());
                 let pending_commit = RwSignal::new(Some(p.clone()));
                 let on_state_change = Callback::new(|_: State| {});
 
@@ -955,14 +977,17 @@ mod tests {
             });
         }
 
+        #[cfg(feature = "without-solution")]
         use super::super::FeasibilityState;
 
+        #[cfg(feature = "without-solution")]
         fn ready_pending(committed: Committed, pairs: Vec<(Operator, Target)>) -> PendingCommit {
             let mut p = pending(committed);
             p.feasible = Some(RwSignal::new(FeasibilityState::Ready(pairs)));
             p
         }
 
+        #[cfg(feature = "without-solution")]
         #[test]
         fn without_solution_strip_tab_navigates_and_enter_picks() {
             Owner::new().with(|| {
@@ -970,7 +995,7 @@ mod tests {
                 let pairs: Vec<(Operator, Target)> =
                     vec![(Operator::Add, 3), (Operator::Subtract, 1)];
                 let p = ready_pending(committed, pairs);
-                let designer_state = RwSignal::new(State::new(4).unwrap());
+                let designer_state = RwSignal::new(State::new_with_solution(4).unwrap());
                 let pending_commit = RwSignal::new(Some(p.clone()));
                 let on_state_change = Callback::new(|_: State| {});
 
@@ -1001,6 +1026,7 @@ mod tests {
             });
         }
 
+        #[cfg(feature = "without-solution")]
         #[test]
         fn without_solution_shortcut_key_picks_operator() {
             Owner::new().with(|| {
@@ -1008,7 +1034,7 @@ mod tests {
                 let pairs: Vec<(Operator, Target)> =
                     vec![(Operator::Add, 3), (Operator::Subtract, 1)];
                 let p = ready_pending(committed, pairs);
-                let designer_state = RwSignal::new(State::new(4).unwrap());
+                let designer_state = RwSignal::new(State::new_with_solution(4).unwrap());
                 let pending_commit = RwSignal::new(Some(p.clone()));
                 let on_state_change = Callback::new(|_: State| {});
 
@@ -1026,6 +1052,7 @@ mod tests {
             });
         }
 
+        #[cfg(feature = "without-solution")]
         #[test]
         fn without_solution_escape_backs_out_then_cancels() {
             Owner::new().with(|| {
@@ -1034,7 +1061,7 @@ mod tests {
                 let p = ready_pending(committed, pairs);
                 p.picked_operator.set(Some(Operator::Add));
 
-                let mut st = State::new(4).unwrap();
+                let mut st = State::new_with_solution(4).unwrap();
                 let _ = st.provisional_cages.insert(p.polyomino.clone());
                 let designer_state = RwSignal::new(st);
                 let pending_commit = RwSignal::new(Some(p.clone()));
@@ -1065,13 +1092,14 @@ mod tests {
             });
         }
 
+        #[cfg(feature = "without-solution")]
         #[test]
         fn without_solution_computing_consumes_keys_until_ready() {
             Owner::new().with(|| {
                 let committed = RwSignal::new(None);
                 let mut p = pending(committed);
                 p.feasible = Some(RwSignal::new(FeasibilityState::Computing));
-                let designer_state = RwSignal::new(State::new(4).unwrap());
+                let designer_state = RwSignal::new(State::new_with_solution(4).unwrap());
                 let pending_commit = RwSignal::new(Some(p.clone()));
                 let on_state_change = Callback::new(|_: State| {});
 
@@ -1089,6 +1117,7 @@ mod tests {
             });
         }
 
+        #[cfg(feature = "without-solution")]
         #[test]
         fn without_solution_singleton_escape_cancels_instead_of_backing_out() {
             Owner::new().with(|| {
@@ -1109,7 +1138,7 @@ mod tests {
                     picked_operator: RwSignal::new(Some(Operator::Given)),
                 };
 
-                let mut st = State::new(4).unwrap();
+                let mut st = State::new_with_solution(4).unwrap();
                 let _ = st.provisional_cages.insert(p.polyomino.clone());
                 let designer_state = RwSignal::new(st);
                 let pending_commit = RwSignal::new(Some(p.clone()));
@@ -1130,6 +1159,7 @@ mod tests {
             });
         }
 
+        #[cfg(feature = "without-solution")]
         #[test]
         fn without_solution_escape_cancels_while_computing() {
             Owner::new().with(|| {
@@ -1137,7 +1167,7 @@ mod tests {
                 let mut p = pending(committed);
                 p.feasible = Some(RwSignal::new(FeasibilityState::Computing));
 
-                let mut st = State::new(4).unwrap();
+                let mut st = State::new_with_solution(4).unwrap();
                 let _ = st.provisional_cages.insert(p.polyomino.clone());
                 let designer_state = RwSignal::new(st);
                 let pending_commit = RwSignal::new(Some(p.clone()));
@@ -1157,13 +1187,14 @@ mod tests {
             });
         }
 
+        #[cfg(feature = "without-solution")]
         #[test]
         fn without_solution_escape_cancels_when_no_pairs_are_feasible() {
             Owner::new().with(|| {
                 let committed = RwSignal::new(None);
                 let p = ready_pending(committed, vec![]);
 
-                let mut st = State::new(4).unwrap();
+                let mut st = State::new_with_solution(4).unwrap();
                 let _ = st.provisional_cages.insert(p.polyomino.clone());
                 let designer_state = RwSignal::new(st);
                 let pending_commit = RwSignal::new(Some(p.clone()));
@@ -1195,6 +1226,7 @@ mod tests {
             });
         }
 
+        #[cfg(feature = "without-solution")]
         #[test]
         fn without_solution_strip_steps_backwards_with_arrow_left() {
             Owner::new().with(|| {
@@ -1202,7 +1234,7 @@ mod tests {
                 let pairs: Vec<(Operator, Target)> =
                     vec![(Operator::Add, 3), (Operator::Subtract, 1)];
                 let p = ready_pending(committed, pairs);
-                let designer_state = RwSignal::new(State::new(4).unwrap());
+                let designer_state = RwSignal::new(State::new_with_solution(4).unwrap());
                 let pending_commit = RwSignal::new(Some(p.clone()));
                 let on_state_change = Callback::new(|_: State| {});
 
@@ -1220,6 +1252,7 @@ mod tests {
             });
         }
 
+        #[cfg(feature = "without-solution")]
         #[test]
         fn without_solution_target_step_ignores_non_escape_keys() {
             Owner::new().with(|| {
@@ -1227,7 +1260,7 @@ mod tests {
                 let pairs: Vec<(Operator, Target)> = vec![(Operator::Add, 3)];
                 let p = ready_pending(committed, pairs);
                 p.picked_operator.set(Some(Operator::Add));
-                let designer_state = RwSignal::new(State::new(4).unwrap());
+                let designer_state = RwSignal::new(State::new_with_solution(4).unwrap());
                 let pending_commit = RwSignal::new(Some(p.clone()));
                 let on_state_change = Callback::new(|_: State| {});
 

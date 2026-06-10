@@ -41,6 +41,11 @@ jobs:
       - name: cargo clippy (workspace)
         run: cargo clippy --workspace --exclude mathdoku-designer-tauri --all-targets -- -D warnings
 
+      # The Without-Solution authoring mode is compiled out by default; lint
+      # the feature-enabled configuration too so the gated code doesn't rot.
+      - name: cargo clippy (workspace, without-solution feature)
+        run: cargo clippy --workspace --exclude mathdoku-designer-tauri --all-targets --features mathdoku-designer-ui/without-solution -- -D warnings
+
       # ── doc ──────────────────────────────────────────────────────────────
       - name: cargo doc
         run: cargo doc --no-deps -p mathdoku
@@ -64,6 +69,14 @@ jobs:
 
       - name: cargo test (mathdoku-designer)
         run: cd apps/designer && cargo test
+
+      # The Without-Solution mode is feature-gated off by default; run the
+      # gated tests too so the flag-on configuration keeps working.
+      - name: cargo test (without-solution feature)
+        run: |
+          cargo test --lib -p mathdoku --features without-solution
+          cargo test -p mathdoku-designer-core --features without-solution
+          cd apps/designer && cargo test --features without-solution
 
   # ── Code coverage ──────────────────────────────────────────────────────────
   coverage:

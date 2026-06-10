@@ -12,6 +12,12 @@ publish = false
 name = "mathdoku_designer_tauri_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[features]
+# Without-Solution authoring mode: the `new_empty` / `fix` / `unfix` commands
+# and the native Puzzle menu (Fix Solution / Unfix Solution). Off by default;
+# must be enabled together with the frontend's `without-solution` feature.
+without-solution = ["mathdoku-designer-core/without-solution"]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 

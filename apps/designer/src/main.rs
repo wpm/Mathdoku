@@ -1,6 +1,8 @@
 mod app;
 mod cage_commit;
 mod components;
+// Global-feasibility queries exist only for Without-Solution authoring.
+#[cfg(feature = "without-solution")]
 pub mod feasibility;
 pub mod geometry;
 pub mod ipc;

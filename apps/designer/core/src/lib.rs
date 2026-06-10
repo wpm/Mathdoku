@@ -41,6 +41,7 @@ pub enum Error {
     NoPuzzle,
     #[error("cage not found")]
     CageNotFound,
+    #[cfg(feature = "without-solution")]
     #[error("puzzle does not have exactly one completion")]
     NotUnique,
     #[error("serialization failed: {0}")]
@@ -94,6 +95,7 @@ impl State {
     ///
     /// # Errors
     /// Returns an error if `n` is invalid for `Puzzle`.
+    #[cfg(feature = "without-solution")]
     pub fn new(n: usize) -> Result<Self, String> {
         let puzzle = Puzzle::new(n).map_err(|e| e.to_string())?;
         Ok(Self {
@@ -146,6 +148,7 @@ impl State {
     /// # Errors
     /// Returns [`Error::NotUnique`] if the puzzle does not have exactly one
     /// global completion, or [`Error::Mathdoku`] if propagation fails.
+    #[cfg(feature = "without-solution")]
     pub fn fix(&mut self) -> Result<(), Error> {
         let mut solutions = self.puzzle.solutions();
         let first = match solutions.next() {
@@ -181,6 +184,7 @@ impl State {
     ///
     /// Always succeeds — the cages were chosen against a known completion and
     /// remain globally feasible after the field is dropped.
+    #[cfg(feature = "without-solution")]
     pub fn unfix(&mut self) {
         self.solution = None;
     }
@@ -257,6 +261,7 @@ fn commit_puzzle(state: &mut AppState, new_puzzle: Puzzle) -> Result<State, Erro
 ///
 /// # Errors
 /// Returns an error if `n` is invalid.
+#[cfg(feature = "without-solution")]
 pub fn new_empty(state: &mut AppState, n: usize) -> Result<State, Error> {
     let puzzle = Puzzle::new(n)?;
     state.puzzle = Some(puzzle);
@@ -375,6 +380,7 @@ pub fn remove_cage_at(state: &mut AppState, polyomino: &Polyomino) -> Result<Sta
 /// # Errors
 /// Returns an error if no puzzle is loaded or the puzzle does not have exactly
 /// one global completion.
+#[cfg(feature = "without-solution")]
 pub fn fix(state: &mut AppState) -> Result<State, Error> {
     let mut designer = state.to_designer_state().ok_or(Error::NoPuzzle)?;
     designer.fix()?;
@@ -388,6 +394,7 @@ pub fn fix(state: &mut AppState) -> Result<State, Error> {
 ///
 /// # Errors
 /// Returns an error if no puzzle is loaded.
+#[cfg(feature = "without-solution")]
 pub fn unfix(state: &mut AppState) -> Result<State, Error> {
     let mut designer = state.to_designer_state().ok_or(Error::NoPuzzle)?;
     designer.unfix();
@@ -472,10 +479,15 @@ mod tests {
 
     /// Shared fixtures.
     mod helpers {
-        use crate::{AppState, State, apply_loaded, insert_cage, new_empty, serialize_save};
-        use mathdoku::{Cage, Cell, N, Operator, Polyomino, Puzzle, T};
+        use crate::{AppState, apply_loaded, serialize_save};
+        #[cfg(feature = "without-solution")]
+        use crate::{State, insert_cage};
+        #[cfg(feature = "without-solution")]
+        use mathdoku::{Cage, N, Operator, T};
+        use mathdoku::{Cell, Polyomino, Puzzle};
 
         /// Builds a [`Cage`] from `(row, column)` positions, an operator, and a target.
+        #[cfg(feature = "without-solution")]
         pub(super) fn cage_at(
             n: N,
             positions: &[(usize, usize)],
@@ -498,6 +510,7 @@ mod tests {
         }
 
         /// Every cell of an `n`×`n` grid in row-major order.
+        #[cfg(feature = "without-solution")]
         pub(super) fn all_cells(n: usize) -> Vec<Cell> {
             (0..n)
                 .flat_map(|r| (0..n).map(move |c| Cell::new(r, c)))
@@ -511,6 +524,7 @@ mod tests {
         /// 3 1 2
         /// ```
         /// by nine `Given` cages — exactly one completion.
+        #[cfg(feature = "without-solution")]
         pub(super) fn unique_3x3() -> State {
             let mut st = State::new(3).unwrap();
             let square = [[1u64, 2, 3], [2, 3, 1], [3, 1, 2]];
@@ -548,18 +562,23 @@ mod tests {
             }
         }
 
-        /// A fresh Without-Solution `n`×`n` [`AppState`].
+        /// A fresh Without-Solution `n`×`n` [`AppState`], built directly rather
+        /// than through the feature-gated `new_empty` command so it is usable
+        /// in both build configurations (solution-less states remain loadable
+        /// from save files even when the `without-solution` feature is off).
         pub(super) fn without_solution(n: usize) -> AppState {
-            let mut state = AppState::default();
-            let _ = new_empty(&mut state, n).unwrap();
-            state
+            AppState {
+                puzzle: Some(Puzzle::new(n).unwrap()),
+                dirty: true,
+                ..AppState::default()
+            }
         }
 
         /// A 3×3 [`AppState`] pinned to the same Latin square as [`unique_3x3`]
         /// by nine `Given` cages — exactly one completion.
+        #[cfg(feature = "without-solution")]
         pub(super) fn unique_3x3_app_state() -> AppState {
-            let mut state = AppState::default();
-            let _ = new_empty(&mut state, 3).unwrap();
+            let mut state = without_solution(3);
             let square = [[1u32, 2, 3], [2, 3, 1], [3, 1, 2]];
             for (r, row) in square.iter().enumerate() {
                 for (c, &v) in row.iter().enumerate() {
@@ -582,11 +601,16 @@ mod tests {
     // ---- State constructors / mode transitions (migrated from #47) ----
 
     mod state_transitions {
+        #[cfg(feature = "without-solution")]
         use super::helpers::{cage_at, unique_3x3};
-        use crate::{Error, State};
+        #[cfg(feature = "without-solution")]
+        use crate::Error;
+        use crate::State;
+        #[cfg(feature = "without-solution")]
         use mathdoku::{Cell, Operator};
         use serde_json::{from_str, to_string};
 
+        #[cfg(feature = "without-solution")]
         #[test]
         fn new_is_without_solution() {
             let st = State::new(4).unwrap();
@@ -600,6 +624,7 @@ mod tests {
             assert!(st.solution.is_some());
         }
 
+        #[cfg(feature = "without-solution")]
         #[test]
         fn unfix_drops_the_solution() {
             let mut st = State::new_with_solution(4).unwrap();
@@ -607,6 +632,7 @@ mod tests {
             assert!(st.solution.is_none());
         }
 
+        #[cfg(feature = "without-solution")]
         #[test]
         fn fix_snapshots_unique_completion() {
             let mut st = unique_3x3();
@@ -616,6 +642,7 @@ mod tests {
             assert_eq!(solution.get(Cell::new(1, 0)).unwrap().values(), vec![2]);
         }
 
+        #[cfg(feature = "without-solution")]
         #[test]
         fn fix_fails_when_not_unique() {
             // Three row-sum cages: every order-3 Latin square is a completion (12 of them).
@@ -631,6 +658,7 @@ mod tests {
             assert!(st.solution.is_none());
         }
 
+        #[cfg(feature = "without-solution")]
         #[test]
         fn fix_then_unfix_round_trips_mode() {
             let mut st = unique_3x3();
@@ -642,7 +670,14 @@ mod tests {
 
         #[test]
         fn serde_round_trip_without_solution() {
-            let st = State::new(4).unwrap();
+            // Built directly: `State::new` is feature-gated, but the
+            // solution-less wire format must stay stable in every build.
+            let st = State {
+                puzzle: mathdoku::Puzzle::new(4).unwrap(),
+                solution: None,
+                active: mathdoku::Cell::new(0, 0),
+                provisional_cages: std::collections::BTreeSet::new(),
+            };
             let json = to_string(&st).unwrap();
             // The omitted-field form keeps Without-Solution JSON clean.
             assert!(!json.contains("\"solution\""));
@@ -668,11 +703,13 @@ mod tests {
     // ---- Category 1: command-body error paths ----
 
     mod command_errors {
-        use super::helpers::{cells, poly};
+        use super::helpers::{cells, poly, without_solution};
         use crate::{
-            AppState, Error, SaveEnvelope, apply_loaded, fix, insert_cage, new_empty,
-            new_latin_square, remove_cage_at, serialize_save, unfix,
+            AppState, Error, SaveEnvelope, apply_loaded, insert_cage, new_latin_square,
+            remove_cage_at, serialize_save,
         };
+        #[cfg(feature = "without-solution")]
+        use crate::{fix, new_empty, unfix};
         use mathdoku::{Cell, Operator, Polyomino, Puzzle};
         use rand::{SeedableRng, rngs::StdRng};
         use serde_json::to_string;
@@ -701,8 +738,7 @@ mod tests {
 
         #[test]
         fn insert_cage_overlap_is_cage_conflict() {
-            let mut state = AppState::default();
-            let _ = new_empty(&mut state, 4).unwrap();
+            let mut state = without_solution(4);
             let _ =
                 insert_cage(&mut state, poly(&[(0, 0), (0, 1)]), Operator::Add, Some(3)).unwrap();
             let r = insert_cage(&mut state, poly(&[(0, 0)]), Operator::Given, Some(1));
@@ -715,8 +751,7 @@ mod tests {
 
         #[test]
         fn insert_cage_subtract_on_three_cells_returns_err() {
-            let mut state = AppState::default();
-            let _ = new_empty(&mut state, 4).unwrap();
+            let mut state = without_solution(4);
             assert!(matches!(
                 insert_cage(
                     &mut state,
@@ -730,8 +765,7 @@ mod tests {
 
         #[test]
         fn insert_cage_given_on_two_cells_returns_err() {
-            let mut state = AppState::default();
-            let _ = new_empty(&mut state, 4).unwrap();
+            let mut state = without_solution(4);
             assert!(matches!(
                 insert_cage(
                     &mut state,
@@ -748,8 +782,7 @@ mod tests {
             // Two collinear cells (same row) with Add 2: no pair of distinct values
             // in 1..=3 sums to 2 (min is 1+2=3). The MDD construction detects this
             // immediately and returns InfeasibleCage — insert_cage propagates the error.
-            let mut state = AppState::default();
-            let _ = new_empty(&mut state, 3).unwrap();
+            let mut state = without_solution(3);
             assert!(matches!(
                 insert_cage(&mut state, poly(&[(0, 0), (0, 1)]), Operator::Add, Some(2)),
                 Err(Error::Mathdoku(mathdoku::Error::InfeasibleCage(_, _)))
@@ -769,8 +802,7 @@ mod tests {
 
         #[test]
         fn remove_cage_at_unknown_polyomino_is_cage_not_found() {
-            let mut state = AppState::default();
-            let _ = new_empty(&mut state, 4).unwrap();
+            let mut state = without_solution(4);
             let _ = insert_cage(&mut state, poly(&[(0, 0)]), Operator::Given, Some(1)).unwrap();
             assert!(matches!(
                 remove_cage_at(&mut state, &poly(&[(1, 1)])),
@@ -780,12 +812,14 @@ mod tests {
 
         // --- fix ---
 
+        #[cfg(feature = "without-solution")]
         #[test]
         fn fix_no_puzzle_errors() {
             let mut state = AppState::default();
             assert!(matches!(fix(&mut state), Err(Error::NoPuzzle)));
         }
 
+        #[cfg(feature = "without-solution")]
         #[test]
         fn fix_errs_when_not_unique() {
             let mut state = AppState::default();
@@ -798,8 +832,7 @@ mod tests {
         fn insert_cage_conflicting_givens_returns_infeasible() {
             // Two Given cells in the same row both fixed to 1 — propagation detects the
             // conflict and insert_cage returns Ok(None); the designer abandons the operation.
-            let mut state = AppState::default();
-            let _ = new_empty(&mut state, 3).unwrap();
+            let mut state = without_solution(3);
             let cage_before = insert_cage(&mut state, poly(&[(0, 0)]), Operator::Given, Some(1))
                 .unwrap()
                 .puzzle;
@@ -810,6 +843,7 @@ mod tests {
             assert_eq!(state.puzzle.as_ref().unwrap().cages().count(), 1);
         }
 
+        #[cfg(feature = "without-solution")]
         #[test]
         fn fix_multiple_completions_is_not_unique() {
             // A higher-arity row-sum cage on a 4×4 still leaves many completions.
@@ -827,12 +861,14 @@ mod tests {
 
         // --- unfix ---
 
+        #[cfg(feature = "without-solution")]
         #[test]
         fn unfix_no_puzzle_errors() {
             let mut state = AppState::default();
             assert!(matches!(unfix(&mut state), Err(Error::NoPuzzle)));
         }
 
+        #[cfg(feature = "without-solution")]
         #[test]
         fn unfix_on_without_solution_is_idempotent() {
             let mut state = AppState::default();
@@ -845,12 +881,14 @@ mod tests {
 
         // --- new_empty / new_latin_square invalid sizes ---
 
+        #[cfg(feature = "without-solution")]
         #[test]
         fn new_empty_rejects_invalid_size() {
             let mut state = AppState::default();
             assert!(new_empty(&mut state, 0).is_err());
         }
 
+        #[cfg(feature = "without-solution")]
         #[test]
         fn new_empty_rejects_n_too_large() {
             let mut state = AppState::default();
@@ -888,6 +926,7 @@ mod tests {
             assert!(matches!(serialize_save(&state), Err(Error::NoPuzzle)));
         }
 
+        #[cfg(feature = "without-solution")]
         #[test]
         fn serialize_save_succeeds_after_unfix() {
             // After a With-Solution puzzle is unfixed, serialize_save still works
@@ -980,13 +1019,18 @@ mod tests {
     // ---- Category 2: state invariants after each command ----
 
     mod invariants {
-        use super::helpers::{all_cells, poly, unique_3x3_app_state, with_solution_3x3};
-        use crate::{
-            AppState, fix, insert_cage, new_empty, new_latin_square, remove_cage_at, unfix,
-        };
-        use mathdoku::{Cell, Fill, Polyomino};
+        #[cfg(feature = "without-solution")]
+        use super::helpers::{all_cells, unique_3x3_app_state};
+        use super::helpers::{poly, with_solution_3x3, without_solution};
+        use crate::{AppState, insert_cage, new_latin_square, remove_cage_at};
+        #[cfg(feature = "without-solution")]
+        use crate::{fix, new_empty, unfix};
+        #[cfg(feature = "without-solution")]
+        use mathdoku::Fill;
+        use mathdoku::{Cell, Polyomino};
         use rand::{SeedableRng, rngs::StdRng};
 
+        #[cfg(feature = "without-solution")]
         #[test]
         fn new_empty_sets_puzzle_and_dirty() {
             let mut state = AppState::default();
@@ -1000,6 +1044,7 @@ mod tests {
             assert!(state.path.is_none());
         }
 
+        #[cfg(feature = "without-solution")]
         #[test]
         fn new_empty_clears_existing_path() {
             let mut state = AppState {
@@ -1010,6 +1055,7 @@ mod tests {
             assert!(state.path.is_none());
         }
 
+        #[cfg(feature = "without-solution")]
         #[test]
         fn new_empty_establishes_invariants() {
             let mut state = AppState::default();
@@ -1041,8 +1087,7 @@ mod tests {
 
         #[test]
         fn insert_cage_uses_author_target_without_solution() {
-            let mut state = AppState::default();
-            let _ = new_empty(&mut state, 4).unwrap();
+            let mut state = without_solution(4);
             let p = Polyomino::from_cells(&[Cell::new(0, 0), Cell::new(0, 1)]).unwrap();
             let st = insert_cage(&mut state, p, mathdoku::Operator::Add, Some(7)).unwrap();
             let cage = st.puzzle.cages().next().unwrap();
@@ -1090,8 +1135,7 @@ mod tests {
 
         #[test]
         fn insert_cage_without_solution_keeps_current_constrained() {
-            let mut state = AppState::default();
-            let _ = new_empty(&mut state, 4).unwrap();
+            let mut state = without_solution(4);
             let region = poly(&[(0, 0), (0, 1)]);
             let st =
                 insert_cage(&mut state, region.clone(), mathdoku::Operator::Add, Some(3)).unwrap();
@@ -1104,8 +1148,7 @@ mod tests {
 
         #[test]
         fn remove_cage_re_constrains_current() {
-            let mut state = AppState::default();
-            let _ = new_empty(&mut state, 4).unwrap();
+            let mut state = without_solution(4);
             let region = poly(&[(0, 0), (0, 1)]);
             let _ =
                 insert_cage(&mut state, region.clone(), mathdoku::Operator::Add, Some(3)).unwrap();
@@ -1125,6 +1168,7 @@ mod tests {
             assert!(state.dirty);
         }
 
+        #[cfg(feature = "without-solution")]
         #[test]
         fn fix_sets_solution_leaves_puzzle_and_current() {
             let mut state = unique_3x3_app_state();
@@ -1137,6 +1181,7 @@ mod tests {
             assert_eq!(sol.get(Cell::new(0, 0)).unwrap(), Fill::new(&[1]).unwrap());
         }
 
+        #[cfg(feature = "without-solution")]
         #[test]
         fn unfix_clears_solution() {
             let mut state = AppState::default();
@@ -1146,6 +1191,7 @@ mod tests {
             assert!(state.solution.is_none());
         }
 
+        #[cfg(feature = "without-solution")]
         #[test]
         fn unfix_clears_solution_leaves_puzzle_and_current() {
             let mut state = AppState::default();
@@ -1186,6 +1232,7 @@ mod tests {
 
     // ---- Category 3: mode-transition chains ----
 
+    #[cfg(feature = "without-solution")]
     mod mode_transitions {
         use super::helpers::{all_cells, poly, unique_3x3_app_state};
         use crate::{AppState, Error, fix, insert_cage, new_empty, new_latin_square, unfix};
@@ -1353,10 +1400,9 @@ mod tests {
     // ---- Category 5: save-format wire stability ----
 
     mod save_format {
-        use super::helpers::{poly, save_round_trip};
+        use super::helpers::{poly, save_round_trip, without_solution};
         use crate::{
-            AppState, SAVE_VERSION, apply_loaded, insert_cage, new_empty, new_latin_square,
-            serialize_save,
+            AppState, SAVE_VERSION, apply_loaded, insert_cage, new_latin_square, serialize_save,
         };
         use mathdoku::{Cell, Operator, Puzzle};
         use rand::{SeedableRng, rngs::StdRng};
@@ -1384,8 +1430,7 @@ mod tests {
 
         #[test]
         fn without_solution_save_omits_solution_key() {
-            let mut state = AppState::default();
-            let _ = new_empty(&mut state, 4).unwrap();
+            let mut state = without_solution(4);
             let _ =
                 insert_cage(&mut state, poly(&[(0, 0), (0, 1)]), Operator::Add, Some(3)).unwrap();
             let json = serialize_save(&state).unwrap();
@@ -1403,8 +1448,7 @@ mod tests {
 
         #[test]
         fn without_solution_round_trips_bit_identical() {
-            let mut source = AppState::default();
-            let _ = new_empty(&mut source, 4).unwrap();
+            let mut source = without_solution(4);
             let _ =
                 insert_cage(&mut source, poly(&[(0, 0), (0, 1)]), Operator::Add, Some(3)).unwrap();
             let loaded = save_round_trip(&source);
@@ -1529,10 +1573,10 @@ mod tests {
     // ---- Category 8: pre-condition and trivial-getter tests ----
 
     mod getters {
-        use super::helpers::poly;
+        use super::helpers::{poly, without_solution};
         use crate::{
-            AppState, apply_loaded, get_doc_state, get_puzzle, insert_cage, new_empty,
-            serialize_save, set_active_cell,
+            AppState, apply_loaded, get_doc_state, get_puzzle, insert_cage, serialize_save,
+            set_active_cell,
         };
         use mathdoku::{Cell, Operator, Puzzle};
 
@@ -1564,8 +1608,7 @@ mod tests {
 
         #[test]
         fn get_puzzle_returns_puzzle_when_loaded() {
-            let mut state = AppState::default();
-            let _ = new_empty(&mut state, 6).unwrap();
+            let state = without_solution(6);
             let p = get_puzzle(&state).unwrap();
             assert_eq!(p.puzzle.n(), 6);
         }
@@ -1584,8 +1627,7 @@ mod tests {
 
         #[test]
         fn set_active_cell_updates_state_and_designer_state() {
-            let mut state = AppState::default();
-            let _ = new_empty(&mut state, 4).unwrap();
+            let mut state = without_solution(4);
             set_active_cell(&mut state, Cell::new(2, 3));
             assert_eq!(state.active, Some(Cell::new(2, 3)));
             let designer = state.to_designer_state().unwrap();
@@ -1608,8 +1650,7 @@ mod tests {
 
         #[test]
         fn to_designer_state_always_has_empty_provisional_cages() {
-            let mut state = AppState::default();
-            let _ = new_empty(&mut state, 4).unwrap();
+            let mut state = without_solution(4);
             let _ =
                 insert_cage(&mut state, poly(&[(0, 0), (0, 1)]), Operator::Add, Some(3)).unwrap();
             let designer = state.to_designer_state().unwrap();
@@ -1805,8 +1846,7 @@ mod tests {
 
     mod properties {
         use crate::{
-            AppState, apply_loaded, insert_cage, new_empty, new_latin_square, remove_cage_at,
-            serialize_save, unfix,
+            AppState, apply_loaded, insert_cage, new_latin_square, remove_cage_at, serialize_save,
         };
         use mathdoku::{Cell, Operator, T};
         use proptest::prelude::*;
@@ -1899,10 +1939,10 @@ mod tests {
             assert_eq!(current, puzzle.clone());
         }
 
-        // `fix`/`unfix` are deliberately excluded from the consistency generator:
-        // they flip mode without recomputing `current`, so the stated invariant
-        // does not hold across them. They are exercised by the dirty-flag property
-        // below (which only inspects `dirty`).
+        // `fix`/`unfix` are deliberately excluded from these generators: they
+        // flip mode without recomputing `current`, so the consistency invariant
+        // does not hold across them. Their state effects are exercised by the
+        // feature-gated tests in `state_transitions` and `invariants`.
 
         fn bootstrap(n: usize, seed: u64, latin: bool) -> AppState {
             let mut state = AppState::default();
@@ -1910,7 +1950,11 @@ mod tests {
                 let mut rng = StdRng::seed_from_u64(seed);
                 let _ = new_latin_square(&mut state, n, &mut rng).unwrap();
             } else {
-                let _ = new_empty(&mut state, n).unwrap();
+                // The Without-Solution shape built directly: `new_empty` is
+                // feature-gated, but solution-less states stay loadable from
+                // save files in every build and must keep these properties.
+                state.puzzle = Some(mathdoku::Puzzle::new(n).unwrap());
+                state.dirty = true;
             }
             state
         }
@@ -1963,7 +2007,6 @@ mod tests {
                 (n, ops) in problem(),
                 seed in any::<u64>(),
                 latin in any::<bool>(),
-                do_unfix in any::<bool>(),
             ) {
                 let mut state = bootstrap(n, seed, latin);
                 prop_assert!(state.dirty);
@@ -1971,11 +2014,6 @@ mod tests {
                     if apply(&mut state, op) {
                         prop_assert!(state.dirty);
                     }
-                }
-                if do_unfix {
-                    // unfix always succeeds with a puzzle loaded and sets dirty.
-                    let _ = unfix(&mut state).unwrap();
-                    prop_assert!(state.dirty);
                 }
                 // apply_loaded is the only command that clears dirty.
                 let json = serialize_save(&state).unwrap();

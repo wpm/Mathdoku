@@ -17,7 +17,9 @@ use mathdoku_designer_core::State;
 use super::cage::Cage as CageComponent;
 use super::cage_stats::CageStats;
 use super::cell::Cell as CellComponent;
-use super::operation_selector::{FeasibilityState, OperationSelector, PendingCommit, handle_key};
+#[cfg(feature = "without-solution")]
+use super::operation_selector::FeasibilityState;
+use super::operation_selector::{OperationSelector, PendingCommit, handle_key};
 use super::selection::{ProvisionalFills, SelectionOverlay};
 use super::solution_count::SolutionCount;
 use crate::cage_commit::{commit_cage, delete_cage, demote_cage};
@@ -128,9 +130,11 @@ pub fn Puzzle(
     // `Fix Solution` is only valid when the puzzle currently has exactly one
     // completion (the backend rejects `fix` otherwise). Compute that once — the
     // component re-mounts on every puzzle change — and only in Without-Solution
-    // mode, where the Fix button is shown. `None` while the solver runs keeps
-    // the button disabled.
+    // mode, where the Fix transition is offered. `None` while the solver runs
+    // keeps it disabled.
+    #[cfg(feature = "without-solution")]
     let has_unique_solution: RwSignal<Option<bool>> = RwSignal::new(None);
+    #[cfg(feature = "without-solution")]
     if designer_state.get_untracked().solution.is_none() {
         let ps = partial_solution.clone();
         spawn_local(async move {
@@ -143,6 +147,7 @@ pub fn Puzzle(
     // formerly gated the footer button: Fix is offered only in Without-Solution
     // mode with a unique completion, Unfix only in With-Solution mode. No-op on
     // web (no native menu); see `ipc::set_puzzle_menu_enabled`.
+    #[cfg(feature = "without-solution")]
     Effect::new(move |_| {
         let has_solution = designer_state.get().solution.is_some();
         let fix_enabled = !has_solution && has_unique_solution.get() == Some(true);
@@ -163,7 +168,10 @@ pub fn Puzzle(
     // Singletons (Given only) are skipped — they stay as provisional cages without a selector.
     let open_selector = Callback::new(move |poly: Polyomino| {
         let st = designer_state.get_untracked();
+        #[cfg(feature = "without-solution")]
         let without_solution = st.solution.is_none();
+        #[cfg(not(feature = "without-solution"))]
+        let without_solution = false;
         let allowed = operators_for(&poly);
         // With-Solution singletons commit immediately (Given target read from the
         // solution); they never open the selector. Without-Solution singletons
@@ -190,10 +198,12 @@ pub fn Puzzle(
         let selected_idx = RwSignal::new(0usize);
         // Without-Solution singletons skip the operator step: pre-select Given so
         // the picker opens straight onto the numeric value dropdown.
+        #[cfg(feature = "without-solution")]
         let picked_operator =
             RwSignal::new((without_solution && poly.len() == 1).then_some(Operator::Given));
         // Without-Solution mode computes the globally-feasible (op, target) pairs
         // for the dropdown, showing a spinner via the Computing state meanwhile.
+        #[cfg(feature = "without-solution")]
         let feasible = without_solution.then(|| {
             let sig = RwSignal::new(FeasibilityState::Computing);
             let puzzle = st.puzzle.clone();
@@ -210,7 +220,9 @@ pub fn Puzzle(
             allowed,
             selected_idx,
             on_commit,
+            #[cfg(feature = "without-solution")]
             feasible,
+            #[cfg(feature = "without-solution")]
             picked_operator,
         }));
     });
@@ -259,7 +271,7 @@ pub fn Puzzle(
     // WASM-only: on web the Cmd+L / Cmd+Shift+L keydown branches below drive
     // these. On native the Puzzle menu accelerators reach Fix/Unfix through
     // `app.rs` instead, so the in-page closures would be dead code — cfg them out.
-    #[cfg(feature = "web")]
+    #[cfg(all(feature = "web", feature = "without-solution"))]
     let mode_switch =
         move |fut: std::pin::Pin<Box<dyn Future<Output = Result<State, ipc::IpcError>>>>| {
             spawn_local(async move {
@@ -277,9 +289,9 @@ pub fn Puzzle(
                 }
             });
         };
-    #[cfg(feature = "web")]
+    #[cfg(all(feature = "web", feature = "without-solution"))]
     let on_fix = Callback::new(move |(): ()| mode_switch(Box::pin(ipc::fix())));
-    #[cfg(feature = "web")]
+    #[cfg(all(feature = "web", feature = "without-solution"))]
     let on_unfix = Callback::new(move |(): ()| mode_switch(Box::pin(ipc::unfix())));
 
     let on_keydown = move |ev: leptos::ev::KeyboardEvent| {
@@ -329,7 +341,7 @@ pub fn Puzzle(
         // is a no-op unless its transition is valid, using the same predicates the
         // menu's enabled state mirrors: Fix needs Without-Solution mode with a
         // unique completion; Unfix needs With-Solution mode.
-        #[cfg(feature = "web")]
+        #[cfg(all(feature = "web", feature = "without-solution"))]
         if ev.meta_key() && key.eq_ignore_ascii_case("l") {
             ev.prevent_default();
             if shift {
@@ -509,7 +521,9 @@ pub fn Puzzle(
             // Without-Solution: typing a feasible digit immediately commits a
             // singleton Given cage at the active cell. The whole decision (mode,
             // cell coverage, and global feasibility) lives in the pure
-            // `singleton_digit_commit` helper.
+            // `singleton_digit_commit` helper. Without the feature there is no
+            // digit shortcut at all.
+            #[cfg(feature = "without-solution")]
             key_str => {
                 if let Ok(Some(commit)) = singleton_digit_commit(&st, key_str) {
                     ev.prevent_default();
@@ -526,6 +540,8 @@ pub fn Puzzle(
                     );
                 }
             }
+            #[cfg(not(feature = "without-solution"))]
+            _ => {}
         }
     };
 
@@ -594,9 +610,15 @@ pub fn Puzzle(
     // steal it back here.
     Effect::new(move |_| {
         let pending = pending_commit.get(); // re-run when the selector changes
+        #[cfg(feature = "without-solution")]
         let target_dropdown_open = pending
             .as_ref()
             .is_some_and(|p| p.feasible.is_some() && p.picked_operator.get().is_some());
+        #[cfg(not(feature = "without-solution"))]
+        let target_dropdown_open = {
+            let _ = &pending;
+            false
+        };
         if target_dropdown_open {
             return;
         }
@@ -706,6 +728,7 @@ fn previous_cell_values(prev_state: Option<State>, n: usize) -> Vec<Vec<Vec<N>>>
 
 /// A singleton `Given` cage to commit from a digit keypress, with the
 /// provisional cages to retain afterwards.
+#[cfg(feature = "without-solution")]
 struct SingletonDigitCommit {
     /// The single-cell polyomino to commit.
     poly: Polyomino,
@@ -728,6 +751,7 @@ struct SingletonDigitCommit {
 /// Feasibility uses the same [`crate::feasibility::is_globally_feasible`]
 /// predicate the value dropdown applies per target, so the digit shortcut and
 /// the dropdown always agree on which values are allowed.
+#[cfg(feature = "without-solution")]
 fn singleton_digit_commit(state: &State, key: &str) -> Result<Option<SingletonDigitCommit>, Error> {
     if state.solution.is_some() || key.len() != 1 {
         return Ok(None);
@@ -833,9 +857,9 @@ fn step_provisional_cage(r: usize, c: usize, tr: usize, tc: usize, state: State)
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::panic)]
 mod tests {
-    use super::{
-        parked_cages, previous_cell_values, singleton_digit_commit, step_provisional_cage,
-    };
+    #[cfg(feature = "without-solution")]
+    use super::singleton_digit_commit;
+    use super::{parked_cages, previous_cell_values, step_provisional_cage};
     use mathdoku::{Cage, Cell, N, Operator, Polyomino};
     use mathdoku_designer_core::State;
 
@@ -846,7 +870,7 @@ mod tests {
 
     #[test]
     fn parked_cages_excludes_matching_polyomino() {
-        let mut st = State::new(4).unwrap();
+        let mut st = State::new_with_solution(4).unwrap();
         let committing = poly(&[(0, 0), (0, 1)]);
         let other = poly(&[(2, 2)]);
         let _ = st.provisional_cages.insert(committing.clone());
@@ -858,7 +882,7 @@ mod tests {
 
     #[test]
     fn parked_cages_keeps_all_when_none_match() {
-        let mut st = State::new(4).unwrap();
+        let mut st = State::new_with_solution(4).unwrap();
         let _ = st.provisional_cages.insert(poly(&[(2, 2)]));
         let parked = parked_cages(&st, &poly(&[(0, 0)]));
         assert_eq!(parked.len(), 1);
@@ -869,6 +893,7 @@ mod tests {
         Cage::new(n, poly(&[(r, c)]), Operator::Given, target).unwrap()
     }
 
+    #[cfg(feature = "without-solution")]
     #[test]
     fn digit_commits_feasible_value_on_empty_cell() {
         let mut st = State::new(4).unwrap();
@@ -880,6 +905,7 @@ mod tests {
         assert!(commit.parked.is_empty());
     }
 
+    #[cfg(feature = "without-solution")]
     #[test]
     fn digit_rejects_non_digit_and_multichar_keys() {
         let st = State::new(4).unwrap();
@@ -887,6 +913,7 @@ mod tests {
         assert!(singleton_digit_commit(&st, "a").unwrap().is_none());
     }
 
+    #[cfg(feature = "without-solution")]
     #[test]
     fn digit_rejected_in_with_solution_mode() {
         let mut st = State::new_with_solution(4).unwrap();
@@ -894,6 +921,7 @@ mod tests {
         assert!(singleton_digit_commit(&st, "1").unwrap().is_none());
     }
 
+    #[cfg(feature = "without-solution")]
     #[test]
     fn digit_rejected_when_value_is_globally_infeasible() {
         let mut st = State::new(4).unwrap();
@@ -902,6 +930,7 @@ mod tests {
         assert!(singleton_digit_commit(&st, "9").unwrap().is_none());
     }
 
+    #[cfg(feature = "without-solution")]
     #[test]
     fn digit_rejected_on_cell_in_committed_cage() {
         let mut st = State::new(4).unwrap();
@@ -914,6 +943,7 @@ mod tests {
         assert!(singleton_digit_commit(&st, "3").unwrap().is_none());
     }
 
+    #[cfg(feature = "without-solution")]
     #[test]
     fn digit_rejected_on_cell_in_multicell_provisional_cage() {
         let mut st = State::new(4).unwrap();
@@ -922,6 +952,7 @@ mod tests {
         assert!(singleton_digit_commit(&st, "3").unwrap().is_none());
     }
 
+    #[cfg(feature = "without-solution")]
     #[test]
     fn digit_commits_over_provisional_singleton_and_drops_it() {
         let mut st = State::new(4).unwrap();
@@ -967,7 +998,7 @@ mod tests {
 
     #[test]
     fn previous_cell_values_empty_on_grid_size_change() {
-        let prev = State::new(4).unwrap();
+        let prev = State::new_with_solution(4).unwrap();
         let vals = previous_cell_values(Some(prev), 5);
         assert_eq!(vals.len(), 5);
         assert!(vals.iter().flatten().all(Vec::is_empty));
@@ -975,7 +1006,7 @@ mod tests {
 
     #[test]
     fn previous_cell_values_reads_propagated_grid() {
-        let mut prev = State::new(4).unwrap();
+        let mut prev = State::new_with_solution(4).unwrap();
         prev.puzzle = prev
             .puzzle
             .insert_cage(&given_cage(4, 0, 0, 2))
@@ -990,7 +1021,7 @@ mod tests {
 
     #[test]
     fn starts_new_singleton_and_extends_to_target() {
-        let state = State::new(4).unwrap();
+        let state = State::new_with_solution(4).unwrap();
         let result = step_provisional_cage(0, 0, 0, 1, state);
 
         assert_eq!(result.active, Cell::new(0, 1));
@@ -1001,7 +1032,7 @@ mod tests {
 
     #[test]
     fn extends_existing_provisional_cage() {
-        let mut state = State::new(4).unwrap();
+        let mut state = State::new_with_solution(4).unwrap();
         assert!(state.provisional_cages.insert(poly(&[(0, 0), (0, 1)])));
 
         // Active cell (0,1) belongs to the existing cage; extend it to (0,2).
@@ -1015,7 +1046,7 @@ mod tests {
 
     #[test]
     fn preserves_other_provisional_cages_when_starting_fresh() {
-        let mut state = State::new(4).unwrap();
+        let mut state = State::new_with_solution(4).unwrap();
         assert!(state.provisional_cages.insert(poly(&[(3, 3), (3, 2)])));
 
         // (0,0) is not in any existing cage — a new cage is started while the
@@ -1038,7 +1069,7 @@ mod tests {
 
     #[test]
     fn extends_the_active_cage_leaving_others_alone() {
-        let mut state = State::new(5).unwrap();
+        let mut state = State::new_with_solution(5).unwrap();
         assert!(state.provisional_cages.insert(poly(&[(0, 0), (0, 1)])));
         assert!(state.provisional_cages.insert(poly(&[(4, 4), (4, 3)])));
 

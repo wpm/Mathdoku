@@ -232,8 +232,11 @@ fn SizeModal(
     default_n: usize,
     /// Creates a With-Solution puzzle (random Latin square) of the chosen size.
     on_create_with_solution: Callback<usize>,
-    /// Creates an empty Without-Solution puzzle of the chosen size.
-    on_create_empty: Callback<usize>,
+    /// Creates an empty Without-Solution puzzle of the chosen size. Only
+    /// supplied by builds with the `without-solution` feature; without it the
+    /// modal offers no "No Solution" button.
+    #[prop(optional)]
+    on_create_empty: Option<Callback<usize>>,
     on_cancel: Callback<()>,
     /// When true, Escape, backdrop click, and the Cancel button are all disabled.
     /// Used on first launch when no puzzle exists yet.
@@ -262,6 +265,32 @@ fn SizeModal(
             on_cancel.run(());
         }
     });
+
+    // The Without-Solution creation path. Renders nothing when the
+    // `without-solution` feature is off — the modal then offers only
+    // Random Solution (and Cancel).
+    #[cfg(feature = "without-solution")]
+    let no_solution_btn = on_create_empty.map_or_else(
+        || ().into_any(),
+        |cb| {
+            let style = neutral_btn_style();
+            view! {
+                <button
+                    class="sz-btn"
+                    style=style
+                    on:click=move |_| cb.run(chosen.get_untracked())
+                >
+                    "No Solution"
+                </button>
+            }
+            .into_any()
+        },
+    );
+    #[cfg(not(feature = "without-solution"))]
+    let no_solution_btn = {
+        let _ = &on_create_empty;
+        ().into_any()
+    };
 
     view! {
         <div
@@ -306,13 +335,7 @@ fn SizeModal(
                     </label>
                 </div>
                 <div style="display:flex;justify-content:center;gap:10px;">
-                    <button
-                        class="sz-btn"
-                        style=neutral_btn_style()
-                        on:click=move |_| on_create_empty.run(chosen.get_untracked())
-                    >
-                        "No Solution"
-                    </button>
+                    {no_solution_btn}
                     <button
                         class="sz-btn"
                         style=primary_btn_style()
@@ -527,41 +550,45 @@ pub fn App() -> impl IntoView {
         // any other puzzle change. The mode predicate is re-checked defensively so
         // a stale menu event can't drive an invalid transition. (On web `listen`
         // is a no-op and these never fire — the in-page keydown handler drives
-        // Fix/Unfix there instead.)
-        #[allow(clippy::type_complexity)]
-        let make_mode_cb = move |needs_solution: bool,
-                                 fut_fn: fn() -> std::pin::Pin<
-            Box<dyn Future<Output = Result<State, ipc::IpcError>>>,
-        >| {
-            Closure::wrap(Box::new(move |_: JsValue| {
-                if designer_state
-                    .get_untracked()
-                    .is_some_and(|st| st.solution.is_some() == needs_solution)
-                {
-                    spawn_local(async move {
-                        match fut_fn().await {
-                            Ok(new_st) => {
-                                if let Some(pre) = designer_state.get_untracked() {
-                                    undo_stack.update(|s| s.push(pre));
+        // Fix/Unfix there instead.) The Puzzle menu only exists with the
+        // `without-solution` feature.
+        #[cfg(feature = "without-solution")]
+        {
+            #[allow(clippy::type_complexity)]
+            let make_mode_cb = move |needs_solution: bool,
+                                     fut_fn: fn() -> std::pin::Pin<
+                Box<dyn Future<Output = Result<State, ipc::IpcError>>>,
+            >| {
+                Closure::wrap(Box::new(move |_: JsValue| {
+                    if designer_state
+                        .get_untracked()
+                        .is_some_and(|st| st.solution.is_some() == needs_solution)
+                    {
+                        spawn_local(async move {
+                            match fut_fn().await {
+                                Ok(new_st) => {
+                                    if let Some(pre) = designer_state.get_untracked() {
+                                        undo_stack.update(|s| s.push(pre));
+                                    }
+                                    redo_stack.update(Vec::clear);
+                                    previous_state.set(designer_state.get_untracked());
+                                    designer_state.set(Some(new_st));
                                 }
-                                redo_stack.update(Vec::clear);
-                                previous_state.set(designer_state.get_untracked());
-                                designer_state.set(Some(new_st));
+                                Err(e) => error_msg.set(Some(e.to_string())),
                             }
-                            Err(e) => error_msg.set(Some(e.to_string())),
-                        }
-                    });
-                }
-            }) as Box<dyn Fn(JsValue)>)
-        };
-        // Fix requires Without-Solution mode (solution.is_some() == false);
-        // Unfix requires With-Solution mode (solution.is_some() == true).
-        let fix_cb = make_mode_cb(false, || Box::pin(ipc::fix()));
-        listen("menu-fix", fix_cb.as_ref().unchecked_ref()).await;
-        fix_cb.forget();
-        let unfix_cb = make_mode_cb(true, || Box::pin(ipc::unfix()));
-        listen("menu-unfix", unfix_cb.as_ref().unchecked_ref()).await;
-        unfix_cb.forget();
+                        });
+                    }
+                }) as Box<dyn Fn(JsValue)>)
+            };
+            // Fix requires Without-Solution mode (solution.is_some() == false);
+            // Unfix requires With-Solution mode (solution.is_some() == true).
+            let fix_cb = make_mode_cb(false, || Box::pin(ipc::fix()));
+            listen("menu-fix", fix_cb.as_ref().unchecked_ref()).await;
+            fix_cb.forget();
+            let unfix_cb = make_mode_cb(true, || Box::pin(ipc::unfix()));
+            listen("menu-unfix", unfix_cb.as_ref().unchecked_ref()).await;
+            unfix_cb.forget();
+        }
 
         let close_cb = Closure::wrap(Box::new(move |_: JsValue| {
             show_unsaved_modal.set(true);
@@ -587,6 +614,7 @@ pub fn App() -> impl IntoView {
         show_size_modal.set(false);
         spawn_local(async move { install_new_state(ipc::new_latin_square(n).await) });
     });
+    #[cfg(feature = "without-solution")]
     let on_create_empty = Callback::new(move |n: usize| {
         show_size_modal.set(false);
         spawn_local(async move { install_new_state(ipc::new_empty(n).await) });
@@ -633,6 +661,38 @@ pub fn App() -> impl IntoView {
     let on_state_change = Callback::new(move |_new_st: State| {});
     let on_error = Callback::new(move |msg: String| error_msg.set(Some(msg)));
 
+    // `on_create_empty` is only supplied by builds with the `without-solution`
+    // feature, so the SizeModal instantiation is forked on the feature.
+    let size_modal_view = move || {
+        show_size_modal.get().then(|| {
+            let default_n = designer_state.get().map_or(9, |st| st.puzzle.n());
+            let mandatory = designer_state.get().is_none();
+            #[cfg(feature = "without-solution")]
+            {
+                view! {
+                    <SizeModal
+                        default_n=default_n
+                        on_create_with_solution=on_create_with_solution
+                        on_create_empty=on_create_empty
+                        on_cancel=on_create_cancel
+                        mandatory=mandatory
+                    />
+                }
+            }
+            #[cfg(not(feature = "without-solution"))]
+            {
+                view! {
+                    <SizeModal
+                        default_n=default_n
+                        on_create_with_solution=on_create_with_solution
+                        on_cancel=on_create_cancel
+                        mandatory=mandatory
+                    />
+                }
+            }
+        })
+    };
+
     view! {
         <main class="app-main">
             {ephemeral_banner()}
@@ -642,15 +702,7 @@ pub fn App() -> impl IntoView {
             let prev = previous_state.get_untracked();
             view! { <Puzzle state=st prev_state=prev undo_stack=undo_stack redo_stack=redo_stack pending_commit=pending_commit pending_selector=pending_selector on_puzzle_change=on_puzzle_change on_state_change=on_state_change on_error=on_error /> }
         })}
-            {move || show_size_modal.get().then(|| view! {
-                <SizeModal
-                    default_n=designer_state.get().map_or(9, |st| st.puzzle.n())
-                    on_create_with_solution=on_create_with_solution
-                    on_create_empty=on_create_empty
-                    on_cancel=on_create_cancel
-                    mandatory=designer_state.get().is_none()
-                />
-            })}
+            {size_modal_view}
             {move || show_unsaved_modal.get().then(|| view! {
                 <UnsavedChangesModal
                     on_save=on_unsaved_save

@@ -1,8 +1,19 @@
 # ADR-0001: Without-Solution authoring mode for Mathdoku Designer
 
-**Status:** Accepted
+**Status:** Accepted; feature-gated off by default since 2026-06-10
 **Date:** 2026-05-27
 **Deciders:** Bill McNeill (Mathdoku owner)
+
+> **Update (2026-06-10):** Without-Solution mode is now compiled out by
+> default behind the `without-solution` cargo feature (defined in `mathdoku`,
+> `mathdoku-designer-core`, `mathdoku-designer-ui`, and
+> `mathdoku-designer-tauri`). The default Designer build offers With-Solution
+> authoring only: no "No Solution" button in the New-puzzle modal, no
+> feasibility picker, no singleton-digit shortcut, and no Puzzle menu with
+> Fix/Unfix. Build with `--features without-solution` to restore the mode.
+> Solution-less save files still deserialize in default builds (the
+> `solution` field stays `Option`), but the authoring affordances for them
+> are absent.
 
 ## Context
 

@@ -7,6 +7,12 @@ repository.workspace = true
 license.workspace = true
 publish = false
 
+[features]
+# Without-Solution authoring mode: the `new_empty` / `fix` / `unfix` command
+# bodies and the Without-Solution `State` constructor. Off by default; enable
+# with `--features without-solution`.
+without-solution = ["mathdoku/without-solution"]
+
 [dependencies]
 mathdoku = { path = "../../../mathdoku" }
 serde = { version = "1", features = ["derive"] }

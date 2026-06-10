@@ -7,6 +7,12 @@ repository.workspace = true
 license.workspace = true
 rust-version = "1.87"
 
+[features]
+# Feasibility queries (`Puzzle::possible_operations` / `Puzzle::possible_targets`)
+# that back the Designer's Without-Solution authoring mode. Off by default;
+# enable with `--features without-solution`.
+without-solution = []
+
 [dependencies]
 itertools = "0.14"
 env_logger = "0.11"
