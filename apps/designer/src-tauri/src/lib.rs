@@ -320,16 +320,17 @@ pub fn run() {
         .on_menu_event(handle_menu_event)
         .on_window_event(handle_window_event)
         .setup(|app| {
-            // First launch (or an unrestorable session): park the bundled
-            // sample puzzle (ADR-0007) so the initial screen demonstrates the
-            // product instead of explaining it. The sample is clean and
-            // unbacked, so it never prompts to save and the first Save asks
-            // for a location.
+            // With the feature, an unrestored session parks a blank 9×9
+            // Without-Solution puzzle. Without it, no puzzle is left in state,
+            // so the frontend shows the mandatory New-puzzle modal instead.
+            #[cfg(feature = "without-solution")]
             if try_restore(app.handle()).is_none()
                 && let Ok(mut s) = app.state::<Mutex<AppState>>().lock()
             {
-                let _ = core::install_sample(&mut s);
+                s.puzzle = Some(Puzzle::new(9).expect("9 is a valid puzzle size"));
             }
+            #[cfg(not(feature = "without-solution"))]
+            let _ = try_restore(app.handle());
             Ok(())
         })
         .invoke_handler(handler)
