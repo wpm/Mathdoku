@@ -28,7 +28,17 @@ pub fn Cell(
     /// a small green digit is placed in the upper-right corner of the cell while
     /// all candidates are rendered uniformly.
     solution_value: Option<mathdoku::N>,
+    /// The candidate values this cell displayed before the change that mounted
+    /// this Puzzle, or empty when there is no previous state to compare
+    /// against. Candidates present here but missing from `values` flash out as
+    /// red ghosts; a collapse from several candidates to one flashes the
+    /// singleton digit in.
+    prev_values: Vec<mathdoku::N>,
 ) -> impl IntoView {
+    let ghosts = removed_glyphs(x, y, cell, &prev_values, &values, top_margin, n);
+    // A cell that just collapsed to a single value flashes its glyph. The
+    // class is safe to apply to all glyphs: a singleton renders exactly one.
+    let flash_class = (values.len() == 1 && prev_values.len() > 1).then_some("flash-added");
     let glyphs = cell_glyphs(x, y, cell, &values, top_margin, n, solution_value);
 
     view! {
@@ -36,6 +46,19 @@ pub fn Cell(
         {glyphs.into_iter().map(|(cx, cy, label, font_size, color, weight)| view! {
             <text
                 x=cx y=cy
+                class=flash_class
+                text-anchor="middle"
+                dominant-baseline="central"
+                font-family=SANS
+                font-size=font_size
+                font-weight=weight
+                fill=color
+            >{label}</text>
+        }).collect::<Vec<_>>()}
+        {ghosts.into_iter().map(|(cx, cy, label, font_size, color, weight)| view! {
+            <text
+                x=cx y=cy
+                class="flash-removed"
                 text-anchor="middle"
                 dominant-baseline="central"
                 font-family=SANS
@@ -136,6 +159,30 @@ fn cell_glyphs(
     glyphs
 }
 
+/// Computes ghost glyphs for the candidates in `prev_values` that `values` no
+/// longer contains.
+///
+/// Each ghost sits where its candidate appeared in the previous layout
+/// (computed from `prev_values`), so it fades out in place while the surviving
+/// candidates re-flow into their new positions.
+fn removed_glyphs(
+    x: f64,
+    y: f64,
+    cell: f64,
+    prev_values: &[mathdoku::N],
+    values: &[mathdoku::N],
+    top_margin: f64,
+    n: usize,
+) -> Vec<Glyph> {
+    // cell_glyphs yields one glyph per value, in order (no solution badge).
+    cell_glyphs(x, y, cell, prev_values, top_margin, n, None)
+        .into_iter()
+        .zip(prev_values.iter().copied())
+        .filter(|(_, v)| !values.contains(v))
+        .map(|(glyph, _)| glyph)
+        .collect()
+}
+
 fn pip_layout(count: usize) -> Option<&'static [(f32, f32)]> {
     LAYOUTS.get(count.wrapping_sub(1)).copied()
 }
@@ -202,7 +249,7 @@ const LAYOUTS: [&[(f32, f32)]; 9] = [
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-    use super::{cell_glyphs, pip_layout};
+    use super::{cell_glyphs, pip_layout, removed_glyphs};
     use crate::theme::{GREEN, INK, INK3};
 
     #[test]
@@ -292,6 +339,34 @@ mod tests {
         let glyphs = cell_glyphs(0.0, 0.0, 60.0, &[1, 2, 3], 16.0, 4, None);
         assert_eq!(glyphs.len(), 3);
         assert!(glyphs.iter().all(|g| g.4 != GREEN));
+    }
+
+    #[test]
+    fn removed_ghosts_keep_their_previous_layout_positions() {
+        let prev = vec![1, 2, 3, 4];
+        let now = vec![1, 3];
+        let ghosts = removed_glyphs(0.0, 0.0, 60.0, &prev, &now, 16.0, 4);
+        let prev_layout = cell_glyphs(0.0, 0.0, 60.0, &prev, 16.0, 4, None);
+        // 2 and 4 vanished; their ghosts sit where the 4-pip layout placed them.
+        assert_eq!(ghosts.len(), 2);
+        assert_eq!(ghosts[0], prev_layout[1]);
+        assert_eq!(ghosts[1], prev_layout[3]);
+    }
+
+    #[test]
+    fn removed_ghosts_empty_when_nothing_removed() {
+        assert!(removed_glyphs(0.0, 0.0, 60.0, &[1, 2], &[1, 2], 16.0, 4).is_empty());
+    }
+
+    #[test]
+    fn removed_ghosts_empty_without_previous_values() {
+        assert!(removed_glyphs(0.0, 0.0, 60.0, &[], &[1, 2], 16.0, 4).is_empty());
+    }
+
+    #[test]
+    fn removed_ghosts_empty_when_candidates_were_added() {
+        // Undo restores candidates: previous values all survive, so no ghosts.
+        assert!(removed_glyphs(0.0, 0.0, 60.0, &[1], &[1, 2, 3], 16.0, 4).is_empty());
     }
 
     #[test]

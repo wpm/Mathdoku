@@ -36,6 +36,10 @@ use crate::theme::{BG, CAGE_PALETTE, INK, LINE, OP_INSET};
 #[allow(clippy::needless_pass_by_value, clippy::too_many_lines)]
 pub fn Puzzle(
     state: State,
+    /// The state displayed before the change that mounted this Puzzle, if any.
+    /// Cells whose candidates shrank flash the removed digits, and cells that
+    /// collapsed to a single value flash the singleton (see `Cell`).
+    prev_state: Option<State>,
     undo_stack: RwSignal<Vec<State>>,
     redo_stack: RwSignal<Vec<State>>,
     pending_commit: RwSignal<Option<PendingCommit>>,
@@ -81,6 +85,22 @@ pub fn Puzzle(
                 && let Ok(sv) = solution.get(cell_ref)
             {
                 solution_values[r][c] = sv.values().first().copied();
+            }
+        }
+    }
+
+    // Candidate values shown before the change that mounted this Puzzle, used
+    // by each Cell to flash candidates the change removed. Left empty when
+    // there is no comparable previous state (first mount, New, Open, or a
+    // grid-size change).
+    let mut prev_values = vec![vec![Vec::<N>::new(); n]; n];
+    if let Some(prev) = prev_state.filter(|p| p.puzzle.n() == n) {
+        let prev_grid = prev.current().unwrap_or_else(|_| prev.puzzle.clone());
+        for (r, row) in prev_values.iter_mut().enumerate() {
+            for (c, slot) in row.iter_mut().enumerate() {
+                if let Ok(vals) = prev_grid.get(Cell::new(r, c)) {
+                    *slot = vals.values();
+                }
             }
         }
     }
@@ -532,7 +552,8 @@ pub fn Puzzle(
             let fill = cage_index[r][c].map_or(BG, |i| CAGE_PALETTE[colors[i] % CAGE_PALETTE.len()]);
             let values = get_values[r][c].clone();
             let solution_value = solution_values[r][c];
-            view! { <CellComponent x=x y=y cell=cell values=values fill=fill top_margin=top_margin n=n solution_value=solution_value /> }
+            let prev = prev_values[r][c].clone();
+            view! { <CellComponent x=x y=y cell=cell values=values fill=fill top_margin=top_margin n=n solution_value=solution_value prev_values=prev /> }
         })
         .collect();
 

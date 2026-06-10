@@ -421,6 +421,10 @@ pub fn App() -> impl IntoView {
     let show_unsaved_modal = RwSignal::new(false);
     let error_msg: RwSignal<Option<String>> = RwSignal::new(None);
     let designer_state = RwSignal::new(None::<State>);
+    // The state displayed before the most recent puzzle change. The Puzzle
+    // diffs it against the new state to flash candidates the change removed;
+    // `None` (first mount, New, Open) suppresses the flash.
+    let previous_state: RwSignal<Option<State>> = RwSignal::new(None);
     let current_path: RwSignal<Option<String>> = RwSignal::new(None);
     let undo_stack: RwSignal<Vec<State>> = RwSignal::new(Vec::new());
     let redo_stack: RwSignal<Vec<State>> = RwSignal::new(Vec::new());
@@ -482,6 +486,7 @@ pub fn App() -> impl IntoView {
                         undo_stack.update(Vec::clear);
                         redo_stack.update(Vec::clear);
                         pending_commit.set(None);
+                        previous_state.set(None);
                         designer_state.set(Some(st));
                         // Loading a puzzle satisfies the New Puzzle condition, so
                         // dismiss the size modal if it is open (including the
@@ -520,6 +525,7 @@ pub fn App() -> impl IntoView {
                                     undo_stack.update(|s| s.push(pre));
                                 }
                                 redo_stack.update(Vec::clear);
+                                previous_state.set(designer_state.get_untracked());
                                 designer_state.set(Some(new_st));
                             }
                             Err(e) => error_msg.set(Some(e.to_string())),
@@ -552,6 +558,7 @@ pub fn App() -> impl IntoView {
             undo_stack.update(Vec::clear);
             redo_stack.update(Vec::clear);
             pending_commit.set(None);
+            previous_state.set(None);
             designer_state.set(Some(st));
         }
         Err(e) => error_msg.set(Some(e.to_string())),
@@ -600,6 +607,7 @@ pub fn App() -> impl IntoView {
     // gets disposed on re-mount, calling it from a stale async closure would
     // silently do nothing and the re-mount would never fire.
     let on_puzzle_change = Callback::new(move |new_st: State| {
+        previous_state.set(designer_state.get_untracked());
         designer_state.set(Some(new_st));
     });
     let on_state_change = Callback::new(move |_new_st: State| {});
@@ -609,7 +617,10 @@ pub fn App() -> impl IntoView {
         <main class="app-main">
             {ephemeral_banner()}
             {move || designer_state.get().map(|st| {
-            view! { <Puzzle state=st undo_stack=undo_stack redo_stack=redo_stack pending_commit=pending_commit pending_selector=pending_selector on_puzzle_change=on_puzzle_change on_state_change=on_state_change on_error=on_error /> }
+            // Untracked: previous_state changes only alongside designer_state;
+            // tracking it here would re-mount the Puzzle twice per change.
+            let prev = previous_state.get_untracked();
+            view! { <Puzzle state=st prev_state=prev undo_stack=undo_stack redo_stack=redo_stack pending_commit=pending_commit pending_selector=pending_selector on_puzzle_change=on_puzzle_change on_state_change=on_state_change on_error=on_error /> }
         })}
             {move || show_size_modal.get().then(|| view! {
                 <SizeModal
