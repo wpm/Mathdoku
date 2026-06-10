@@ -1,0 +1,168 @@
+<!doctype html>
+<!--
+  Designer-guide page (ADR-0007, Phase 7), served from the gh-pages root at
+  https://wpm.github.io/Mathdoku/guide/. The desktop app's Help menu links
+  here, so the section anchors below (#creating-a-puzzle, #building-cages,
+  #operators, #solvability, #saving) are a contract: renaming or removing one
+  breaks deployed app builds. The anchor contract is pinned by tests in
+  apps/designer/core/src/help.rs.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Designer guide &middot; Mathdoku</title>
+    <meta
+      name="description"
+      content="How to author Mathdoku puzzles in Mathdoku Designer: build cages, choose operators, check solvability and uniqueness, and save your work."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap"
+    />
+    <link rel="stylesheet" href="../theme.css" />
+    <link rel="stylesheet" href="../site.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <span class="brand"><a href="../">Mathdoku</a></span>
+      <nav>
+        <a href="../rules/">Rules</a>
+        <a href="./" aria-current="page">Designer guide</a>
+        <a href="../try/">Try it</a>
+        <a href="https://github.com/wpm/Mathdoku">GitHub</a>
+      </nav>
+    </header>
+
+    <main class="doc">
+      <h1>Designer guide</h1>
+      <p class="lede-left">
+        Mathdoku Designer is an authoring tool: you carve a grid into cages
+        while a solver re-checks the puzzle after every edit. This guide walks
+        the workflow from a blank grid to a saved, publishable puzzle. New to
+        the genre? Start with the <a href="../rules/">puzzle rules</a>.
+      </p>
+
+      <h2 id="creating-a-puzzle">Creating a puzzle</h2>
+      <p>
+        Choose <strong>File &gt; New&hellip;</strong> and pick a grid size from
+        2&times;2 to 9&times;9. The Designer generates a random hidden solution
+        &mdash; a Latin square &mdash; for the new puzzle. You never type cage
+        targets yourself: as you draw cages, each target is computed from that
+        solution, so every cage you commit is automatically consistent with at
+        least one valid grid.
+      </p>
+      <p>
+        Candidate marks in every open cell show which values can still go
+        there given the cages committed so far. As your cages accumulate
+        constraints, the candidates narrow.
+      </p>
+
+      <h2 id="building-cages">Building cages</h2>
+      <p>
+        Cage construction is keyboard-driven, directly on the grid:
+      </p>
+      <ul>
+        <li>
+          <strong>Arrow keys</strong> move the selection from cell to cell.
+        </li>
+        <li>
+          <strong>Shift+Arrow</strong> extends a provisional cage from the
+          selected cell, one neighbor at a time. A provisional cage is a
+          sketch &mdash; it has a shape but no operator yet.
+        </li>
+        <li>
+          <strong>Enter</strong> commits the provisional cage (or starts a
+          single-cell cage on an uncovered cell) and opens the operator
+          picker.
+        </li>
+        <li>
+          <strong>Escape</strong> on a committed cage demotes it back to a
+          provisional sketch so you can re-choose its operator;
+          <strong>Delete</strong> removes it outright.
+        </li>
+        <li>
+          <strong>Tab</strong> jumps between committed cages, and
+          <strong>Cmd/Ctrl+Z</strong> undoes the last change.
+        </li>
+      </ul>
+
+      <h2 id="operators">Choosing operators</h2>
+      <p>
+        When you commit a cage, the operator picker shows one tab per operator
+        that is valid for the cage's shape, each labeled with the target
+        derived from the hidden solution &mdash; for example
+        <strong>+9</strong>, <strong>&times;20</strong>, or
+        <strong>&minus;1</strong>. Click a tab (or use the arrow keys and
+        Enter, or type <strong>+</strong>, <strong>&minus;</strong>,
+        <strong>x</strong>, or <strong>/</strong>) to fix the cage's
+        operation.
+      </p>
+      <p>
+        Operators that cannot produce a valid target for the cage are simply
+        not offered: a division tab appears only when one of the two solution
+        values exactly divides the other. Single-cell cages become
+        <em>givens</em> &mdash; their value is shown outright, no operator
+        symbol.
+      </p>
+
+      <h2 id="solvability">Checking solvability and uniqueness</h2>
+      <p>
+        The Designer re-solves the puzzle after every edit, and the results
+        are always on screen:
+      </p>
+      <ul>
+        <li>
+          <strong>Candidate marks</strong> in each open cell show the values
+          that can still legally go there. When a change eliminates
+          candidates, the removed values flash so you can see what your edit
+          accomplished.
+        </li>
+        <li>
+          <strong>Cage statistics</strong> below the grid show, for the
+          selected cage, how many viable <em>multisets</em> (value
+          combinations) and <em>tuples</em> (ordered placements) remain
+          &mdash; a direct readout of how constraining the cage is.
+        </li>
+        <li>
+          <strong>The solution count</strong> appears below the grid once
+          every cell is caged. <strong>1 solution</strong> means the puzzle is
+          fair and publishable; more than one means it needs further
+          constraint. Because targets are derived from the hidden solution,
+          the count can never reach zero &mdash; a Designer puzzle is always
+          solvable.
+        </li>
+      </ul>
+
+      <h2 id="saving">Saving and exporting</h2>
+      <p>
+        <strong>File &gt; Save</strong> (Cmd/Ctrl+S) writes the puzzle as a
+        <code>.mathdoku</code> file &mdash; a plain JSON document containing
+        the cage structure and the fixed solution. <strong>File &gt; Save
+        As&hellip;</strong> writes a copy under a new name, and
+        <strong>File &gt; Open&hellip;</strong> loads a previously saved
+        puzzle. The Designer reopens your most recent file on launch.
+      </p>
+      <p>
+        Because the format is plain JSON, a saved puzzle is also an export: it
+        can be versioned in git, shared, or transformed by other tools. Note
+        that the file includes the solution, so share accordingly.
+      </p>
+      <p>
+        The <a href="../try/">in-browser demo</a> is ephemeral &mdash; it has
+        no file system, so Save and Open are desktop-only. Install the desktop
+        app to keep what you make.
+      </p>
+    </main>
+
+    <footer class="site-footer">
+      <p>
+        &copy; 2026 W.P. McNeill &middot;
+        <a href="https://github.com/wpm/Mathdoku">Source on GitHub</a> &middot;
+        <a href="https://github.com/wpm/Mathdoku/blob/main/LICENSE">MIT license</a>
+      </p>
+    </footer>
+  </body>
+</html>
