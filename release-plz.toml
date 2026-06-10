@@ -21,11 +21,14 @@ git_release_name = "mathdoku-v{{ version }}"
 [[package]]
 name = "mathdoku-designer-ui"
 release = false
+publish = false
 
 [[package]]
 name = "mathdoku-designer-core"
 release = false
+publish = false
 
 [[package]]
 name = "mathdoku-designer-tauri"
 release = false
+publish = false
