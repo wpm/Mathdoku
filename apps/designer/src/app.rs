@@ -182,6 +182,49 @@ fn primary_btn_style() -> String {
     neutral_btn_style()
 }
 
+/// Tab trap shared by the modal dialogs: intercepts Tab/Shift-Tab on the
+/// dialog so focus cycles through the dialog's `<select>`/`<button>` controls
+/// (DOM order matches Tab order) and never escapes to the grid SVG behind the
+/// overlay. Attach with `on:keydown` to a dialog container that has
+/// `tabindex="-1"` so the container can receive the keydown event.
+fn trap_tab(ev: &leptos::ev::KeyboardEvent) {
+    if ev.key() != TAB {
+        return;
+    }
+    use wasm_bindgen::JsCast;
+    let dialog = ev
+        .current_target()
+        .and_then(|t| t.dyn_into::<web_sys::HtmlElement>().ok());
+    let Some(dialog) = dialog else { return };
+    let focusable = dialog
+        .query_selector_all("select, button")
+        .ok()
+        .map(|nl| {
+            (0..nl.length())
+                .filter_map(|i| nl.item(i)?.dyn_into::<web_sys::HtmlElement>().ok())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    if focusable.is_empty() {
+        return;
+    }
+    let doc = web_sys::window().and_then(|w| w.document());
+    let active = doc.and_then(|d| d.active_element());
+    let current_idx = active.and_then(|a| {
+        focusable
+            .iter()
+            .position(|el| el.is_same_node(Some(a.as_ref())))
+    });
+    ev.prevent_default();
+    let len = focusable.len();
+    let next = if ev.shift_key() {
+        current_idx.map_or(len - 1, |i| if i == 0 { len - 1 } else { i - 1 })
+    } else {
+        current_idx.map_or(0, |i| (i + 1) % len)
+    };
+    let _ = focusable[next].focus();
+}
+
 // ---- SizeModal ----
 
 #[component]
@@ -220,47 +263,6 @@ fn SizeModal(
         }
     });
 
-    // Tab trap: intercept Tab/Shift-Tab on the dialog so focus never escapes to
-    // the grid SVG behind the overlay.  The three focusable children are the
-    // <select> and the two buttons (DOM order matches Tab order).
-    let trap_tab = move |ev: leptos::ev::KeyboardEvent| {
-        if ev.key() != TAB {
-            return;
-        }
-        use wasm_bindgen::JsCast;
-        let dialog = ev
-            .current_target()
-            .and_then(|t| t.dyn_into::<web_sys::HtmlElement>().ok());
-        let Some(dialog) = dialog else { return };
-        let focusable = dialog
-            .query_selector_all("select, button")
-            .ok()
-            .map(|nl| {
-                (0..nl.length())
-                    .filter_map(|i| nl.item(i)?.dyn_into::<web_sys::HtmlElement>().ok())
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
-        if focusable.is_empty() {
-            return;
-        }
-        let doc = web_sys::window().and_then(|w| w.document());
-        let active = doc.and_then(|d| d.active_element());
-        let current_idx = active.and_then(|a| {
-            focusable
-                .iter()
-                .position(|el| el.is_same_node(Some(a.as_ref())))
-        });
-        ev.prevent_default();
-        let len = focusable.len();
-        let next = if ev.shift_key() {
-            current_idx.map_or(len - 1, |i| if i == 0 { len - 1 } else { i - 1 })
-        } else {
-            current_idx.map_or(0, |i| (i + 1) % len)
-        };
-        let _ = focusable[next].focus();
-    };
-
     view! {
         <div
             style=overlay_style()
@@ -269,7 +271,7 @@ fn SizeModal(
             }
         >
             // `tabindex="-1"` lets this div receive the keydown event for the trap.
-            <div style=dialog_style(280, 380) tabindex="-1" on:keydown=trap_tab>
+            <div style=dialog_style(280, 380) tabindex="-1" on:keydown=|ev| trap_tab(&ev)>
                 // Focus ring for buttons: inline styles cannot express :focus-visible,
                 // so a scoped <style> block provides it.
                 <style>
@@ -347,6 +349,14 @@ fn UnsavedChangesModal(
             let _ = el.focus();
         }
     });
+
+    // Escape cancels the close request, matching the backdrop click.
+    let _esc = window_event_listener(leptos::ev::keydown, move |ev| {
+        if ev.key() == ESCAPE {
+            on_cancel.run(());
+        }
+    });
+
     view! {
         <div
             style=overlay_style()
@@ -354,17 +364,26 @@ fn UnsavedChangesModal(
                 if ev.target() == ev.current_target() { on_cancel.run(()); }
             }
         >
-            <div style=dialog_style(340, 420)>
+            // `tabindex="-1"` lets this div receive the keydown event for the trap.
+            <div style=dialog_style(340, 420) tabindex="-1" on:keydown=|ev| trap_tab(&ev)>
+                // Focus ring for buttons: inline styles cannot express :focus-visible,
+                // so a scoped <style> block provides it.
+                <style>
+                    ".uc-btn:focus-visible { outline: 2px solid "
+                    {ACCENT}
+                    "; outline-offset: 2px; }"
+                </style>
                 <p style=title_style()>"Save changes before closing?"</p>
                 <p style=body_style()>"This puzzle has unsaved changes."</p>
                 <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;">
-                    <button style=neutral_btn_style() on:click=move |_| on_discard.run(())>
+                    <button class="uc-btn" style=neutral_btn_style() on:click=move |_| on_discard.run(())>
                         "Don\u{2019}t Save"
                     </button>
-                    <button style=neutral_btn_style() on:click=move |_| on_cancel.run(())>
+                    <button class="uc-btn" style=neutral_btn_style() on:click=move |_| on_cancel.run(())>
                         "Cancel"
                     </button>
                     <button
+                        class="uc-btn"
                         node_ref=save_ref
                         style=primary_btn_style()
                         on:click=move |_| on_save.run(())
@@ -396,7 +415,8 @@ fn ErrorToast(message: String, on_dismiss: Callback<()>) -> impl IntoView {
     );
     view! {
         <div style=overlay_style()>
-            <div style=toast_style>
+            // `tabindex="-1"` lets this div receive the keydown event for the trap.
+            <div style=toast_style tabindex="-1" on:keydown=|ev| trap_tab(&ev)>
                 <p style=title_style()>"Error"</p>
                 <p style=body_style()>{message}</p>
                 <div style="display:flex;justify-content:flex-end;">
