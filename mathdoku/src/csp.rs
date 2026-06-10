@@ -205,6 +205,18 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_domain_display_sorts_values() {
+        let d: TestDomain = [3u8, 1, 2].into_iter().collect();
+        assert_eq!(d.to_string(), "{1, 2, 3}");
+    }
+
+    #[test]
+    fn constraints_display_equal_and_sum() {
+        assert_eq!(Constraints::equal("x", "y").to_string(), "x = y");
+        assert_eq!(Constraints::sum(&["x", "y"], 5).to_string(), "x + y = 5");
+    }
+
     fn sorted(result: &IntegerSets, var: &str) -> Vec<u8> {
         let mut v: Vec<u8> = result
             .get(var.to_string())

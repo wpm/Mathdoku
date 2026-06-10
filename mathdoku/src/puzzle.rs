@@ -1220,4 +1220,250 @@ mod tests {
         let p = Puzzle::from_parts(InternalGrid::new(2).unwrap(), vec![c1, c2]);
         assert!(p.fixpoint().is_none());
     }
+
+    /// A 4×4 with an Add domino at (1,1)-(1,2) and a Given at (2,1).
+    fn two_cage_puzzle() -> (Puzzle, Polyomino, Polyomino) {
+        let add = domino(1, 1, 1, 2);
+        let given = Polyomino::from([Cell(2, 1)]).unwrap();
+        let p = Puzzle::new(4)
+            .unwrap()
+            .insert(&add, CageOperator::Add, 5)
+            .unwrap()
+            .unwrap()
+            .insert(&given, CageOperator::Given, 3)
+            .unwrap()
+            .unwrap();
+        (p, add, given)
+    }
+
+    #[test]
+    fn cages_yields_unique_cages_sorted_by_anchor() {
+        let (p, add, given) = two_cage_puzzle();
+        let polys: Vec<Polyomino> = p.cages().map(|c| c.polyomino.clone()).collect();
+        // Each multi-cell cage appears once, ordered by minimum cell.
+        assert_eq!(polys, vec![add, given]);
+    }
+
+    #[test]
+    fn get_cage_at_exact_polyomino_returns_cage() {
+        let (p, add, _) = two_cage_puzzle();
+        let cage = p.get_cage_at(&add).unwrap();
+        assert_eq!(cage.polyomino, add);
+    }
+
+    #[test]
+    fn get_cage_at_unknown_polyomino_returns_none() {
+        let (p, _, _) = two_cage_puzzle();
+        assert!(p.get_cage_at(&domino(3, 3, 3, 4)).is_none());
+    }
+
+    #[test]
+    fn remove_drops_cage_but_keeps_grid_state() {
+        let (p, add, _) = two_cage_puzzle();
+        let cage = p.get_cage_at(&add).unwrap().clone();
+        let removed = p.remove(&cage).unwrap().unwrap();
+        assert!(removed.get_cage_at(&add).is_none());
+        // The grid keeps its narrowed fills: the Add cage had pruned 2 from
+        // (1,2) (no pair (2,?) sums to 5 once (1,1) lost 3 to the Given's
+        // column), and removal does not widen.
+        assert_eq!(removed.get(Cell(1, 2)).unwrap(), p.get(Cell(1, 2)).unwrap());
+    }
+
+    #[test]
+    fn remove_cage_alias_matches_remove() {
+        let (p, add, _) = two_cage_puzzle();
+        let cage = p.get_cage_at(&add).unwrap().clone();
+        let removed = p.remove_cage(&cage).unwrap().unwrap();
+        assert!(removed.get_cage_at(&add).is_none());
+    }
+
+    #[test]
+    fn insert_cage_alias_matches_insert() {
+        let p = Puzzle::new(4).unwrap();
+        let cage = Cage::new(4, domino(1, 1, 1, 2), CageOperator::Add, 5).unwrap();
+        let inserted = p.insert_cage(&cage).unwrap().unwrap();
+        assert!(inserted.get_cage_at(&domino(1, 1, 1, 2)).is_some());
+    }
+
+    #[test]
+    fn eq_ignores_insertion_order() {
+        let add = domino(1, 1, 1, 2);
+        let given = Polyomino::from([Cell(2, 1)]).unwrap();
+        let a = Puzzle::new(4)
+            .unwrap()
+            .insert(&add, CageOperator::Add, 5)
+            .unwrap()
+            .unwrap()
+            .insert(&given, CageOperator::Given, 3)
+            .unwrap()
+            .unwrap();
+        let b = Puzzle::new(4)
+            .unwrap()
+            .insert(&given, CageOperator::Given, 3)
+            .unwrap()
+            .unwrap()
+            .insert(&add, CageOperator::Add, 5)
+            .unwrap()
+            .unwrap();
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn eq_distinguishes_grid_size() {
+        assert_ne!(Puzzle::new(3).unwrap(), Puzzle::new(4).unwrap());
+    }
+
+    #[test]
+    fn eq_distinguishes_cage_targets() {
+        let poly = domino(1, 1, 1, 2);
+        let a = Puzzle::new(4)
+            .unwrap()
+            .insert(&poly, CageOperator::Add, 5)
+            .unwrap()
+            .unwrap();
+        let b = Puzzle::new(4)
+            .unwrap()
+            .insert(&poly, CageOperator::Add, 6)
+            .unwrap()
+            .unwrap();
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn hash_equal_for_equal_puzzles() {
+        use std::collections::hash_map::DefaultHasher;
+        let hash = |p: &Puzzle| {
+            let mut h = DefaultHasher::new();
+            p.hash(&mut h);
+            h.finish()
+        };
+        let (a, _, _) = two_cage_puzzle();
+        let (b, _, _) = two_cage_puzzle();
+        assert_eq!(hash(&a), hash(&b));
+    }
+
+    #[test]
+    fn display_reports_size_and_cage_count() {
+        let (p, _, _) = two_cage_puzzle();
+        assert_eq!(p.to_string(), "4×4 puzzle, 2 cages");
+    }
+
+    #[test]
+    fn serde_round_trip_preserves_puzzle() {
+        let (p, _, _) = two_cage_puzzle();
+        let json = serde_json::to_string(&p).unwrap();
+        let back: Puzzle = serde_json::from_str(&json).unwrap();
+        assert_eq!(p, back);
+    }
+
+    #[test]
+    fn serialize_orders_cages_by_anchor() {
+        let (p, _, _) = two_cage_puzzle();
+        let v: serde_json::Value = serde_json::to_value(&p).unwrap();
+        assert_eq!(v["n"], 4);
+        let cages = v["cages"].as_array().unwrap();
+        assert_eq!(cages.len(), 2);
+        assert_eq!(cages[0]["operation"], "Add");
+        assert_eq!(cages[1]["operation"], "Given");
+    }
+
+    #[test]
+    fn deserialize_invalid_grid_size_errors() {
+        assert!(serde_json::from_str::<Puzzle>(r#"{"n":0,"cages":[]}"#).is_err());
+    }
+
+    #[test]
+    fn deserialize_disconnected_polyomino_errors() {
+        let json = r#"{"n":4,"cages":[{"polyomino":[[1,1],[3,3]],"operation":"Add","target":5}]}"#;
+        assert!(serde_json::from_str::<Puzzle>(json).is_err());
+    }
+
+    #[test]
+    fn deserialize_overlapping_cages_errors() {
+        let json = r#"{"n":4,"cages":[
+            {"polyomino":[[1,1]],"operation":"Given","target":1},
+            {"polyomino":[[1,1]],"operation":"Given","target":2}
+        ]}"#;
+        assert!(serde_json::from_str::<Puzzle>(json).is_err());
+    }
+
+    #[test]
+    fn deserialize_infeasible_cage_errors() {
+        // Two Givens claiming 1 in the same row: the second insert propagates
+        // to an empty domain, surfaced as a custom "infeasible cage" error.
+        let json = r#"{"n":2,"cages":[
+            {"polyomino":[[1,1]],"operation":"Given","target":1},
+            {"polyomino":[[1,2]],"operation":"Given","target":1}
+        ]}"#;
+        let err = serde_json::from_str::<Puzzle>(json).unwrap_err();
+        assert!(err.to_string().contains("infeasible cage"));
+    }
+
+    #[test]
+    fn operators_for_singleton_is_given() {
+        let poly = Polyomino::from([Cell(1, 1)]).unwrap();
+        assert_eq!(operators_for(&poly), vec![CageOperator::Given]);
+    }
+
+    #[test]
+    fn operators_for_domino_is_all_four() {
+        assert_eq!(
+            operators_for(&domino(1, 1, 1, 2)),
+            vec![
+                CageOperator::Add,
+                CageOperator::Subtract,
+                CageOperator::Multiply,
+                CageOperator::Divide,
+            ]
+        );
+    }
+
+    #[test]
+    fn operators_for_triomino_is_commutative_only() {
+        let poly = Polyomino::from([Cell(1, 1), Cell(1, 2), Cell(1, 3)]).unwrap();
+        assert_eq!(
+            operators_for(&poly),
+            vec![CageOperator::Add, CageOperator::Multiply]
+        );
+    }
+
+    /// A 4×4 where both cells of the (1,1)-(1,2) domino are pinned to 2 via
+    /// `set` (no propagation), so subtract/divide target ranges are empty.
+    fn equal_pinned_domino() -> (Puzzle, Polyomino) {
+        let p = Puzzle::new(4)
+            .unwrap()
+            .set(Cell(1, 1), 2)
+            .unwrap()
+            .set(Cell(1, 2), 2)
+            .unwrap();
+        (p, domino(1, 1, 1, 2))
+    }
+
+    #[test]
+    fn possible_targets_subtract_empty_when_range_collapses() {
+        // |2-2| = 0 is not a valid subtract target, so the range is empty.
+        let (p, poly) = equal_pinned_domino();
+        assert_eq!(
+            p.possible_targets(&poly, CageOperator::Subtract).unwrap(),
+            Vec::<T>::new()
+        );
+    }
+
+    #[test]
+    fn possible_targets_divide_empty_when_range_collapses() {
+        // 2/2 = 1 < 2, the minimum divide target, so the range is empty.
+        let (p, poly) = equal_pinned_domino();
+        assert_eq!(
+            p.possible_targets(&poly, CageOperator::Divide).unwrap(),
+            Vec::<T>::new()
+        );
+    }
+
+    #[test]
+    fn possible_operations_excludes_ops_with_empty_target_range() {
+        let (p, poly) = equal_pinned_domino();
+        let ops = p.possible_operations(&poly).unwrap();
+        assert!(!ops.contains(&CageOperator::Subtract));
+        assert!(!ops.contains(&CageOperator::Divide));
+    }
 }

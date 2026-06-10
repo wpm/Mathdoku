@@ -74,3 +74,80 @@ impl Iterator for Solutions {
         None
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::fill::Fill;
+    use crate::polyomino::{Cell, Polyomino};
+    use crate::puzzle::{CageOperator, Puzzle};
+
+    fn solved_puzzles(puzzle: &Puzzle) -> Vec<Puzzle> {
+        puzzle.solutions().map(Result::unwrap).collect()
+    }
+
+    #[test]
+    fn empty_2x2_has_two_solutions() {
+        // The two 2×2 Latin squares: [[1,2],[2,1]] and [[2,1],[1,2]].
+        let p = Puzzle::new(2).unwrap();
+        let solutions = solved_puzzles(&p);
+        assert_eq!(solutions.len(), 2);
+        for s in &solutions {
+            for r in 1..=2 {
+                for c in 1..=2 {
+                    assert!(s.get(Cell(r, c)).unwrap().is_singleton());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn empty_3x3_has_twelve_solutions() {
+        // There are exactly 12 Latin squares of order 3.
+        let p = Puzzle::new(3).unwrap();
+        assert_eq!(p.solutions().count(), 12);
+    }
+
+    #[test]
+    fn given_cage_pins_solution() {
+        // Pinning (1,1)=1 in a 2×2 leaves exactly one Latin square.
+        let p = Puzzle::new(2)
+            .unwrap()
+            .insert(
+                &Polyomino::from([Cell(1, 1)]).unwrap(),
+                CageOperator::Given,
+                1,
+            )
+            .unwrap()
+            .unwrap();
+        let solutions = solved_puzzles(&p);
+        assert_eq!(solutions.len(), 1);
+        assert_eq!(solutions[0].get(Cell(1, 1)).unwrap(), Fill::from(&[1]));
+        assert_eq!(solutions[0].get(Cell(1, 2)).unwrap(), Fill::from(&[2]));
+        assert_eq!(solutions[0].get(Cell(2, 1)).unwrap(), Fill::from(&[2]));
+        assert_eq!(solutions[0].get(Cell(2, 2)).unwrap(), Fill::from(&[1]));
+    }
+
+    #[test]
+    fn contradictory_state_has_no_solutions() {
+        // Pin two cells of row 1 to the same value via `set` (which does not
+        // propagate): every branch's fixpoint is infeasible, so the search
+        // exhausts without producing a solution.
+        let p = Puzzle::new(2)
+            .unwrap()
+            .set(Cell(1, 1), 1)
+            .unwrap()
+            .set(Cell(1, 2), 1)
+            .unwrap();
+        assert_eq!(p.solutions().count(), 0);
+    }
+
+    #[test]
+    fn fully_solved_puzzle_yields_itself() {
+        // A puzzle whose every fill is already a singleton is returned as-is.
+        let square: Vec<Vec<crate::N>> = vec![vec![1, 2], vec![2, 1]];
+        let p = Puzzle::from_latin_square(2, &square).unwrap();
+        let solutions = solved_puzzles(&p);
+        assert_eq!(solutions.len(), 1);
+        assert_eq!(solutions[0].get(Cell(1, 1)).unwrap(), Fill::from(&[1]));
+    }
+}

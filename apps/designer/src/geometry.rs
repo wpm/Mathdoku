@@ -276,6 +276,20 @@ mod tests {
     }
 
     #[test]
+    fn bounded_coloring_impossible_palette_returns_none() {
+        // A triangle (three mutually adjacent cages) cannot be properly
+        // colored with two colors, forcing the backtracking search to
+        // exhaust every branch and fail.
+        let adjacency: Vec<std::collections::BTreeSet<usize>> = vec![
+            [1, 2].into_iter().collect(),
+            [0, 2].into_iter().collect(),
+            [0, 1].into_iter().collect(),
+        ];
+        let seed = greedy_coloring(&adjacency);
+        assert!(bounded_coloring(&adjacency, 2, &seed).is_none());
+    }
+
+    #[test]
     fn assign_colors_single_cage() {
         let cages = vec![vec![Cell::new(0, 0), Cell::new(0, 1)]];
         let (colors, _) = assign_colors(4, &cages, 4);
