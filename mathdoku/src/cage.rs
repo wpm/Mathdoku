@@ -292,7 +292,7 @@ impl Cage {
     /// The counts come from the cage's memo — the exact tuple relation —
     /// narrowed by `fills`, so they respect the arithmetic constraint,
     /// collinear distinctness, and the supplied fills jointly. For commutative
-    /// cages the counts are folded over the narrowed [`Mdd`] in time
+    /// cages the counts are folded over the narrowed `Mdd` in time
     /// proportional to the diagram, never by enumerating `n^k` combinations.
     ///
     /// # Errors
