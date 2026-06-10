@@ -5,6 +5,8 @@ mod components;
 #[cfg(feature = "without-solution")]
 pub mod feasibility;
 pub mod geometry;
+// Tooltip copy for the in-app help system (ADR-0007).
+pub mod help;
 pub mod ipc;
 pub mod keys;
 pub mod partial_solution;

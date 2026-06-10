@@ -3,6 +3,7 @@
 use leptos::prelude::*;
 
 use super::puzzle::InteractionState;
+use crate::help::CAGE_STATS_TOOLTIP;
 
 /// Displays viable multiset and tuple counts for the cage that contains the
 /// current selection. Renders nothing when the selection is not in a cage.
@@ -28,7 +29,7 @@ pub fn CageStats() -> impl IntoView {
                 pluralize(multisets, "Multiset", "Multisets"),
                 pluralize(tuples, "Tuple", "Tuples"),
             );
-            view! { <div class="cage-stats">{text}</div> }
+            view! { <div class="cage-stats" title=CAGE_STATS_TOOLTIP>{text}</div> }
         })
     }
 }

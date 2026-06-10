@@ -28,6 +28,9 @@ use super::puzzle::InteractionState;
 use crate::feasibility::group_by_operator;
 use crate::geometry::{anchor, origin};
 #[cfg(feature = "without-solution")]
+use crate::help::TARGET_SELECT_TOOLTIP;
+use crate::help::operator_tooltip;
+#[cfg(feature = "without-solution")]
 use crate::theme::INK2;
 use crate::theme::{ACCENT, BG, INK, LINE, SERIF};
 
@@ -153,6 +156,9 @@ fn with_solution_view(
                         style="cursor:pointer;"
                         on:click=move |_| on_commit.run((op, None))
                     >
+                        // Native SVG tooltip explaining the operator's constraint
+                        // (ADR-0007): identical behavior on desktop and web.
+                        <title>{operator_tooltip(op)}</title>
                         <rect
                             x={tab_x} y={tab_y}
                             width={tab_w} height={tab_h}
@@ -281,6 +287,9 @@ fn operator_strip_view(
                         style="cursor:pointer;"
                         on:click=move |_| { selected_idx.set(0); picked.set(Some(op)); }
                     >
+                        // Native SVG tooltip explaining the operator's constraint
+                        // (ADR-0007): identical behavior on desktop and web.
+                        <title>{operator_tooltip(op)}</title>
                         <rect
                             x={tab_x} y={tab_y} width={tab_w} height={tab_h}
                             rx="3"
@@ -356,6 +365,7 @@ fn target_select_view(
                 node_ref=select_ref
                 class="target-select"
                 style=select_style
+                title=TARGET_SELECT_TOOLTIP
                 on:change=move |ev| {
                     if let Ok(target) = event_target_value(&ev).parse::<Target>() {
                         on_commit.run((op_for_change, Some(target)));
