@@ -270,4 +270,92 @@ mod tests {
         let cells: Vec<Cell> = p.into_iter().collect();
         assert_eq!(cells, vec![Cell(3, 4)]);
     }
+
+    #[test]
+    fn cell_new_converts_zero_indexed_to_one_indexed() {
+        assert_eq!(Cell::new(0, 0), Cell(1, 1));
+        assert_eq!(Cell::new(2, 3), Cell(3, 4));
+    }
+
+    #[test]
+    fn cell_row_and_column_are_zero_indexed() {
+        let c = Cell(3, 5);
+        assert_eq!(c.row(), 2);
+        assert_eq!(c.column(), 4);
+    }
+
+    #[test]
+    fn neighbors_4_interior_cell_has_four() {
+        let n = Cell::new(2, 2).neighbors_4();
+        assert_eq!(n.len(), 4);
+        assert!(n.contains(&Cell::new(1, 2)));
+        assert!(n.contains(&Cell::new(3, 2)));
+        assert!(n.contains(&Cell::new(2, 1)));
+        assert!(n.contains(&Cell::new(2, 3)));
+    }
+
+    #[test]
+    fn neighbors_4_origin_cell_has_two() {
+        // Row 0, column 0: no up or left neighbor.
+        let n = Cell::new(0, 0).neighbors_4();
+        assert_eq!(n, vec![Cell::new(1, 0), Cell::new(0, 1)]);
+    }
+
+    #[test]
+    fn is_empty_false_for_constructed_polyomino() {
+        // Polyomino::from rejects empty input, so any constructed polyomino is
+        // non-empty.
+        assert!(!Polyomino::from([Cell(1, 1)]).unwrap().is_empty());
+    }
+
+    #[test]
+    fn len_counts_cells() {
+        let p = Polyomino::from([Cell(1, 1), Cell(1, 2), Cell(1, 3)]).unwrap();
+        assert_eq!(p.len(), 3);
+    }
+
+    #[test]
+    fn from_cells_matches_from() {
+        let cells = [Cell(1, 1), Cell(1, 2)];
+        assert_eq!(
+            Polyomino::from_cells(&cells).unwrap(),
+            Polyomino::from(cells).unwrap()
+        );
+    }
+
+    #[test]
+    fn from_cells_rejects_disconnected() {
+        assert!(matches!(
+            Polyomino::from_cells(&[Cell(1, 1), Cell(3, 3)]),
+            Err(Error::DisconnectedPolyomino)
+        ));
+    }
+
+    #[test]
+    fn cells_returns_sorted_vec() {
+        let p = Polyomino::from([Cell(2, 1), Cell(1, 1)]).unwrap();
+        assert_eq!(p.cells(), vec![Cell(1, 1), Cell(2, 1)]);
+    }
+
+    #[test]
+    fn insert_existing_cell_is_noop() {
+        let p = Polyomino::from([Cell(1, 1), Cell(1, 2)]).unwrap();
+        assert_eq!(p.insert(Cell(1, 1)).unwrap(), p);
+    }
+
+    #[test]
+    fn insert_adjacent_cell_extends() {
+        let p = Polyomino::from([Cell(1, 1)]).unwrap();
+        let extended = p.insert(Cell(1, 2)).unwrap();
+        assert_eq!(extended.cells(), vec![Cell(1, 1), Cell(1, 2)]);
+    }
+
+    #[test]
+    fn insert_disconnected_cell_errors() {
+        let p = Polyomino::from([Cell(1, 1)]).unwrap();
+        assert!(matches!(
+            p.insert(Cell(3, 3)),
+            Err(Error::DisconnectedPolyomino)
+        ));
+    }
 }

@@ -1129,5 +1129,122 @@ mod tests {
                 assert!(committed.get_untracked().is_none());
             });
         }
+
+        #[test]
+        fn without_solution_escape_cancels_while_computing() {
+            Owner::new().with(|| {
+                let committed = RwSignal::new(None);
+                let mut p = pending(committed);
+                p.feasible = Some(RwSignal::new(FeasibilityState::Computing));
+
+                let mut st = State::new(4).unwrap();
+                let _ = st.provisional_cages.insert(p.polyomino.clone());
+                let designer_state = RwSignal::new(st);
+                let pending_commit = RwSignal::new(Some(p.clone()));
+                let on_state_change = Callback::new(|_: State| {});
+
+                assert!(handle_key(
+                    ESCAPE,
+                    false,
+                    &p,
+                    pending_commit,
+                    designer_state,
+                    on_state_change,
+                ));
+                assert!(pending_commit.get_untracked().is_none());
+                assert!(designer_state.get_untracked().provisional_cages.is_empty());
+                assert!(committed.get_untracked().is_none());
+            });
+        }
+
+        #[test]
+        fn without_solution_escape_cancels_when_no_pairs_are_feasible() {
+            Owner::new().with(|| {
+                let committed = RwSignal::new(None);
+                let p = ready_pending(committed, vec![]);
+
+                let mut st = State::new(4).unwrap();
+                let _ = st.provisional_cages.insert(p.polyomino.clone());
+                let designer_state = RwSignal::new(st);
+                let pending_commit = RwSignal::new(Some(p.clone()));
+                let on_state_change = Callback::new(|_: State| {});
+
+                // Navigation keys are consumed but do nothing when nothing is
+                // feasible.
+                assert!(handle_key(
+                    TAB,
+                    false,
+                    &p,
+                    pending_commit,
+                    designer_state,
+                    on_state_change,
+                ));
+                assert!(pending_commit.get_untracked().is_some());
+
+                // Escape is the only way out.
+                assert!(handle_key(
+                    ESCAPE,
+                    false,
+                    &p,
+                    pending_commit,
+                    designer_state,
+                    on_state_change,
+                ));
+                assert!(pending_commit.get_untracked().is_none());
+                assert!(committed.get_untracked().is_none());
+            });
+        }
+
+        #[test]
+        fn without_solution_strip_steps_backwards_with_arrow_left() {
+            Owner::new().with(|| {
+                let committed = RwSignal::new(None);
+                let pairs: Vec<(Operator, Target)> =
+                    vec![(Operator::Add, 3), (Operator::Subtract, 1)];
+                let p = ready_pending(committed, pairs);
+                let designer_state = RwSignal::new(State::new(4).unwrap());
+                let pending_commit = RwSignal::new(Some(p.clone()));
+                let on_state_change = Callback::new(|_: State| {});
+
+                // ArrowLeft from index 0 wraps to the last operator.
+                assert!(handle_key(
+                    ARROW_LEFT,
+                    false,
+                    &p,
+                    pending_commit,
+                    designer_state,
+                    on_state_change,
+                ));
+                assert_eq!(p.selected_idx.get_untracked(), 1);
+                assert!(committed.get_untracked().is_none());
+            });
+        }
+
+        #[test]
+        fn without_solution_target_step_ignores_non_escape_keys() {
+            Owner::new().with(|| {
+                let committed = RwSignal::new(None);
+                let pairs: Vec<(Operator, Target)> = vec![(Operator::Add, 3)];
+                let p = ready_pending(committed, pairs);
+                p.picked_operator.set(Some(Operator::Add));
+                let designer_state = RwSignal::new(State::new(4).unwrap());
+                let pending_commit = RwSignal::new(Some(p.clone()));
+                let on_state_change = Callback::new(|_: State| {});
+
+                // The native dropdown owns every key but Escape; the handler
+                // consumes them without changing anything.
+                assert!(handle_key(
+                    TAB,
+                    false,
+                    &p,
+                    pending_commit,
+                    designer_state,
+                    on_state_change,
+                ));
+                assert_eq!(p.picked_operator.get_untracked(), Some(Operator::Add));
+                assert!(pending_commit.get_untracked().is_some());
+                assert!(committed.get_untracked().is_none());
+            });
+        }
     }
 }

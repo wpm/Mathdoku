@@ -677,4 +677,174 @@ mod tests {
         let cage = Cage::given(Cell(1, 1), 3).unwrap();
         assert_eq!(cage.get(Cell(1, 1)).unwrap(), Fill::from(&[3]));
     }
+
+    #[test]
+    fn get_commutative_returns_base_fill() {
+        // Add 3 in 4×4: pairs (1,2),(2,1) — both positions are {1,2}.
+        let cage = Cage::commutative(4, domino(1, 1, 1, 2), Add, 3).unwrap();
+        assert_eq!(cage.get(Cell(1, 1)).unwrap(), Fill::from(&[1, 2]));
+    }
+
+    #[test]
+    fn get_non_commutative_returns_base_fill() {
+        // Subtract 3 in 4×4: pairs (1,4),(4,1) — both positions are {1,4}.
+        let cage = Cage::non_commutative(4, domino(1, 1, 1, 2), Subtract, 3).unwrap();
+        assert_eq!(cage.get(Cell(1, 2)).unwrap(), Fill::from(&[1, 4]));
+    }
+
+    // ---- Cage::new ----
+
+    #[test]
+    fn new_subtract_wrong_arity_is_infeasible() {
+        assert!(matches!(
+            Cage::new(4, triomino(1, 1, 1, 2, 1, 3), CageOperator::Subtract, 1),
+            Err(Error::InfeasibleCage(_, 1))
+        ));
+    }
+
+    #[test]
+    fn new_divide_wrong_arity_is_infeasible() {
+        assert!(matches!(
+            Cage::new(4, triomino(1, 1, 1, 2, 1, 3), CageOperator::Divide, 2),
+            Err(Error::InfeasibleCage(_, 2))
+        ));
+    }
+
+    #[test]
+    fn new_given_wrong_arity_is_infeasible() {
+        assert!(matches!(
+            Cage::new(4, domino(1, 1, 1, 2), CageOperator::Given, 1),
+            Err(Error::InfeasibleCage(_, 1))
+        ));
+    }
+
+    #[test]
+    fn new_given_target_out_of_value_range_is_infeasible() {
+        let poly = Polyomino::from([Cell(1, 1)]).unwrap();
+        assert!(matches!(
+            Cage::new(4, poly, CageOperator::Given, 1000),
+            Err(Error::InfeasibleCage(_, 1000))
+        ));
+    }
+
+    #[test]
+    fn new_add_unreachable_target_maps_to_infeasible_cage() {
+        // No pair in 1..=4 sums to 9; EmptyFills is mapped to InfeasibleCage.
+        assert!(matches!(
+            Cage::new(4, domino(1, 1, 1, 2), CageOperator::Add, 9),
+            Err(Error::InfeasibleCage(_, 9))
+        ));
+    }
+
+    #[test]
+    fn new_builds_every_operator() {
+        let p = domino(1, 1, 1, 2);
+        assert!(Cage::new(4, p.clone(), CageOperator::Add, 5).is_ok());
+        assert!(Cage::new(4, p.clone(), CageOperator::Subtract, 1).is_ok());
+        assert!(Cage::new(4, p.clone(), CageOperator::Multiply, 6).is_ok());
+        assert!(Cage::new(4, p, CageOperator::Divide, 2).is_ok());
+        let single = Polyomino::from([Cell(1, 1)]).unwrap();
+        assert!(Cage::new(4, single, CageOperator::Given, 3).is_ok());
+    }
+
+    // ---- op_target / operation / accessors ----
+
+    #[test]
+    fn op_target_round_trips_every_operator() {
+        let p = domino(1, 1, 1, 2);
+        let cases = [
+            (CageOperator::Add, 5),
+            (CageOperator::Subtract, 1),
+            (CageOperator::Multiply, 6),
+            (CageOperator::Divide, 2),
+        ];
+        for (op, target) in cases {
+            let cage = Cage::new(4, p.clone(), op, target).unwrap();
+            assert_eq!(cage.op_target(), (op, target));
+        }
+        let given = Cage::given(Cell(1, 1), 3).unwrap();
+        assert_eq!(given.op_target(), (CageOperator::Given, 3));
+    }
+
+    #[test]
+    fn polyomino_accessor_returns_cells() {
+        let p = domino(1, 1, 1, 2);
+        let cage = Cage::commutative(4, p.clone(), Add, 5).unwrap();
+        assert_eq!(cage.polyomino(), &p);
+    }
+
+    #[test]
+    fn operation_accessor_combines_operator_and_target() {
+        let cage = Cage::commutative(4, domino(1, 1, 1, 2), Multiply, 6).unwrap();
+        assert_eq!(cage.operation(), Operation::new(CageOperator::Multiply, 6));
+    }
+
+    #[test]
+    fn contains_member_and_non_member() {
+        let cage = Cage::commutative(4, domino(1, 1, 1, 2), Add, 5).unwrap();
+        assert!(cage.contains(Cell(1, 1)));
+        assert!(!cage.contains(Cell(2, 2)));
+    }
+
+    #[test]
+    fn cells_returns_sorted_cells() {
+        let cage = Cage::commutative(4, domino(1, 1, 1, 2), Add, 5).unwrap();
+        assert_eq!(cage.cells(), vec![Cell(1, 1), Cell(1, 2)]);
+    }
+
+    // ---- viable_counts ----
+
+    #[test]
+    fn viable_counts_commutative_no_survivors_is_zero() {
+        // Add 5 with both fills {3}: (3,3) does not sum to 5 — no tuples.
+        let cage = Cage::commutative(4, domino(1, 1, 1, 2), Add, 5).unwrap();
+        let fills = vec![Fill::from(&[3]); 2];
+        assert_eq!(cage.viable_counts(&fills).unwrap(), (0, 0));
+    }
+
+    #[test]
+    fn viable_counts_non_commutative_no_survivors_is_zero() {
+        // Subtract 3 with both fills {2}: no surviving pair.
+        let cage = Cage::non_commutative(4, domino(1, 1, 1, 2), Subtract, 3).unwrap();
+        let fills = vec![Fill::from(&[2]); 2];
+        assert_eq!(cage.viable_counts(&fills).unwrap(), (0, 0));
+    }
+
+    #[test]
+    fn viable_counts_given_present_and_absent() {
+        let cage = Cage::given(Cell(1, 1), 3).unwrap();
+        assert_eq!(cage.viable_counts(&[Fill::from(&[1, 3])]).unwrap(), (1, 1));
+        assert_eq!(cage.viable_counts(&[Fill::from(&[1, 2])]).unwrap(), (0, 0));
+    }
+
+    // ---- Display ----
+
+    #[test]
+    fn display_cage_shows_operation_and_cells() {
+        let cage = Cage::commutative(4, domino(1, 1, 1, 2), Add, 5).unwrap();
+        assert_eq!(cage.to_string(), "Cage(+5 (1, 1), (1, 2))");
+    }
+
+    #[test]
+    fn display_cage_operator_symbols() {
+        assert_eq!(CageOperator::Add.to_string(), "+");
+        assert_eq!(CageOperator::Subtract.to_string(), "−");
+        assert_eq!(CageOperator::Multiply.to_string(), "×");
+        assert_eq!(CageOperator::Divide.to_string(), "÷");
+        assert_eq!(CageOperator::Given.to_string(), "=");
+    }
+
+    #[test]
+    fn display_operation_given_omits_operator() {
+        assert_eq!(Operation::new(CageOperator::Given, 3).to_string(), "3");
+        assert_eq!(Operation::new(CageOperator::Divide, 2).to_string(), "÷2");
+    }
+
+    #[test]
+    #[should_panic(expected = "narrow must not be called")]
+    fn no_narrow_panics_when_narrowed() {
+        let poly = domino(1, 1, 1, 2);
+        let mdd = Mdd::new(4, 2, Add, 3, &collinear_groups(&poly)).unwrap();
+        let _ = NoNarrow(mdd).narrow(&[Fill::from(&[1]), Fill::all(4)]);
+    }
 }

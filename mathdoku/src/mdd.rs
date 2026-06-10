@@ -1362,6 +1362,17 @@ mod tests {
 
     // ---- brute-force oracle cross-check ----
 
+    /// A fast, always-run sample of the exhaustive cross-check below, so the
+    /// oracle helpers themselves stay exercised in routine test runs.
+    #[test]
+    fn matches_brute_force_sample() {
+        setup();
+        assert_equiv(4, Add, 5, 2);
+        assert_equiv(4, Multiply, 12, 3);
+        // Unreachable target: the oracle agrees the tuple set is empty.
+        assert_equiv(4, Add, 100, 2);
+    }
+
     #[test]
     #[ignore = "exhaustive property test; run with --include-ignored on merge to main"]
     fn matches_brute_force_across_n_arity_and_target() {

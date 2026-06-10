@@ -213,6 +213,26 @@ mod tests {
     }
 
     #[test]
+    fn all_different_empty_display() {
+        // n = 0 produces a constraint with no cells.
+        assert_eq!(AllDifferent::row(0, 1).to_string(), "AllDifferent (empty)");
+    }
+
+    #[test]
+    fn deserialize_wrong_row_count_errors() {
+        // n = 2 but only one row of fills.
+        let err = from_str::<Grid>(r#"{"n":2,"fills":[[[1],[2]]]}"#).unwrap_err();
+        assert!(err.to_string().contains("expected 2 rows"));
+    }
+
+    #[test]
+    fn deserialize_wrong_column_count_errors() {
+        // n = 2 with rows of one column each.
+        let err = from_str::<Grid>(r#"{"n":2,"fills":[[[1]],[[2]]]}"#).unwrap_err();
+        assert!(err.to_string().contains("expected 2 columns"));
+    }
+
+    #[test]
     fn all_different_column_display() {
         assert_eq!(
             AllDifferent::column(4, 2).to_string(),

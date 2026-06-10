@@ -833,13 +833,35 @@ fn step_provisional_cage(r: usize, c: usize, tr: usize, tc: usize, state: State)
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::panic)]
 mod tests {
-    use super::{previous_cell_values, singleton_digit_commit, step_provisional_cage};
+    use super::{
+        parked_cages, previous_cell_values, singleton_digit_commit, step_provisional_cage,
+    };
     use mathdoku::{Cage, Cell, N, Operator, Polyomino};
     use mathdoku_designer_core::State;
 
     fn poly(positions: &[(usize, usize)]) -> Polyomino {
         let cells: Vec<Cell> = positions.iter().map(|&(r, c)| Cell::new(r, c)).collect();
         Polyomino::from_cells(&cells).unwrap()
+    }
+
+    #[test]
+    fn parked_cages_excludes_matching_polyomino() {
+        let mut st = State::new(4).unwrap();
+        let committing = poly(&[(0, 0), (0, 1)]);
+        let other = poly(&[(2, 2)]);
+        let _ = st.provisional_cages.insert(committing.clone());
+        let _ = st.provisional_cages.insert(other.clone());
+        let parked = parked_cages(&st, &committing);
+        assert_eq!(parked.len(), 1);
+        assert!(parked.contains(&other));
+    }
+
+    #[test]
+    fn parked_cages_keeps_all_when_none_match() {
+        let mut st = State::new(4).unwrap();
+        let _ = st.provisional_cages.insert(poly(&[(2, 2)]));
+        let parked = parked_cages(&st, &poly(&[(0, 0)]));
+        assert_eq!(parked.len(), 1);
     }
 
     fn given_cage(n: N, r: usize, c: usize, target: u64) -> Cage {
