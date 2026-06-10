@@ -653,7 +653,7 @@ pub fn Puzzle(
             >
                 // Native SVG tooltip summarizing cage construction (ADR-0007).
                 // Elements with their own <title> (the operator tabs) override it.
-                <title>{GRID_TOOLTIP}</title>
+                {leptos::svg::title().child(GRID_TOOLTIP)}
                 <rect x="0" y="0" width=total height=total fill=BG />
                 {cells_view}
                 {cages_view}
