@@ -175,7 +175,16 @@ export async function installTauriStubs(
           },
         },
         event: {
-          listen: () => Promise.resolve(() => {}),
+          // Record handlers so tests can fire menu events via emitTauriEvent.
+          listen: (name: string, handler: (e: unknown) => void) => {
+            const w = window as unknown as Record<
+              string,
+              Record<string, ((e: unknown) => void)[]>
+            >;
+            const reg = (w['__tauri_event_handlers__'] ??= {});
+            (reg[name] ??= []).push(handler);
+            return Promise.resolve(() => {});
+          },
         },
         dialog: {
           save: () => Promise.resolve(saveDialogPath),
@@ -239,6 +248,35 @@ export async function interceptInvokeCommand(
     { commandName, arrayKey },
   );
   return arrayKey;
+}
+
+// Fire a stubbed Tauri event (e.g. 'menu-new') to every handler the app
+// registered through the stubbed event.listen. Handler registration happens
+// asynchronously after mount, so this waits for at least one listener first.
+export async function emitTauriEvent(page: Page, name: string) {
+  await page.waitForFunction(
+    (name) =>
+      (
+        window as unknown as Record<
+          string,
+          Record<string, unknown[] | undefined>
+        >
+      )['__tauri_event_handlers__']?.[name]?.length,
+    name,
+    { timeout: 15_000 },
+  );
+  await page.evaluate((name) => {
+    const reg =
+      (
+        window as unknown as Record<
+          string,
+          Record<string, ((e: unknown) => void)[]>
+        >
+      )['__tauri_event_handlers__'] ?? {};
+    for (const handler of reg[name] ?? []) {
+      handler({ event: name, payload: null });
+    }
+  }, name);
 }
 
 // Navigate to the app and wait for the WASM to mount.

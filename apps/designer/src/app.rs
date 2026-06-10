@@ -203,6 +203,17 @@ fn SizeModal(
          font-family:{SANS_FONT};font-size:13px;background:{BG};color:{INK};"
     );
 
+    // Move focus to the Size dropdown as soon as the modal mounts. The
+    // `autofocus` attribute only applies during initial document load, so a
+    // modal opened later (e.g. Cmd-N) would leave focus on the grid behind the
+    // overlay — outside the Tab trap below.
+    let select_ref = NodeRef::<leptos::html::Select>::new();
+    Effect::new(move |_| {
+        if let Some(el) = select_ref.get() {
+            let _ = el.focus();
+        }
+    });
+
     let _esc = window_event_listener(leptos::ev::keydown, move |ev| {
         if ev.key() == ESCAPE && !mandatory {
             on_cancel.run(());
@@ -272,7 +283,7 @@ fn SizeModal(
                     <label style=format!("font-size:13px;color:{INK};")>
                         "Size: "
                         <select
-                            autofocus=true
+                            node_ref=select_ref
                             style=select_style
                             on:change=move |ev: leptos::ev::Event| {
                                 if let Ok(n) = event_target_value(&ev).parse::<usize>() {
@@ -328,6 +339,14 @@ fn UnsavedChangesModal(
     on_discard: Callback<()>,
     on_cancel: Callback<()>,
 ) -> impl IntoView {
+    // Focus the default (Save) button on mount; `autofocus` only applies
+    // during initial document load, not when the modal mounts later.
+    let save_ref = NodeRef::<leptos::html::Button>::new();
+    Effect::new(move |_| {
+        if let Some(el) = save_ref.get() {
+            let _ = el.focus();
+        }
+    });
     view! {
         <div
             style=overlay_style()
@@ -346,7 +365,7 @@ fn UnsavedChangesModal(
                         "Cancel"
                     </button>
                     <button
-                        autofocus=true
+                        node_ref=save_ref
                         style=primary_btn_style()
                         on:click=move |_| on_save.run(())
                     >
@@ -362,6 +381,14 @@ fn UnsavedChangesModal(
 
 #[component]
 fn ErrorToast(message: String, on_dismiss: Callback<()>) -> impl IntoView {
+    // Focus the OK button on mount; `autofocus` only applies during initial
+    // document load, not when the toast mounts later.
+    let ok_ref = NodeRef::<leptos::html::Button>::new();
+    Effect::new(move |_| {
+        if let Some(el) = ok_ref.get() {
+            let _ = el.focus();
+        }
+    });
     let toast_style = format!(
         "background:{BG};border:0.5px solid {LINE};border-radius:8px;\
          box-shadow:0 4px 24px rgba(0,0,0,0.2);padding:20px 24px;\
@@ -374,7 +401,7 @@ fn ErrorToast(message: String, on_dismiss: Callback<()>) -> impl IntoView {
                 <p style=body_style()>{message}</p>
                 <div style="display:flex;justify-content:flex-end;">
                     <button
-                        autofocus=true
+                        node_ref=ok_ref
                         style=primary_btn_style()
                         on:click=move |_| on_dismiss.run(())
                     >
