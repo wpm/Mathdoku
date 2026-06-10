@@ -14,6 +14,8 @@
 
 #![deny(missing_docs)]
 
+pub mod help;
+
 use std::collections::BTreeSet;
 
 use mathdoku::{Cage, Cell, N, Operator, Polyomino, Puzzle, T, generate_latin_square};

@@ -35,50 +35,16 @@ const EVENT_FIX: &str = "menu-fix";
 const EVENT_UNFIX: &str = "menu-unfix";
 const EVENT_REQUEST_CLOSE: &str = "request-close";
 
+const MENU_ID_HELP_RULES: &str = "help_rules";
+const MENU_ID_HELP_GUIDE: &str = "help_guide";
+
 // ---- menu ----
 
-/// Builds the application menu (File, Edit, Puzzle, View, Window; App menu on macOS).
+/// Builds the application menu (File, Edit, Puzzle, View, Window, Help;
+/// App menu on macOS).
 fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
-    let new = MenuItemBuilder::with_id("new", "New…")
-        .accelerator("CmdOrCtrl+N")
-        .build(app)?;
-    let open = MenuItemBuilder::with_id("open", "Open…")
-        .accelerator("CmdOrCtrl+O")
-        .build(app)?;
-    let save = MenuItemBuilder::with_id("save", "Save")
-        .accelerator("CmdOrCtrl+S")
-        .build(app)?;
-    let save_as = MenuItemBuilder::with_id("save_as", "Save As…")
-        .accelerator("CmdOrCtrl+Shift+S")
-        .build(app)?;
-    let file_menu = Submenu::with_items(
-        app,
-        "File",
-        true,
-        &[
-            &new,
-            &PredefinedMenuItem::separator(app)?,
-            &open,
-            &save,
-            &save_as,
-            &PredefinedMenuItem::separator(app)?,
-            &PredefinedMenuItem::close_window(app, None)?,
-        ],
-    )?;
-    let edit_menu = Submenu::with_items(
-        app,
-        "Edit",
-        true,
-        &[
-            &PredefinedMenuItem::undo(app, None)?,
-            &PredefinedMenuItem::redo(app, None)?,
-            &PredefinedMenuItem::separator(app)?,
-            &PredefinedMenuItem::cut(app, None)?,
-            &PredefinedMenuItem::copy(app, None)?,
-            &PredefinedMenuItem::paste(app, None)?,
-            &PredefinedMenuItem::select_all(app, None)?,
-        ],
-    )?;
+    let file_menu = build_file_menu(app)?;
+    let edit_menu = build_edit_menu(app)?;
     #[cfg(feature = "without-solution")]
     let puzzle_menu = build_puzzle_menu(app)?;
 
@@ -93,6 +59,8 @@ fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
             &PredefinedMenuItem::close_window(app, None)?,
         ],
     )?;
+
+    let help_menu = build_help_menu(app)?;
 
     #[cfg(target_os = "macos")]
     {
@@ -130,6 +98,7 @@ fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         items.push(&puzzle_menu);
         items.push(&view_menu);
         items.push(&window_menu);
+        items.push(&help_menu);
         Menu::with_items(app, &items)
     }
 
@@ -139,7 +108,84 @@ fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         #[cfg(feature = "without-solution")]
         items.push(&puzzle_menu);
         items.push(&window_menu);
+        items.push(&help_menu);
         Menu::with_items(app, &items)
+    }
+}
+
+/// Builds the File submenu (New, Open, Save, Save As, Close Window).
+fn build_file_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Submenu<R>> {
+    let new = MenuItemBuilder::with_id("new", "New…")
+        .accelerator("CmdOrCtrl+N")
+        .build(app)?;
+    let open = MenuItemBuilder::with_id("open", "Open…")
+        .accelerator("CmdOrCtrl+O")
+        .build(app)?;
+    let save = MenuItemBuilder::with_id("save", "Save")
+        .accelerator("CmdOrCtrl+S")
+        .build(app)?;
+    let save_as = MenuItemBuilder::with_id("save_as", "Save As…")
+        .accelerator("CmdOrCtrl+Shift+S")
+        .build(app)?;
+    Submenu::with_items(
+        app,
+        "File",
+        true,
+        &[
+            &new,
+            &PredefinedMenuItem::separator(app)?,
+            &open,
+            &save,
+            &save_as,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::close_window(app, None)?,
+        ],
+    )
+}
+
+/// Builds the Edit submenu (the predefined clipboard and undo/redo items).
+fn build_edit_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Submenu<R>> {
+    Submenu::with_items(
+        app,
+        "Edit",
+        true,
+        &[
+            &PredefinedMenuItem::undo(app, None)?,
+            &PredefinedMenuItem::redo(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::cut(app, None)?,
+            &PredefinedMenuItem::copy(app, None)?,
+            &PredefinedMenuItem::paste(app, None)?,
+            &PredefinedMenuItem::select_all(app, None)?,
+        ],
+    )
+}
+
+/// Builds the Help submenu (ADR-0007): its items open the website's
+/// puzzle-rules and Designer-guide pages in the system browser. The app gets
+/// tooltips, not documentation, so this menu is the in-app route to the
+/// long-form content. The web preview build has no native menu bar at all,
+/// so — exactly like Save and Open (ADR-0002) — these items have no web
+/// analog and nothing needs hiding there.
+fn build_help_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Submenu<R>> {
+    let rules = MenuItemBuilder::with_id(MENU_ID_HELP_RULES, "Puzzle Rules").build(app)?;
+    let guide = MenuItemBuilder::with_id(MENU_ID_HELP_GUIDE, "Designer Guide").build(app)?;
+    let help_menu = Submenu::with_items(app, "Help", true, &[&rules, &guide])?;
+    // Register as the native Help menu so macOS adds its standard search field.
+    #[cfg(target_os = "macos")]
+    help_menu.set_as_help_menu_for_nsapp()?;
+    Ok(help_menu)
+}
+
+/// Maps a Help menu item ID to the website URL it opens, or `None` for IDs
+/// belonging to other menus. The URLs (and their anchor contract with the
+/// website) live in [`core::help`], whose tests pin them against the site
+/// sources.
+fn help_url_for(id: &str) -> Option<&'static str> {
+    match id {
+        MENU_ID_HELP_RULES => Some(core::help::PUZZLE_RULES_URL),
+        MENU_ID_HELP_GUIDE => Some(core::help::DESIGNER_GUIDE_URL),
+        _ => None,
     }
 }
 
@@ -162,8 +208,17 @@ fn build_puzzle_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Submenu<R>
 }
 
 /// Translates menu item IDs into frontend events emitted over the Tauri event bus.
+///
+/// Help items are handled natively instead: they open the website in the
+/// system browser (ADR-0007) and never reach the frontend.
 #[allow(clippy::needless_pass_by_value)]
 fn handle_menu_event<R: Runtime>(app: &AppHandle<R>, event: tauri::menu::MenuEvent) {
+    if let Some(url) = help_url_for(event.id().as_ref()) {
+        // Failure to launch a browser is not actionable from here; ignore it
+        // like the emit below.
+        let _ = tauri_plugin_opener::open_url(url, None::<&str>);
+        return;
+    }
     let event_name = match event.id().as_ref() {
         "new" => EVENT_NEW,
         "open" => EVENT_OPEN,
@@ -556,6 +611,31 @@ mod tests {
                     id: tauri::menu::MenuId::new(id),
                 },
             );
+        }
+    }
+
+    // ---- help menu ----
+
+    #[test]
+    fn help_ids_map_to_the_canonical_website_urls() {
+        // The URL constants themselves are pinned against the site sources by
+        // tests in mathdoku-designer-core; this checks the menu wiring.
+        assert_eq!(
+            help_url_for(MENU_ID_HELP_RULES),
+            Some(core::help::PUZZLE_RULES_URL)
+        );
+        assert_eq!(
+            help_url_for(MENU_ID_HELP_GUIDE),
+            Some(core::help::DESIGNER_GUIDE_URL)
+        );
+    }
+
+    #[test]
+    fn non_help_ids_open_no_url() {
+        // Every other menu ID must keep flowing to the event bus, not the
+        // browser.
+        for id in ["new", "open", "save", "save_as", "fix", "unfix", "nope"] {
+            assert!(help_url_for(id).is_none());
         }
     }
 }

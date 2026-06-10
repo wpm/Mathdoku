@@ -11,6 +11,9 @@ use mathdoku_designer_core::State;
 use wasm_bindgen::prelude::*;
 
 use crate::components::{PendingCommit, Puzzle};
+#[cfg(feature = "without-solution")]
+use crate::help::NO_SOLUTION_TOOLTIP;
+use crate::help::{DISCARD_TOOLTIP, RANDOM_SOLUTION_TOOLTIP, SAVE_TOOLTIP, SIZE_SELECT_TOOLTIP};
 use crate::ipc;
 use crate::keys::{ESCAPE, TAB};
 use crate::theme::{ACCENT, BG, INK, INK2, LINE, SANS as SANS_FONT};
@@ -278,6 +281,7 @@ fn SizeModal(
                 <button
                     class="sz-btn"
                     style=style
+                    title=NO_SOLUTION_TOOLTIP
                     on:click=move |_| cb.run(chosen.get_untracked())
                 >
                     "No Solution"
@@ -316,6 +320,7 @@ fn SizeModal(
                         <select
                             node_ref=select_ref
                             style=select_style
+                            title=SIZE_SELECT_TOOLTIP
                             on:change=move |ev: leptos::ev::Event| {
                                 if let Ok(n) = event_target_value(&ev).parse::<usize>() {
                                     chosen.set(n);
@@ -339,6 +344,7 @@ fn SizeModal(
                     <button
                         class="sz-btn"
                         style=primary_btn_style()
+                        title=RANDOM_SOLUTION_TOOLTIP
                         on:click=move |_| on_create_with_solution.run(chosen.get_untracked())
                     >
                         "Random Solution"
@@ -399,7 +405,12 @@ fn UnsavedChangesModal(
                 <p style=title_style()>"Save changes before closing?"</p>
                 <p style=body_style()>"This puzzle has unsaved changes."</p>
                 <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;">
-                    <button class="uc-btn" style=neutral_btn_style() on:click=move |_| on_discard.run(())>
+                    <button
+                        class="uc-btn"
+                        style=neutral_btn_style()
+                        title=DISCARD_TOOLTIP
+                        on:click=move |_| on_discard.run(())
+                    >
                         "Don\u{2019}t Save"
                     </button>
                     <button class="uc-btn" style=neutral_btn_style() on:click=move |_| on_cancel.run(())>
@@ -409,6 +420,7 @@ fn UnsavedChangesModal(
                         class="uc-btn"
                         node_ref=save_ref
                         style=primary_btn_style()
+                        title=SAVE_TOOLTIP
                         on:click=move |_| on_save.run(())
                     >
                         "Save"

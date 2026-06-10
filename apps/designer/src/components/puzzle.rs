@@ -26,6 +26,7 @@ use crate::cage_commit::{commit_cage, delete_cage, demote_cage};
 use crate::geometry::{
     MARGIN, THICK, THIN, anchor, assign_colors, cell_size, is_thick, op_font, origin,
 };
+use crate::help::GRID_TOOLTIP;
 use crate::ipc;
 use crate::partial_solution::PartialSolution;
 
@@ -650,6 +651,9 @@ pub fn Puzzle(
                 on:keydown=on_keydown
                 style="outline:none;"
             >
+                // Native SVG tooltip summarizing cage construction (ADR-0007).
+                // Elements with their own <title> (the operator tabs) override it.
+                <title>{GRID_TOOLTIP}</title>
                 <rect x="0" y="0" width=total height=total fill=BG />
                 {cells_view}
                 {cages_view}

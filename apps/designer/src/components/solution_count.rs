@@ -4,6 +4,7 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 
 use super::puzzle::InteractionState;
+use crate::help::SOLUTION_COUNT_TOOLTIP;
 
 /// Displays the number of solutions right-aligned below the puzzle when the
 /// puzzle is complete. Shows a busy indicator (`…`) while the solver runs.
@@ -29,13 +30,21 @@ pub fn SolutionCount() -> impl IntoView {
     move || {
         if resolved.get() {
             // Resolved: show count if complete, nothing if incomplete.
-            count
-                .get()
-                .map(|n| view! { <div class="solution-count">{pluralize_solutions(n)}</div> })
+            count.get().map(|n| {
+                view! {
+                    <div class="solution-count" title=SOLUTION_COUNT_TOOLTIP>
+                        {pluralize_solutions(n)}
+                    </div>
+                }
+            })
         } else {
             // Still solving — show busy indicator only if the puzzle is complete.
             // We don't yet know, so show "…" and let it resolve momentarily.
-            Some(view! { <div class="solution-count">{"…".to_owned()}</div> })
+            Some(view! {
+                <div class="solution-count" title=SOLUTION_COUNT_TOOLTIP>
+                    {"…".to_owned()}
+                </div>
+            })
         }
     }
 }
