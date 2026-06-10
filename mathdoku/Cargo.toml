@@ -5,7 +5,10 @@ edition.workspace = true
 authors.workspace = true
 repository.workspace = true
 license.workspace = true
-rust-version = "1.87"
+rust-version = "1.94"
+description = "Generate and solve Mathdoku puzzles: grid representation, constraint propagation, solver, and generator"
+keywords = ["puzzle", "solver", "generator", "constraint", "game"]
+categories = ["games", "algorithms"]
 
 [features]
 # Feasibility queries (`Puzzle::possible_operations` / `Puzzle::possible_targets`)

@@ -1,0 +1,31 @@
+# release-plz configuration (https://release-plz.dev/docs/config)
+#
+# Only the `mathdoku` library is released to crates.io. The designer crates
+# are end-user applications (`publish = false` in their manifests) and are
+# excluded from release processing entirely.
+
+[workspace]
+# Don't let release-plz rewrite Cargo.lock with unrelated dependency bumps as
+# part of a release PR; dependency updates are their own commits.
+dependencies_update = false
+
+[[package]]
+name = "mathdoku"
+changelog_update = true
+changelog_path = "./mathdoku/CHANGELOG.md"
+git_tag_enable = true
+git_tag_name = "mathdoku-v{{ version }}"
+git_release_enable = true
+git_release_name = "mathdoku-v{{ version }}"
+
+[[package]]
+name = "mathdoku-designer-ui"
+release = false
+
+[[package]]
+name = "mathdoku-designer-core"
+release = false
+
+[[package]]
+name = "mathdoku-designer-tauri"
+release = false

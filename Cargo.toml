@@ -11,7 +11,7 @@ members = [
 edition = "2024"
 authors = ["W.P. McNeill"]
 repository = "https://github.com/wpm/Mathdoku"
-license = "MIT"
+license = "Apache-2.0"
 
 [workspace.lints.rust]
 unused_results = "warn"

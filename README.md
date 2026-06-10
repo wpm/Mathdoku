@@ -24,8 +24,9 @@ are marked `publish = false`.
 
 ## Prerequisites
 
-- A stable Rust toolchain. `mathdoku` sets `rust-version = "1.87"`; match or
-  exceed it.
+- A stable Rust toolchain. `mathdoku` sets `rust-version = "1.94"`; match or
+  exceed it. (Policy: the MSRV lags the latest stable release by two versions;
+  see [`RELEASING.md`](RELEASING.md).)
 - For the designer: the `wasm32-unknown-unknown` target, [Trunk], and the
   [Tauri CLI] for the desktop shell.
 - For the end-to-end tests: Node 22+ and the Playwright Chromium browser
@@ -91,19 +92,9 @@ Some library tests are marked `#[ignore]` because they are slow; run them with
 
 ## Contributing
 
-- Enable the shared git hooks so your commits run the same checks as CI:
-  `git config core.hooksPath .githooks`.
-- The workspace enforces a strict lint policy (`clippy::all`, `pedantic`,
-  `nursery`, plus denied `unwrap`/`expect`/`panic`/`todo` paths). The
-  `mathdoku` crate has not yet opted into the full workspace lints pending an
-  error-handling cleanup; see issue #59.
-- Significant design decisions are recorded as ADRs under `adr/`. Add a new one
-  when proposing an architecturally significant change.
-- Note user-facing library changes in [`mathdoku/CHANGELOG.md`] under the
-  `[Unreleased]` section.
-
-[`mathdoku/CHANGELOG.md`]: mathdoku/CHANGELOG.md
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the development workflow, commit
+message conventions, and what to expect when submitting changes.
 
 ## License
 
-Licensed under the [MIT License](LICENSE).
+Licensed under the [Apache License, Version 2.0](LICENSE).
