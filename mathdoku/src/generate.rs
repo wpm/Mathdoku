@@ -177,7 +177,7 @@ pub fn greedy<R: Rng>(
     Ok(tiling)
 }
 
-/// In-bounds 4-neighbors of `cell` in an `n×n` grid (1-based).
+/// In-bounds edge-adjacent cells of `cell` in an `n×n` grid (1-based).
 fn grid_neighbors(cell: Cell, n: usize) -> impl Iterator<Item = Cell> {
     let Cell(r, c) = cell;
     [
