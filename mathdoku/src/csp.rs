@@ -1,10 +1,10 @@
-#![allow(dead_code)]
 //! Generic constraint satisfaction problem (CSP) abstractions.
 //!
-//! This module defines the core traits of a CSP — [`State`] and [`Constraint`] —
-//! and the [`generalized_arc_consistency`] algorithm that ties them together. The
-//! concrete solver in [`crate::grid_csp`] implements these abstractions for the
-//! Mathdoku grid.
+//! This module defines the core traits of a CSP — [`State`], [`Constraint`], and
+//! [`Domain`] — and the [`generalized_arc_consistency`] algorithm that ties them
+//! together. The Mathdoku grid implements these abstractions: [`crate::grid::Grid`]
+//! is the `State`, [`crate::cage::Cage`] is a `Constraint`, and [`crate::fill::Fill`]
+//! is a `Domain`, all driven via `Puzzle::fixpoint`.
 //!
 //! ## Structure
 //!
@@ -126,6 +126,7 @@ mod tests {
     use super::{Constraint, State, generalized_arc_consistency};
     use crate::csp::tests::Constraints::{Equal, Sum};
     use std::collections::{HashMap, HashSet};
+    use std::convert::Infallible;
 
     #[test]
     fn equal_overlapping_domains_intersects_both() {
@@ -288,16 +289,13 @@ mod tests {
             )
         }
     }
-    impl State<String, TestDomain, InvalidVariable> for IntegerSets {
-        fn get(&self, variable: String) -> Result<TestDomain, InvalidVariable> {
-            self.0
-                .get(&variable)
-                .cloned()
-                .ok_or(InvalidVariable(variable))
+    impl State<String, TestDomain, Infallible> for IntegerSets {
+        fn get(&self, variable: String) -> Result<TestDomain, Infallible> {
+            // Every test queries only variables present in the map, so lookup
+            // never fails — the error slot is `Infallible`.
+            Ok(self.0[&variable].clone())
         }
     }
-    #[derive(Debug)]
-    struct InvalidVariable(String);
 
     #[derive(Clone)]
     enum Constraints {
@@ -314,11 +312,8 @@ mod tests {
         }
     }
 
-    impl Constraint<IntegerSets, String, TestDomain, InvalidVariable> for Constraints {
-        fn propagate(
-            &self,
-            state: &IntegerSets,
-        ) -> Result<(IntegerSets, Vec<String>), InvalidVariable> {
+    impl Constraint<IntegerSets, String, TestDomain, Infallible> for Constraints {
+        fn propagate(&self, state: &IntegerSets) -> Result<(IntegerSets, Vec<String>), Infallible> {
             // Returns updated state and names of variables whose domains shrank.
             let update = |name_a: &str,
                           old_a: &TestDomain,
