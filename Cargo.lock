@@ -2667,7 +2667,6 @@ name = "mathdoku"
 version = "0.1.0"
 dependencies = [
  "env_logger",
- "itertools",
  "log",
  "rand 0.10.1",
  "rand_chacha 0.10.0",
