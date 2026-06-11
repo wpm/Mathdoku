@@ -21,9 +21,7 @@ test.describe('web build editor flow', () => {
     await expect(
       page.locator('p').filter({ hasText: 'New puzzle' }),
     ).toBeVisible();
-    await page
-      .getByRole('button', { name: 'Random Solution', exact: true })
-      .click();
+    await page.getByRole('button', { name: 'Create', exact: true }).click();
     await waitForGrid(page);
     await expect(page.locator('.puzzle-wrap')).toHaveAttribute(
       'data-solution-mode',

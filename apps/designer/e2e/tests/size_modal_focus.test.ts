@@ -39,10 +39,10 @@ test.describe('size modal focus (menu-new over an existing puzzle)', () => {
     page,
   }) => {
     await openModalOverPuzzle(page);
-    // Tab order: select → Random Solution → Cancel → select.
+    // Tab order: select → Create → Cancel → select.
     await page.keyboard.press(TAB);
     await expect(
-      page.getByRole('button', { name: 'Random Solution', exact: true }),
+      page.getByRole('button', { name: 'Create', exact: true }),
     ).toBeFocused();
     await page.keyboard.press(TAB);
     await expect(

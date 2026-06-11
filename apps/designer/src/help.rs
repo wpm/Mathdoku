@@ -39,7 +39,8 @@ pub const GRID_TOOLTIP: &str = "Arrow keys move the selection. Hold Shift and us
 pub const SIZE_SELECT_TOOLTIP: &str =
     "Grid size: an n\u{d7}n puzzle is filled with the numbers 1 through n.";
 
-/// Tooltip for the New-puzzle dialog's "Random Solution" button.
+/// Tooltip for the New-puzzle dialog's creation button — "Random Solution"
+/// in `without-solution` builds, "Create" in with-solution-only builds.
 pub const RANDOM_SOLUTION_TOOLTIP: &str = "Create a puzzle with a fixed random solution; every \
      cage's target is computed from that solution as you draw.";
 
