@@ -28,10 +28,10 @@ impl Cell {
         self.1 - 1
     }
 
-    /// Returns the 4-connected neighbors of this cell (unbounded, may include cells with row or
+    /// Returns the edge-adjacent cells of this cell (unbounded, may include cells with row or
     /// column equal to `usize::MAX` if the cell is at row/column 0).
     #[must_use]
-    pub fn neighbors_4(self) -> Vec<Self> {
+    pub fn edge_adjacent_cells(self) -> Vec<Self> {
         let r = self.row();
         let c = self.column();
         let mut result = Vec::with_capacity(4);
@@ -285,8 +285,8 @@ mod tests {
     }
 
     #[test]
-    fn neighbors_4_interior_cell_has_four() {
-        let n = Cell::new(2, 2).neighbors_4();
+    fn interior_cell_has_four_edge_adjacent() {
+        let n = Cell::new(2, 2).edge_adjacent_cells();
         assert_eq!(n.len(), 4);
         assert!(n.contains(&Cell::new(1, 2)));
         assert!(n.contains(&Cell::new(3, 2)));
@@ -295,9 +295,9 @@ mod tests {
     }
 
     #[test]
-    fn neighbors_4_origin_cell_has_two() {
+    fn origin_cell_has_two_edge_adjacent() {
         // Row 0, column 0: no up or left neighbor.
-        let n = Cell::new(0, 0).neighbors_4();
+        let n = Cell::new(0, 0).edge_adjacent_cells();
         assert_eq!(n, vec![Cell::new(1, 0), Cell::new(0, 1)]);
     }
 
