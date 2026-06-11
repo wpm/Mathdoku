@@ -722,11 +722,8 @@ mod tests {
         ));
     }
 
-    /// Perf regression: an 8-cell (2×4) Add cage in a 9×9. The deleted brute
-    /// force enumerated `9^8 ≈ 4×10^7` value combinations here (and `9^12`
-    /// for a 3×4 cage — it never finished); the memo fold is proportional to
-    /// the diagram.
     #[test]
+    #[ignore = "perf regression; run with --include-ignored on merge to main"]
     fn perf_cage_viable_counts_fat_cage_in_9x9() {
         let cells: Vec<Cell> = (1..=2)
             .flat_map(|r| (1..=4).map(move |c| Cell(r, c)))
