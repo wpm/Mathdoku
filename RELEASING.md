@@ -66,13 +66,18 @@ which builds the app for macOS (Apple Silicon + Intel), Windows, and Linux via
 and the auto-updater manifest, and creates a **draft** GitHub release carrying
 the installers and a signed `latest.json`.
 
-### Prerequisite (one-time)
+### Prerequisites (one-time)
 
-The `TAURI_SIGNING_PRIVATE_KEY` repository secret must be set (see
-[Signing key](#signing-key) below). It is already configured; you only need to
-revisit this if the key is rotated. Without the secret, the build still
-produces installers but `tauri-action` cannot sign `latest.json`, and the
-auto-updater will reject the release.
+Two sets of repository secrets must be configured (Settings → Secrets and
+variables → Actions):
+
+1. `TAURI_SIGNING_PRIVATE_KEY` (see [Signing key](#signing-key) below).
+   Without it, the build still produces installers but `tauri-action` cannot
+   sign `latest.json`, and the auto-updater will reject the release.
+2. The six `APPLE_*` secrets (see
+   [Apple code-signing secrets](#apple-code-signing-secrets) below). Without
+   them, macOS bundles build unsigned and un-notarized; Gatekeeper will warn
+   or block users who download them.
 
 ### Steps to cut a Designer release
 
@@ -155,6 +160,41 @@ is no way to avoid this — it is the security property working as intended.
 6. **Destroy the old private key.** Once the rotated release is published,
    securely delete every copy of the previous `mathdoku-designer.key` so a
    leaked old key can never sign anything again.
+
+### Apple code-signing secrets
+
+macOS bundles are Developer ID-signed and notarized in CI. Six repository
+secrets drive this; `tauri-action` consumes the first three, and both
+`tauri-action` and the workflow's DMG-staple step use the rest:
+
+| Secret | Value |
+| --- | --- |
+| `APPLE_CERTIFICATE` | base64 of the Developer ID Application `.p12` export (`base64 -i cert.p12`) |
+| `APPLE_CERTIFICATE_PASSWORD` | password chosen when exporting the `.p12` |
+| `APPLE_SIGNING_IDENTITY` | full identity string, e.g. `Developer ID Application: <name> (<team id>)` — must match the certificate exactly |
+| `APPLE_ID` | Apple ID email of the developer account |
+| `APPLE_PASSWORD` | an [app-specific password](https://account.apple.com) for that Apple ID (not the account password) |
+| `APPLE_TEAM_ID` | 10-character team ID (also visible in the identity string) |
+
+The signing identity is deliberately **not** set in `tauri.conf.json`: keeping
+it in a secret leaves the repo free of personal identifiers and lets local dev
+builds run unsigned. No entitlements file is needed — notarization passes with
+the bundler's default hardened runtime.
+
+Maintenance notes:
+
+- **The `.p12` is irreplaceable.** Apple does not re-issue private keys, and
+  an account is limited to five Developer ID Application certificates total.
+  Keep the `.p12` export backed up securely.
+- **App-specific passwords** can be revoked and regenerated at
+  [account.apple.com](https://account.apple.com) at any time without touching
+  the certificate; update `APPLE_PASSWORD` afterward.
+- **Certificate expiry** (5 years): generate a new certificate via
+  Keychain Access CSR + [developer.apple.com](https://developer.apple.com/account/resources/certificates/add),
+  export a new `.p12`, and update `APPLE_CERTIFICATE`,
+  `APPLE_CERTIFICATE_PASSWORD`, and `APPLE_SIGNING_IDENTITY`. Already-shipped
+  releases keep working; notarization tickets and stapled signatures outlive
+  the certificate.
 
 ## One-time bootstrap (already-planned, maintainer-only)
 
