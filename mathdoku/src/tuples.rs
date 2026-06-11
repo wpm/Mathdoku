@@ -20,8 +20,11 @@ pub struct Tuples {
 impl Tuples {
     /// Creates a `Tuples` iterator for a commutative (monotonic) operation.
     ///
-    /// Used by [`Table::commutative`] (a test utility); commutative cages use
-    /// [`Mdd`] directly in production.
+    /// Used only by the test-only `Table::commutative`; commutative cages use
+    /// [`Mdd`] directly in production. It is the sole constructor of
+    /// [`ArithmeticConstraint::CommutativeConstraint`], so the `allow` keeps that
+    /// variant (and the `monotonic` path that reads it) alive for the iterator's
+    /// match in production builds.
     #[must_use]
     #[allow(dead_code)]
     pub fn commutative(n: N, k: N, operator: CommutativeOperator, target: T) -> Self {

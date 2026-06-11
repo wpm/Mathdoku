@@ -7,8 +7,9 @@ use std::ops::Div;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ArithmeticConstraint {
     /// A commutative operation and a target.
-    /// Used by [`Tuples::commutative`] and [`Table::commutative`] (test utilities).
-    #[allow(dead_code)]
+    ///
+    /// Constructed only by [`Tuples::commutative`] and [`Table::commutative`]
+    /// (test utilities); commutative cages use [`Mdd`] in production.
     CommutativeConstraint(CommutativeOperator, T),
     /// A non-commutative operation and a target.
     NonCommutativeConstraint(NonCommutativeOperator, T),

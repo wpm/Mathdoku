@@ -7,7 +7,6 @@ pub mod cage;
 pub mod cage_stats;
 pub mod cell;
 pub mod operation_selector;
-pub mod provisional_cage;
 pub mod puzzle;
 pub mod selection;
 pub mod solution_count;

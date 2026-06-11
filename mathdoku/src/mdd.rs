@@ -333,34 +333,6 @@ impl Mdd {
         Ok(fills)
     }
 
-    #[allow(dead_code)] // used only in tests to verify MDD contents
-    pub(crate) fn tuples(&self) -> Vec<Vec<N>> {
-        let root = Node {
-            depth: 0,
-            state: self.dp.root(),
-        };
-        let mut result = Vec::new();
-        self.collect_paths(&root, &mut Vec::new(), &mut result);
-        result
-    }
-
-    fn collect_paths(&self, head: &Node, path: &mut Vec<N>, result: &mut Vec<Vec<N>>) {
-        match self.edges.get(head) {
-            None => {
-                if self.dp.accept(head.depth, &head.state) {
-                    result.push(path.clone());
-                }
-            }
-            Some(edges) => {
-                for (label, tail) in edges {
-                    path.push(*label);
-                    self.collect_paths(tail, path, result);
-                    let _ = path.pop();
-                }
-            }
-        }
-    }
-
     /// Returns the number of accepting tuples (root→terminal paths) in this MDD.
     ///
     /// Computed by a memoized subtree-count fold over the shared DAG, so the
@@ -842,6 +814,40 @@ mod tests {
     static LOGGING: OnceLock<()> = OnceLock::new();
     fn setup() {
         let () = *LOGGING.get_or_init(crate::init_debug_logging);
+    }
+
+    impl Mdd {
+        /// Enumerates every accepting tuple (root→terminal path) in the MDD.
+        ///
+        /// A test-only helper for asserting on MDD contents; production code
+        /// folds over the diagram via [`Mdd::tuple_count`] / [`Mdd::multiset_count`]
+        /// rather than materialising every path.
+        fn tuples(&self) -> Vec<Vec<N>> {
+            let root = Node {
+                depth: 0,
+                state: self.dp.root(),
+            };
+            let mut result = Vec::new();
+            self.collect_paths(&root, &mut Vec::new(), &mut result);
+            result
+        }
+
+        fn collect_paths(&self, head: &Node, path: &mut Vec<N>, result: &mut Vec<Vec<N>>) {
+            match self.edges.get(head) {
+                None => {
+                    if self.dp.accept(head.depth, &head.state) {
+                        result.push(path.clone());
+                    }
+                }
+                Some(edges) => {
+                    for (label, tail) in edges {
+                        path.push(*label);
+                        self.collect_paths(tail, path, result);
+                        let _ = path.pop();
+                    }
+                }
+            }
+        }
     }
 
     fn no_lines() -> Vec<Vec<usize>> {
