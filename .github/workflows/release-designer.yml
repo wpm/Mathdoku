@@ -1,0 +1,111 @@
+name: Release Designer
+
+# Builds, signs, and publishes the desktop Mathdoku Designer app, producing the
+# auto-updater manifest (`latest.json`) that installed copies poll. This is the
+# desktop counterpart to `release.yml`, which only releases the `mathdoku`
+# *crate* to crates.io.
+#
+# The Designer app version (in apps/designer/src-tauri/tauri.conf.json) is
+# independent of the `mathdoku-v*` crate version, so this workflow has its own
+# trigger: push a `designer-v<version>` tag, or dispatch it manually. It does
+# NOT fire on crate releases.
+#
+# Signing: tauri-action signs each bundle and the update manifest with the
+# minisign private key in the TAURI_SIGNING_PRIVATE_KEY secret. The key was
+# generated with `cargo tauri signer generate` and has no password (hence the
+# empty TAURI_SIGNING_PRIVATE_KEY_PASSWORD). Its public half is embedded in
+# tauri.conf.json under plugins.updater.pubkey; the private half is never
+# committed. Lose the private key and existing installs can no longer verify
+# updates.
+
+on:
+  push:
+    tags:
+      - "designer-v*"
+  workflow_dispatch:
+
+permissions: {}
+
+# Don't let two tag pushes race into overlapping releases.
+concurrency:
+  group: release-designer-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release-designer:
+    name: ${{ matrix.platform.name }}
+    runs-on: ${{ matrix.platform.runner }}
+    permissions:
+      contents: write # create the GitHub release and upload bundles + latest.json
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          # Apple Silicon and Intel macOS are built separately so each ships a
+          # native bundle; tauri-action merges them into one release.
+          - name: macOS (Apple Silicon)
+            runner: macos-latest
+            target: aarch64-apple-darwin
+          - name: macOS (Intel)
+            runner: macos-13
+            target: x86_64-apple-darwin
+          - name: Linux
+            runner: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+          - name: Windows
+            runner: windows-latest
+            target: x86_64-pc-windows-msvc
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          # The frontend is a wasm app; the desktop shell builds for the host.
+          targets: wasm32-unknown-unknown, ${{ matrix.platform.target }}
+
+      - name: Cache cargo registry & build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          # Keyed per target so the four matrix legs don't clobber each other.
+          key: ${{ matrix.platform.target }}
+
+      # Linux desktop builds need GTK/WebKitGTK and friends. macOS and Windows
+      # have their webview preinstalled.
+      - name: Install Linux system dependencies
+        if: matrix.platform.runner == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libgtk-3-dev
+
+      # Prebuilt trunk binary (matches the web-build and deploy-main jobs).
+      # tauri-action invokes `trunk build` via beforeBuildCommand, so trunk and
+      # the wasm target must already be present.
+      - name: Install trunk
+        uses: taiki-e/install-action@v2
+        with:
+          tool: trunk
+
+      - name: Build, sign, and release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          # The key was generated without a password.
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+        with:
+          projectPath: apps/designer/src-tauri
+          # Reuse the pushed tag (designer-v<version>) as the release; for a
+          # manual workflow_dispatch run, tauri-action falls back to the app
+          # version from tauri.conf.json.
+          tagName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+          releaseName: "Mathdoku Designer v__VERSION__"
+          releaseDraft: true
+          prerelease: false
+          args: --target ${{ matrix.platform.target }}
