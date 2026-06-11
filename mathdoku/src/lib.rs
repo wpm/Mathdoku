@@ -73,13 +73,10 @@ pub type N = u8;
 ///
 /// Sums and products of up to nine 9s can reach 729, which overflows `u8` and `u16`.
 /// `u32` is wide enough for any realistic Mathdoku constraint.
-pub type T = u32;
+pub type Target = u32;
 
 /// Alias for [`CageOperator`].
 pub type Operator = CageOperator;
-
-/// Alias for [`T`].
-pub type Target = T;
 
 /// Errors returned by mathdoku operations.
 #[derive(Debug)]

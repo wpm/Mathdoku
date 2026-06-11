@@ -21,12 +21,12 @@ pub mod memo_contract {
     use crate::fill::Fill;
     use crate::memo::Memo;
     use crate::operator::CommutativeOperator::{self, Add, Multiply};
-    use crate::{N, T};
+    use crate::{N, Target};
     use std::fmt::Debug;
 
     /// Constructor for the implementation under test: `(n, k, operator, target)`.
-    pub trait Make<M: Memo>: Fn(N, N, CommutativeOperator, T) -> Result<M, Error> {}
-    impl<M: Memo, F: Fn(N, N, CommutativeOperator, T) -> Result<M, Error>> Make<M> for F {}
+    pub trait Make<M: Memo>: Fn(N, N, CommutativeOperator, Target) -> Result<M, Error> {}
+    impl<M: Memo, F: Fn(N, N, CommutativeOperator, Target) -> Result<M, Error>> Make<M> for F {}
 
     pub fn add_fills_are_union_of_column_values<M: Memo>(make: impl Make<M>) {
         // 3+3=6, 2+4=6, 4+2=6 — position 0 is {2,3,4}, position 1 is {2,3,4}

@@ -20,7 +20,7 @@ pub mod test_support;
 
 use std::collections::BTreeSet;
 
-use mathdoku::{Cage, Cell, N, Operator, Polyomino, Puzzle, T, generate_latin_square};
+use mathdoku::{Cage, Cell, N, Operator, Polyomino, Puzzle, Target, generate_latin_square};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use serde_json::{from_str, to_string_pretty};
@@ -331,7 +331,7 @@ pub fn insert_cage(
     state: &mut AppState,
     poly: Polyomino,
     operator: Operator,
-    target: Option<T>,
+    target: Option<Target>,
 ) -> Result<State, Error> {
     let puzzle = state.puzzle.as_ref().ok_or(Error::NoPuzzle)?;
     let n = puzzle.n();
@@ -341,7 +341,7 @@ pub fn insert_cage(
     // u64 arithmetic avoids intermediate overflow (max product 9^9 = 387M fits T=u32,
     // but partial products during iteration can reach 9^8 * 9 = same bound — still safe,
     // but widening to u64 keeps the arithmetic unambiguous).
-    let target: T = if let Some(t) = target {
+    let target: Target = if let Some(t) = target {
         t
     } else {
         let cells: Vec<Cell> = poly.iter().copied().collect();
@@ -363,7 +363,7 @@ pub fn insert_cage(
             (Operator::Divide, Some(vals)) => vals[0].max(vals[1]) / vals[0].min(vals[1]),
             _ => 0,
         };
-        T::try_from(raw).map_err(|_| mathdoku::Error::InfeasibleCage(poly.clone(), raw))?
+        Target::try_from(raw).map_err(|_| mathdoku::Error::InfeasibleCage(poly.clone(), raw))?
     };
 
     let n = N::try_from(n).map_err(|_| mathdoku::Error::InvalidGridSize(n))?;
@@ -1136,7 +1136,7 @@ mod tests {
     mod mode_transitions {
         use crate::test_support::{all_cells, poly, unique_3x3_app_state};
         use crate::{AppState, Error, fix, insert_cage, new_empty, new_latin_square, unfix};
-        use mathdoku::{Cell, Operator, Polyomino, T};
+        use mathdoku::{Cell, Operator, Polyomino, Target};
         use rand::{SeedableRng, rngs::StdRng};
 
         #[test]
@@ -1171,7 +1171,7 @@ mod tests {
             let _ = new_latin_square(&mut state, 3, &mut rng).unwrap();
             let original = state.solution.clone().unwrap();
             for cell in all_cells(3) {
-                let v = T::from(original.get(cell).unwrap().values()[0]);
+                let v = Target::from(original.get(cell).unwrap().values()[0]);
                 let p = Polyomino::from_cells(&[cell]).unwrap();
                 let _ = insert_cage(&mut state, p, Operator::Given, Some(v)).unwrap();
             }
@@ -1225,7 +1225,7 @@ mod tests {
                 &mut state,
                 Polyomino::from_cells(&[Cell::new(0, 1)]).unwrap(),
                 Operator::Given,
-                Some(T::try_from(value_at(0, 1)).unwrap()),
+                Some(Target::try_from(value_at(0, 1)).unwrap()),
             )
             .unwrap();
 
@@ -1748,7 +1748,7 @@ mod tests {
         use crate::{
             AppState, apply_loaded, insert_cage, new_latin_square, remove_cage_at, serialize_save,
         };
-        use mathdoku::{Cell, Operator, T};
+        use mathdoku::{Cell, Operator, Target};
         use proptest::prelude::*;
         use rand::{SeedableRng, rngs::StdRng};
 
@@ -1757,13 +1757,13 @@ mod tests {
             Given {
                 r: usize,
                 c: usize,
-                target: T,
+                target: Target,
             },
             AddPair {
                 r: usize,
                 c: usize,
                 horizontal: bool,
-                target: T,
+                target: Target,
             },
             Remove {
                 r: usize,

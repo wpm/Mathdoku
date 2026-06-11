@@ -13,7 +13,7 @@
 use crate::{AppState, apply_loaded, serialize_save};
 #[cfg(feature = "without-solution")]
 use crate::{State, insert_cage};
-use mathdoku::{Cage, Cell, N, Operator, Polyomino, Puzzle, T};
+use mathdoku::{Cage, Cell, N, Operator, Polyomino, Puzzle, Target};
 
 /// The canonical 3×3 Latin square used by the fixtures below:
 /// ```text
@@ -35,7 +35,7 @@ pub fn poly(positions: &[(usize, usize)]) -> Polyomino {
 
 /// Builds a [`Cage`] from `(row, column)` positions, an operator, and a target.
 pub fn cage_at(n: N, positions: &[(usize, usize)], op: Operator, target: u64) -> Cage {
-    let target = T::try_from(target).unwrap();
+    let target = Target::try_from(target).unwrap();
     Cage::new(n, poly(positions), op, target).unwrap()
 }
 
@@ -112,7 +112,7 @@ pub fn unique_3x3_app_state() -> AppState {
                 &mut state,
                 poly(&[(r, c)]),
                 Operator::Given,
-                Some(T::from(v)),
+                Some(Target::from(v)),
             )
             .unwrap();
         }

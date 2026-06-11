@@ -10,7 +10,7 @@ use crate::Error::InvalidCellCageIndex;
 use crate::fill::Fill;
 use crate::memo::Memo;
 use crate::operator::CommutativeOperator;
-use crate::{Error, N, T};
+use crate::{Error, N, Target};
 use log::debug;
 use std::collections::{HashMap, HashSet};
 
@@ -47,7 +47,7 @@ impl Mdd {
         n: N,
         k: N,
         operator: CommutativeOperator,
-        target: T,
+        target: Target,
         lines: &[Vec<usize>],
     ) -> Result<Self, Error> {
         let dp = CageDp::new(n, k, operator, target, lines);
@@ -112,7 +112,7 @@ impl Mdd {
 
     /// Returns a copy of this MDD with edges for forbidden values removed and
     /// dead nodes garbage-collected via downward and upward cascades.
-    fn remove_support(&self, forbidden: &HashMap<T, HashSet<N>>) -> Self {
+    fn remove_support(&self, forbidden: &HashMap<Target, HashSet<N>>) -> Self {
         let mut mdd = Self {
             dp: self.dp.clone(),
             edges: self.edges.clone(),
@@ -145,7 +145,7 @@ impl Mdd {
         mdd
     }
 
-    fn heads_at_depth(&self, depth: T) -> Vec<Node> {
+    fn heads_at_depth(&self, depth: Target) -> Vec<Node> {
         self.edges
             .keys()
             .filter(|n| n.depth == depth)
@@ -297,13 +297,13 @@ impl Mdd {
 
     fn at_target(&self, node: &Node) -> bool {
         Self::log_if(
-            self.dp.target_reached(node.state.value),
+            self.dp.target_reached(node.state.target),
             node.depth,
             &format!("{node} Target reached"),
         )
     }
 
-    fn log_if(condition: bool, depth: T, message: &str) -> bool {
+    fn log_if(condition: bool, depth: Target, message: &str) -> bool {
         if condition {
             debug!("{:indent$}{message}", "", indent = depth as usize);
         }
@@ -380,8 +380,8 @@ impl Mdd {
             return u64::from(self.dp.accept(root.depth, &root.state));
         }
         let mut suffixes: HashMap<Node, HashSet<Vec<N>>> = HashMap::new();
-        let depths: HashSet<T> = self.edges.keys().map(|n| n.depth).collect();
-        let mut depths: Vec<T> = depths.into_iter().collect();
+        let depths: HashSet<Target> = self.edges.keys().map(|n| n.depth).collect();
+        let mut depths: Vec<Target> = depths.into_iter().collect();
         depths.sort_unstable_by(|a, b| b.cmp(a));
         for depth in depths {
             for head in self.heads_at_depth(depth) {
@@ -427,7 +427,7 @@ impl Memo for Mdd {
     }
 
     fn narrow(&self, support: &[Fill]) -> Result<Self, Error> {
-        let forbidden: HashMap<T, HashSet<N>> = support
+        let forbidden: HashMap<Target, HashSet<N>> = support
             .iter()
             .enumerate()
             .filter_map(|(i, fill)| {
@@ -437,7 +437,7 @@ impl Memo for Mdd {
                 } else {
                     // i is a cage position index, bounded by k <= 9.
                     #[allow(clippy::cast_possible_truncation)]
-                    Some((T::from(i as N), excluded))
+                    Some((Target::from(i as N), excluded))
                 }
             })
             .collect();
@@ -468,13 +468,19 @@ impl CageDp {
     /// `operator` applied to the tuple equals `target`, with the given
     /// collinear distinctness constraints (see [`Mdd::new`] for the `lines`
     /// format).
-    pub fn new(n: N, k: N, operator: CommutativeOperator, target: T, lines: &[Vec<usize>]) -> Self {
+    pub fn new(
+        n: N,
+        k: N,
+        operator: CommutativeOperator,
+        target: Target,
+        lines: &[Vec<usize>],
+    ) -> Self {
         Self {
             n,
             constraint: Constraint {
                 operator,
                 target,
-                arity: T::from(k),
+                arity: Target::from(k),
             },
             line_meta: LineMeta::new(lines, k as usize),
         }
@@ -483,7 +489,7 @@ impl CageDp {
     /// The DP state before any value has been placed.
     fn root(&self) -> State {
         State {
-            value: self.constraint.unit(),
+            target: self.constraint.unit(),
             used: vec![Fill::default(); self.line_meta.num_lines()].into_boxed_slice(),
         }
     }
@@ -495,15 +501,15 @@ impl CageDp {
     /// out `v` and every larger value, [`Step::Skip`] when `v` alone is
     /// infeasible (arithmetic skip or collinear distinctness violation), and
     /// [`Step::Tail`] with the successor state otherwise.
-    fn step(&self, depth: T, state: &State, v: N) -> Step {
+    fn step(&self, depth: Target, state: &State, v: N) -> Step {
         let remaining = self.constraint.arity - depth - 1;
-        let i = T::from(v);
-        if self.constraint.pruned(state.value, i, remaining) {
+        let i = Target::from(v);
+        if self.constraint.pruned(state.target, i, remaining) {
             return Step::Stop;
         }
         if self
             .constraint
-            .skipped(state.value, i, remaining, T::from(self.n))
+            .skipped(state.target, i, remaining, Target::from(self.n))
         {
             return Step::Skip;
         }
@@ -518,21 +524,21 @@ impl CageDp {
             return Step::Skip;
         }
         Step::Tail(State {
-            value: self.constraint.operation(state.value, i),
+            target: self.constraint.operation(state.target, i),
             used: self.line_meta.advance_used(&state.used, depth_idx, v),
         })
     }
 
     /// Returns true if `state` at `depth` is accepting: every cell has been
     /// placed and the accumulated value equals the target.
-    const fn accept(&self, depth: T, state: &State) -> bool {
-        depth == self.constraint.arity && state.value == self.constraint.target
+    const fn accept(&self, depth: Target, state: &State) -> bool {
+        depth == self.constraint.arity && state.target == self.constraint.target
     }
 
     /// The recursion cutoff for drivers of this DP: returns true if the
     /// accumulated `value` has reached the point where no deeper placement
     /// can accept, keeping the operator-aware arithmetic inside the DP.
-    const fn target_reached(&self, value: T) -> bool {
+    const fn target_reached(&self, value: Target) -> bool {
         self.constraint.target_reached(value)
     }
 
@@ -600,7 +606,7 @@ impl CageSolutions<'_> {
     fn pop_frame(&mut self) {
         // The stack depth is a cage position index, bounded by k <= 9.
         #[allow(clippy::cast_possible_truncation)]
-        let depth = (self.stack.len() - 1) as T;
+        let depth = (self.stack.len() - 1) as Target;
         if let Some(frame) = self.stack.pop() {
             if frame.found {
                 if let Some(parent) = self.stack.last_mut() {
@@ -635,7 +641,7 @@ impl Iterator for CageSolutions<'_> {
             }
             // depth is a cage position index, bounded by k <= 9.
             #[allow(clippy::cast_possible_truncation)]
-            let state = match self.dp.step(depth as T, &frame.state, v) {
+            let state = match self.dp.step(depth as Target, &frame.state, v) {
                 Step::Stop => {
                     frame.next_v = self.dp.n + 1;
                     continue;
@@ -645,7 +651,7 @@ impl Iterator for CageSolutions<'_> {
             };
             #[allow(clippy::cast_possible_truncation)]
             let child = Node {
-                depth: (depth + 1) as T,
+                depth: (depth + 1) as Target,
                 state,
             };
             if self.dp.accept(child.depth, &child.state) {
@@ -670,7 +676,7 @@ impl Iterator for CageSolutions<'_> {
 #[derive(Eq, PartialEq, Hash, Debug, Clone)]
 struct State {
     /// Accumulated arithmetic value.
-    value: T,
+    target: Target,
     /// Used-value sets for still-open collinear lines (indexed by line index).
     /// Closed lines are zeroed out so that they don't inflate the key space.
     /// `Fill` doubles as a compact bitset (u16) for tracking which values have
@@ -694,37 +700,39 @@ enum Step {
 struct Constraint {
     // TODO Can this be ArithmeticConstraint?
     operator: CommutativeOperator,
-    target: T,
-    arity: T,
+    target: Target,
+    arity: Target,
 }
 
 impl Constraint {
-    const fn target_reached(self, v: T) -> bool {
+    const fn target_reached(self, target: Target) -> bool {
         match self.operator {
-            CommutativeOperator::Add => v >= self.target,
-            CommutativeOperator::Multiply => v > self.target,
+            CommutativeOperator::Add => target >= self.target,
+            CommutativeOperator::Multiply => target > self.target,
         }
     }
 
-    const fn pruned(self, acc: T, v: T, _remaining: T) -> bool {
+    const fn pruned(self, acc: Target, target: Target, _remaining: Target) -> bool {
         match self.operator {
-            CommutativeOperator::Add => acc + v > self.target,
-            CommutativeOperator::Multiply => acc * v > self.target,
+            CommutativeOperator::Add => acc + target > self.target,
+            CommutativeOperator::Multiply => acc * target > self.target,
         }
     }
 
-    const fn skipped(self, acc: T, v: T, remaining: T, n: T) -> bool {
+    const fn skipped(self, acc: Target, target: Target, remaining: Target, n: Target) -> bool {
         match self.operator {
-            CommutativeOperator::Add => acc + v + remaining * n < self.target,
-            CommutativeOperator::Multiply => (acc * v) != 0 && !self.target.is_multiple_of(acc * v),
+            CommutativeOperator::Add => acc + target + remaining * n < self.target,
+            CommutativeOperator::Multiply => {
+                (acc * target) != 0 && !self.target.is_multiple_of(acc * target)
+            }
         }
     }
 
-    const fn operation(self, x: T, y: T) -> T {
+    const fn operation(self, x: Target, y: Target) -> Target {
         self.operator.apply_to_pair(x, y)
     }
 
-    const fn unit(self) -> T {
+    const fn unit(self) -> Target {
         self.operator.identity()
     }
 }
@@ -793,13 +801,13 @@ impl LineMeta {
 /// A hash-cons key for the MDD: the DP [`State`] at a given depth.
 #[derive(Eq, PartialEq, Hash, Debug, Clone)]
 struct Node {
-    depth: T,
+    depth: Target,
     state: State,
 }
 
 impl std::fmt::Display for Node {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Node({} @ level {})", self.state.value, self.depth)
+        write!(f, "Node({} @ level {})", self.state.target, self.depth)
     }
 }
 
@@ -855,11 +863,11 @@ mod tests {
     }
 
     /// A cage test case: `(n, k, op, target, lines)`.
-    type CageCase = (N, N, CommutativeOperator, T, Vec<Vec<usize>>);
+    type CageCase = (N, N, CommutativeOperator, Target, Vec<Vec<usize>>);
 
     /// [`Mdd::new`] with no collinearity lines, matching the `memo_contract`
     /// constructor shape.
-    fn make(n: N, k: N, op: CommutativeOperator, target: T) -> Result<Mdd, Error> {
+    fn make(n: N, k: N, op: CommutativeOperator, target: Target) -> Result<Mdd, Error> {
         Mdd::new(n, k, op, target, &no_lines())
     }
 
@@ -1029,7 +1037,7 @@ mod tests {
         setup();
         let m = Mdd::new(3, 3, Add, 5, &no_lines()).unwrap();
         assert_eq!(
-            sorted_tuples(&m.remove_support(&HashMap::<T, HashSet<N>>::new())),
+            sorted_tuples(&m.remove_support(&HashMap::<Target, HashSet<N>>::new())),
             sorted_tuples(&m)
         );
     }
@@ -1221,11 +1229,11 @@ mod tests {
         for n in 2u8..=6 {
             for k in 2u8..=4 {
                 let support = full_support(n, k);
-                let max_sum = T::from(n) * T::from(k) + 1;
+                let max_sum = Target::from(n) * Target::from(k) + 1;
                 for target in 1..=max_sum {
                     assert_existence_matches_mdd(n, k, Add, target, &support);
                 }
-                let max_product = T::from(n).pow(u32::from(k)) + 1;
+                let max_product = Target::from(n).pow(u32::from(k)) + 1;
                 for target in 1..=max_product {
                     assert_existence_matches_mdd(n, k, Multiply, target, &support);
                 }
@@ -1298,13 +1306,13 @@ mod tests {
         setup();
         for n in 2u8..=6 {
             for k in 2u8..=4 {
-                let max_sum = T::from(n) * T::from(k);
+                let max_sum = Target::from(n) * Target::from(k);
                 for target in 1..=max_sum {
                     if let Ok(m) = Mdd::new(n, k, Add, target, &no_lines()) {
                         assert_counts_match_tuples(&m, &format!("n={n} k={k} Add {target}"));
                     }
                 }
-                let max_product = T::from(n).pow(u32::from(k));
+                let max_product = Target::from(n).pow(u32::from(k));
                 for target in 1..=max_product {
                     if let Ok(m) = Mdd::new(n, k, Multiply, target, &no_lines()) {
                         assert_counts_match_tuples(&m, &format!("n={n} k={k} Multiply {target}"));
@@ -1382,11 +1390,11 @@ mod tests {
         setup();
         for n in 3u8..=9 {
             for k in 2u8..=5 {
-                let max_sum = T::from(n) * T::from(k) + 1;
+                let max_sum = Target::from(n) * Target::from(k) + 1;
                 for target in 1..=max_sum {
                     assert_equiv(n, Add, target, k);
                 }
-                let max_product = T::from(n).pow(u32::from(k)) + 1;
+                let max_product = Target::from(n).pow(u32::from(k)) + 1;
                 for target in 1..=max_product {
                     assert_equiv(n, Multiply, target, k);
                 }
@@ -1405,7 +1413,7 @@ mod tests {
         n: N,
         k: N,
         op: CommutativeOperator,
-        target: T,
+        target: Target,
         support: &[Fill],
     ) {
         let dp = CageDp::new(n, k, op, target, &no_lines());
@@ -1416,7 +1424,7 @@ mod tests {
         );
     }
 
-    fn forbidden(pairs: &[(T, &[N])]) -> HashMap<T, HashSet<N>> {
+    fn forbidden(pairs: &[(Target, &[N])]) -> HashMap<Target, HashSet<N>> {
         pairs
             .iter()
             .map(|&(var, vals)| (var, vals.iter().copied().collect()))
@@ -1429,7 +1437,7 @@ mod tests {
         t
     }
 
-    fn ref_tuples(n: N, op: CommutativeOperator, target: T, k: N) -> Vec<Vec<N>> {
+    fn ref_tuples(n: N, op: CommutativeOperator, target: Target, k: N) -> Vec<Vec<N>> {
         let mut out = Vec::new();
         let mut t = vec![1u8; k as usize];
         loop {
@@ -1450,7 +1458,7 @@ mod tests {
         out
     }
 
-    fn assert_equiv(n: N, op: CommutativeOperator, target: T, k: N) {
+    fn assert_equiv(n: N, op: CommutativeOperator, target: Target, k: N) {
         let expected = ref_tuples(n, op, target, k);
         match Mdd::new(n, k, op, target, &no_lines()) {
             Ok(m) => {

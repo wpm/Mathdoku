@@ -1,6 +1,6 @@
 //! Iterator over value tuples satisfying a cage arithmetic constraint.
 use crate::operator::{ArithmeticConstraint, CommutativeOperator, NonCommutativeOperator};
-use crate::{N, T};
+use crate::{N, Target};
 use std::collections::VecDeque;
 
 pub type Tuple = Vec<N>;
@@ -27,7 +27,7 @@ impl Tuples {
     /// match in production builds.
     #[must_use]
     #[allow(dead_code)]
-    pub fn commutative(n: N, k: N, operator: CommutativeOperator, target: T) -> Self {
+    pub fn commutative(n: N, k: N, operator: CommutativeOperator, target: Target) -> Self {
         Self {
             n,
             k,
@@ -38,7 +38,7 @@ impl Tuples {
 
     /// Creates a `Tuples` iterator for a non-commutative operation over pairs (`k = 2`).
     #[must_use]
-    pub fn non_commutative(n: N, operator: NonCommutativeOperator, target: T) -> Self {
+    pub fn non_commutative(n: N, operator: NonCommutativeOperator, target: Target) -> Self {
         Self {
             n,
             k: 2,
@@ -52,7 +52,7 @@ impl Tuples {
     /// Prunes partial tuples whose result plus the minimum possible completion
     /// already exceeds the target, using the dual operation's identity element
     /// as the minimum-per-remaining-slot bound.
-    fn monotonic(&mut self, operator: CommutativeOperator, target: T) -> Step {
+    fn monotonic(&mut self, operator: CommutativeOperator, target: Target) -> Step {
         let Some(tuple) = self.queue.pop_front() else {
             return Step::Exhausted;
         };
@@ -70,7 +70,7 @@ impl Tuples {
                 // new_tuple.len() <= k <= 9, so this cast never truncates.
                 #[allow(clippy::cast_possible_truncation)]
                 let remaining = self.k - new_tuple.len() as N;
-                let residual = operator.dual().identity() * T::from(remaining);
+                let residual = operator.dual().identity() * Target::from(remaining);
                 if s + residual <= target {
                     self.queue.push_back(new_tuple);
                 }
@@ -82,7 +82,7 @@ impl Tuples {
     /// Advances one step for a non-commutative operation.
     ///
     /// No pruning is possible since the operation is not monotonic.
-    fn non_monotonic(&mut self, operator: NonCommutativeOperator, target: T) -> Step {
+    fn non_monotonic(&mut self, operator: NonCommutativeOperator, target: Target) -> Step {
         let Some(tuple) = self.queue.pop_front() else {
             return Step::Exhausted;
         };

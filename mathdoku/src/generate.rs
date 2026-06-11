@@ -10,7 +10,7 @@ use rand::{Rng, RngExt};
 use crate::latin_square::generate_latin_square;
 use crate::polyomino::{Cell, Polyomino};
 use crate::puzzle::{CageOperator, Puzzle};
-use crate::{Error, N, T};
+use crate::{Error, N, Target};
 
 /// A Poisson cage-size distribution truncated to `[1, n²]` by rejection sampling.
 ///
@@ -63,25 +63,28 @@ fn poisson<R: Rng>(mean: f64, rng: &mut R) -> usize {
 ///
 /// # Errors
 /// Returns [`Error::EmptyFills`] if `values` is empty.
-pub fn default_op_policy(values: &[N], n: usize) -> Result<(CageOperator, T), Error> {
+pub fn default_op_policy(values: &[N], n: usize) -> Result<(CageOperator, Target), Error> {
     match values.len() {
         0 => Err(Error::EmptyFills),
-        1 => Ok((CageOperator::Given, T::from(values[0]))),
+        1 => Ok((CageOperator::Given, Target::from(values[0]))),
         2 => {
             let (hi, lo) = (values[0].max(values[1]), values[0].min(values[1]));
             if hi.is_multiple_of(lo) {
-                Ok((CageOperator::Divide, T::from(hi / lo)))
+                Ok((CageOperator::Divide, Target::from(hi / lo)))
             } else {
-                Ok((CageOperator::Subtract, T::from(hi - lo)))
+                Ok((CageOperator::Subtract, Target::from(hi - lo)))
             }
         }
         _ => {
-            let prod: T = values.iter().map(|&v| T::from(v)).product();
-            let area = T::try_from(n * n).unwrap_or(T::MAX);
+            let prod: Target = values.iter().map(|&v| Target::from(v)).product();
+            let area = Target::try_from(n * n).unwrap_or(Target::MAX);
             if prod <= area {
                 Ok((CageOperator::Multiply, prod))
             } else {
-                Ok((CageOperator::Add, values.iter().map(|&v| T::from(v)).sum()))
+                Ok((
+                    CageOperator::Add,
+                    values.iter().map(|&v| Target::from(v)).sum(),
+                ))
             }
         }
     }
@@ -108,7 +111,7 @@ pub fn generate_with<R: Rng, F>(
     sizes: SizeDistribution,
 ) -> Result<Puzzle, Error>
 where
-    F: Fn(&[N], usize) -> Result<(CageOperator, T), Error>,
+    F: Fn(&[N], usize) -> Result<(CageOperator, Target), Error>,
 {
     let mut puzzle = Puzzle::new(n)?;
     let latin_square = generate_latin_square(n, rng);
