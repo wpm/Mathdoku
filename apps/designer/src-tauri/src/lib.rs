@@ -313,8 +313,11 @@ pub fn run() {
         insert_cage,
         remove_cage_at,
     ];
-    tauri::Builder::default()
-        .plugin(tauri_plugin_dialog::init())
+    let builder = tauri::Builder::default().plugin(tauri_plugin_dialog::init());
+    // The updater plugin is desktop-only; mobile app stores handle their own updates.
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+    builder
         .manage(Mutex::new(AppState::default()))
         .menu(build_menu)
         .on_menu_event(handle_menu_event)
