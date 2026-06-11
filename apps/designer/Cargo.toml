@@ -49,6 +49,9 @@ rand = { version = "0.10.1", optional = true }
 # Drives the `#[cfg(feature = "web")]` AppState-store tests in `src/web_state.rs`
 # under a wasm test runner.
 wasm-bindgen-test = "0.3"
+# Re-declares the core dependency to turn on its shared test fixtures
+# (`test_support` module) for this crate's unit tests.
+mathdoku-designer-core = { path = "core", features = ["test-support"] }
 
 [lints]
 workspace = true

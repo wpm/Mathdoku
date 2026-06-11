@@ -619,23 +619,12 @@ pub fn handle_key(
 mod tests {
     use super::{compute_target_from_values, key_to_operator};
     use crate::partial_solution::PartialSolution;
-    use mathdoku::{Cell, Operator, Polyomino, Puzzle};
+    use mathdoku::{Operator, Polyomino, Puzzle};
+    use mathdoku_designer_core::test_support::{known_3x3_solution, poly};
 
-    fn poly(positions: &[(usize, usize)]) -> Polyomino {
-        let cells: Vec<Cell> = positions.iter().map(|&(r, c)| Cell::new(r, c)).collect();
-        Polyomino::from_cells(&cells).unwrap()
-    }
-
-    /// A `PartialSolution` whose grid pins every cell to the Latin square
-    /// ```text
-    /// 1 2 3
-    /// 2 3 1
-    /// 3 1 2
-    /// ```
+    /// A `PartialSolution` whose grid pins every cell to [`known_3x3_solution`].
     fn pinned_3x3() -> PartialSolution {
-        let square: Vec<Vec<mathdoku::N>> = vec![vec![1, 2, 3], vec![2, 3, 1], vec![3, 1, 2]];
-        let grid = Puzzle::from_latin_square(3, &square).unwrap();
-        PartialSolution::new(Puzzle::new(3).unwrap(), grid)
+        PartialSolution::new(Puzzle::new(3).unwrap(), known_3x3_solution())
     }
 
     fn compute_target(polyomino: &Polyomino, op: Operator, ps: &PartialSolution) -> Option<u64> {

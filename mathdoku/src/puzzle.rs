@@ -630,6 +630,7 @@ mod tests {
     use crate::operator::CommutativeOperator::Add;
     use crate::operator::NonCommutativeOperator::Subtract;
     use crate::polyomino::Polyomino;
+    use crate::test_util::domino;
 
     #[test]
     fn add_cage_arm_cells_exclude_values_requiring_collinear_duplicates() {
@@ -828,10 +829,6 @@ mod tests {
             }
             Self { grid, cages }
         }
-    }
-
-    fn domino(r0: usize, c0: usize, r1: usize, c1: usize) -> Polyomino {
-        Polyomino::from([Cell(r0, c0), Cell(r1, c1)]).unwrap()
     }
 
     #[cfg(feature = "without-solution")]

@@ -156,23 +156,15 @@ mod tests {
     use super::{
         cached_feasible_op_targets, feasible_op_targets, group_by_operator, is_globally_feasible,
     };
-    use mathdoku::{Cage, Cell, N, Operator, Polyomino, Puzzle};
-
-    fn poly(positions: &[(usize, usize)]) -> Polyomino {
-        let cells: Vec<Cell> = positions.iter().map(|&(r, c)| Cell::new(r, c)).collect();
-        Polyomino::from_cells(&cells).unwrap()
-    }
-
-    fn cage(n: N, positions: &[(usize, usize)], op: Operator, target: mathdoku::T) -> Cage {
-        Cage::new(n, poly(positions), op, target).unwrap()
-    }
+    use mathdoku::{Cage, N, Operator, Puzzle};
+    use mathdoku_designer_core::test_support::{cage_at, poly};
 
     #[test]
     fn given_in_range_is_feasible_in_empty_puzzle() {
         let puzzle = Puzzle::new(3).unwrap();
         assert!(is_globally_feasible(
             &puzzle,
-            &cage(3, &[(0, 0)], Operator::Given, 2)
+            &cage_at(3, &[(0, 0)], Operator::Given, 2)
         ));
     }
 
@@ -181,7 +173,7 @@ mod tests {
         let puzzle = Puzzle::new(3).unwrap();
         assert!(!is_globally_feasible(
             &puzzle,
-            &cage(3, &[(0, 0)], Operator::Given, 9)
+            &cage_at(3, &[(0, 0)], Operator::Given, 9)
         ));
     }
 
@@ -190,12 +182,12 @@ mod tests {
         // A cage conflict (overlapping an existing cage) is never feasible.
         let puzzle = Puzzle::new(3)
             .unwrap()
-            .insert_cage(&cage(3, &[(0, 0), (0, 1)], Operator::Add, 3))
+            .insert_cage(&cage_at(3, &[(0, 0), (0, 1)], Operator::Add, 3))
             .unwrap()
             .unwrap();
         assert!(!is_globally_feasible(
             &puzzle,
-            &cage(3, &[(0, 0)], Operator::Given, 1)
+            &cage_at(3, &[(0, 0)], Operator::Given, 1)
         ));
     }
 
@@ -206,7 +198,7 @@ mod tests {
         // Givens fail, with no completion search either way.
         let puzzle = Puzzle::new(4).unwrap();
         for target in 1..=6 {
-            let candidate = cage(4, &[(0, 0)], Operator::Given, target);
+            let candidate = cage_at(4, &[(0, 0)], Operator::Given, target);
             assert_eq!(
                 is_globally_feasible(&puzzle, &candidate),
                 matches!(puzzle.insert_cage(&candidate), Ok(Some(_)))
@@ -221,15 +213,15 @@ mod tests {
         // Latin squares all satisfy it.
         let puzzle = Puzzle::new(3)
             .unwrap()
-            .insert_cage(&cage(3, &[(0, 0), (0, 1), (0, 2)], Operator::Add, 6))
+            .insert_cage(&cage_at(3, &[(0, 0), (0, 1), (0, 2)], Operator::Add, 6))
             .unwrap()
             .unwrap()
-            .insert_cage(&cage(3, &[(1, 0), (1, 1), (1, 2)], Operator::Add, 6))
+            .insert_cage(&cage_at(3, &[(1, 0), (1, 1), (1, 2)], Operator::Add, 6))
             .unwrap()
             .unwrap();
         assert!(is_globally_feasible(
             &puzzle,
-            &cage(3, &[(2, 0), (2, 1), (2, 2)], Operator::Add, 6)
+            &cage_at(3, &[(2, 0), (2, 1), (2, 2)], Operator::Add, 6)
         ));
     }
 
@@ -278,7 +270,7 @@ mod tests {
         // locally-feasible pair through `is_globally_feasible`.
         let puzzle = Puzzle::new(4)
             .unwrap()
-            .insert_cage(&cage(4, &[(0, 0), (0, 1)], Operator::Add, 3))
+            .insert_cage(&cage_at(4, &[(0, 0), (0, 1)], Operator::Add, 3))
             .unwrap()
             .unwrap();
         let p = poly(&[(1, 0), (1, 1)]);
@@ -304,10 +296,10 @@ mod tests {
         // (sum 6, product 6) survive it.
         let puzzle = Puzzle::new(3)
             .unwrap()
-            .insert_cage(&cage(3, &[(0, 0), (0, 1), (0, 2)], Operator::Add, 6))
+            .insert_cage(&cage_at(3, &[(0, 0), (0, 1), (0, 2)], Operator::Add, 6))
             .unwrap()
             .unwrap()
-            .insert_cage(&cage(3, &[(1, 0), (1, 1), (1, 2)], Operator::Add, 6))
+            .insert_cage(&cage_at(3, &[(1, 0), (1, 1), (1, 2)], Operator::Add, 6))
             .unwrap()
             .unwrap();
         let pairs = feasible_op_targets(&puzzle, &poly(&[(2, 0), (2, 1), (2, 2)])).unwrap();

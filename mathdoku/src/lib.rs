@@ -43,6 +43,8 @@ pub(crate) mod puzzle;
 pub(crate) mod regin;
 pub(crate) mod solutions;
 pub(crate) mod table;
+#[cfg(test)]
+pub(crate) mod test_util;
 pub(crate) mod tuples;
 
 pub use cage::{Cage, Operation};

@@ -836,6 +836,7 @@ mod tests {
     use super::*;
     use crate::Error::EmptyFills;
     use crate::operator::CommutativeOperator::{Add, Multiply};
+    use crate::test_util::memo_contract;
     use std::sync::OnceLock;
 
     static LOGGING: OnceLock<()> = OnceLock::new();
@@ -850,38 +851,36 @@ mod tests {
     /// A cage test case: `(n, k, op, target, lines)`.
     type CageCase = (N, N, CommutativeOperator, T, Vec<Vec<usize>>);
 
+    /// [`Mdd::new`] with no collinearity lines, matching the `memo_contract`
+    /// constructor shape.
+    fn make(n: N, k: N, op: CommutativeOperator, target: T) -> Result<Mdd, Error> {
+        Mdd::new(n, k, op, target, &no_lines())
+    }
+
     // ---- get ----
 
     #[test]
     fn add_fills_are_union_of_column_values() {
         setup();
-        let m = Mdd::new(4, 2, Add, 6, &no_lines()).unwrap();
-        assert_eq!(m.get(0).unwrap(), Fill::from(&[2, 3, 4]));
-        assert_eq!(m.get(1).unwrap(), Fill::from(&[2, 3, 4]));
+        memo_contract::add_fills_are_union_of_column_values(make);
     }
 
     #[test]
     fn multiply_fills_contain_expected_values() {
         setup();
-        let m = Mdd::new(6, 2, Multiply, 6, &no_lines()).unwrap();
-        assert_eq!(m.get(0).unwrap(), Fill::from(&[1, 2, 3, 6]));
-        assert_eq!(m.get(1).unwrap(), Fill::from(&[1, 2, 3, 6]));
+        memo_contract::multiply_fills_contain_expected_values(make);
     }
 
     #[test]
     fn commutative_no_solutions_returns_empty_fills_error() {
         setup();
-        assert!(matches!(
-            Mdd::new(4, 2, Add, 9, &no_lines()),
-            Err(EmptyFills)
-        ));
+        memo_contract::commutative_no_solutions_returns_empty_fills_error(make);
     }
 
     #[test]
     fn fill_out_of_bounds_returns_index_error() {
         setup();
-        let m = Mdd::new(4, 2, Add, 5, &no_lines()).unwrap();
-        assert!(matches!(m.get(2), Err(InvalidCellCageIndex(2))));
+        memo_contract::fill_out_of_bounds_returns_index_error(make);
     }
 
     // ---- narrow ----
@@ -889,31 +888,19 @@ mod tests {
     #[test]
     fn narrow_with_full_support_is_identity() {
         setup();
-        let m = Mdd::new(4, 2, Add, 5, &no_lines()).unwrap();
-        assert_eq!(m.narrow(&[Fill::all(4), Fill::all(4)]).unwrap(), m);
+        memo_contract::narrow_with_full_support_is_identity(make);
     }
 
     #[test]
     fn narrow_filters_tuples_and_updates_fills() {
         setup();
-        // add to 5 in n=4: (1,4),(2,3),(3,2),(4,1)
-        // restrict pos 0 to {1,2} → surviving: (1,4),(2,3)
-        let m = Mdd::new(4, 2, Add, 5, &no_lines()).unwrap();
-        let narrowed = m
-            .narrow(&[Fill::from(&[1, 2]), Fill::from(&[1, 2, 3, 4])])
-            .unwrap();
-        assert_eq!(narrowed.get(0).unwrap(), Fill::from(&[1, 2]));
-        assert_eq!(narrowed.get(1).unwrap(), Fill::from(&[3, 4]));
+        memo_contract::narrow_filters_tuples_and_updates_fills(make);
     }
 
     #[test]
     fn narrow_eliminating_all_tuples_returns_empty_fills_error() {
         setup();
-        let m = Mdd::new(4, 2, Add, 5, &no_lines()).unwrap();
-        assert!(matches!(
-            m.narrow(&[Fill::from(&[1]), Fill::from(&[1])]),
-            Err(EmptyFills)
-        ));
+        memo_contract::narrow_eliminating_all_tuples_returns_empty_fills_error(make);
     }
 
     // ---- reset ----

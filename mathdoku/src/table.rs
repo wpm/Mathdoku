@@ -127,26 +127,19 @@ pub fn fills_from_tuples(tuples: &[Tuple]) -> Result<Vec<Fill>, Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Error::EmptyFills;
-    use crate::operator::CommutativeOperator::{Add, Multiply};
     use crate::operator::NonCommutativeOperator::{Divide, Subtract};
+    use crate::test_util::memo_contract;
 
     // ---- get ----
 
     #[test]
     fn add_fills_are_union_of_column_values() {
-        // 3+3=6, 2+4=6, 4+2=6 — position 0 is {2,3,4}, position 1 is {2,3,4}
-        let t = Table::commutative(4, 2, Add, 6).unwrap();
-        assert_eq!(t.get(0).unwrap(), Fill::from(&[2, 3, 4]));
-        assert_eq!(t.get(1).unwrap(), Fill::from(&[2, 3, 4]));
+        memo_contract::add_fills_are_union_of_column_values(Table::commutative);
     }
 
     #[test]
     fn multiply_fills_contain_expected_values() {
-        // 2*3=6, 3*2=6, 1*6=6, 6*1=6 within n=6
-        let t = Table::commutative(6, 2, Multiply, 6).unwrap();
-        assert_eq!(t.get(0).unwrap(), Fill::from(&[1, 2, 3, 6]));
-        assert_eq!(t.get(1).unwrap(), Fill::from(&[1, 2, 3, 6]));
+        memo_contract::multiply_fills_contain_expected_values(Table::commutative);
     }
 
     #[test]
@@ -167,45 +160,28 @@ mod tests {
 
     #[test]
     fn commutative_no_solutions_returns_empty_fills_error() {
-        // no 2-tuple in 1..=4 sums to 9
-        assert!(matches!(Table::commutative(4, 2, Add, 9), Err(EmptyFills)));
+        memo_contract::commutative_no_solutions_returns_empty_fills_error(Table::commutative);
     }
 
     #[test]
     fn fill_out_of_bounds_returns_index_error() {
-        let t = Table::commutative(4, 2, Add, 5).unwrap();
-        assert!(matches!(t.get(2), Err(InvalidCellCageIndex(2))));
+        memo_contract::fill_out_of_bounds_returns_index_error(Table::commutative);
     }
 
     // ---- narrow ----
 
     #[test]
     fn narrow_with_full_support_is_identity() {
-        // support that includes every value leaves all tuples intact
-        let t = Table::commutative(4, 2, Add, 5).unwrap();
-        let full = vec![Fill::all(4), Fill::all(4)];
-        assert_eq!(t.narrow(&full).unwrap(), t);
+        memo_contract::narrow_with_full_support_is_identity(Table::commutative);
     }
 
     #[test]
     fn narrow_filters_tuples_and_updates_fills() {
-        // add to 5 in n=4: (1,4),(2,3),(3,2),(4,1)
-        let t = Table::commutative(4, 2, Add, 5).unwrap();
-        // restrict position 0 to {1,2}, position 1 to {1,2,3,4}
-        let narrowed = t
-            .narrow(&[Fill::from(&[1, 2]), Fill::from(&[1, 2, 3, 4])])
-            .unwrap();
-        assert_eq!(narrowed.get(0).unwrap(), Fill::from(&[1, 2]));
-        assert_eq!(narrowed.get(1).unwrap(), Fill::from(&[3, 4]));
+        memo_contract::narrow_filters_tuples_and_updates_fills(Table::commutative);
     }
 
     #[test]
     fn narrow_eliminating_all_tuples_returns_empty_fills_error() {
-        let t = Table::commutative(4, 2, Add, 5).unwrap();
-        // restrict both positions to {1} — no tuple (1,1) sums to 5
-        assert!(matches!(
-            t.narrow(&[Fill::from(&[1]), Fill::from(&[1])]),
-            Err(EmptyFills)
-        ));
+        memo_contract::narrow_eliminating_all_tuples_returns_empty_fills_error(Table::commutative);
     }
 }
