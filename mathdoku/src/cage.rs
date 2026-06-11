@@ -51,7 +51,7 @@ use crate::table::Table;
 use crate::{Error, Error::EmptyFills, N, T};
 use std::fmt::{Display, Formatter};
 
-/// The arithmetic operation and target for a cage.
+/// The arithmetic operation for a cage.
 #[derive(
     Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
