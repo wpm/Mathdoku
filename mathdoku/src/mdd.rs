@@ -112,7 +112,7 @@ impl Mdd {
 
     /// Returns a copy of this MDD with edges for forbidden values removed and
     /// dead nodes garbage-collected via downward and upward cascades.
-    fn remove_support(&self, forbidden: &HashMap<Target, HashSet<N>>) -> Self {
+    fn remove_support(&self, forbidden: &HashMap<usize, HashSet<N>>) -> Self {
         let mut mdd = Self {
             dp: self.dp.clone(),
             edges: self.edges.clone(),
@@ -145,7 +145,7 @@ impl Mdd {
         mdd
     }
 
-    fn heads_at_depth(&self, depth: Target) -> Vec<Node> {
+    fn heads_at_depth(&self, depth: usize) -> Vec<Node> {
         self.edges
             .keys()
             .filter(|n| n.depth == depth)
@@ -281,16 +281,12 @@ impl Mdd {
     }
 
     fn insert_edge(&mut self, head: Node, value: N, tail: Node) {
-        debug!(
-            "{:indent$}{head} -{value}→ {tail}",
-            "",
-            indent = head.depth as usize
-        );
+        debug!("{:indent$}{head} -{value}→ {tail}", "", indent = head.depth);
         self.edges.entry(head).or_default().push((value, tail));
     }
 
     fn at_arity(&self, tail: &Node) -> bool {
-        let (d, a) = (u64::from(tail.depth), u64::from(self.dp.constraint.arity));
+        let (d, a) = (tail.depth, self.dp.constraint.arity);
         debug_assert!(d <= a, "depth {d} > arity {a}");
         Self::log_if(d == a, tail.depth, &format!("{tail} Arity limit met"))
     }
@@ -303,9 +299,9 @@ impl Mdd {
         )
     }
 
-    fn log_if(condition: bool, depth: Target, message: &str) -> bool {
+    fn log_if(condition: bool, depth: usize, message: &str) -> bool {
         if condition {
-            debug!("{:indent$}{message}", "", indent = depth as usize);
+            debug!("{:indent$}{message}", "", indent = depth);
         }
         condition
     }
@@ -314,13 +310,13 @@ impl Mdd {
     ///
     /// Returns `Err(EmptyFills)` if no edges exist at any depth (empty diagram).
     fn fills_from_edges(&self) -> Result<Vec<Fill>, Error> {
-        let k = self.dp.constraint.arity as usize;
+        let k = self.dp.constraint.arity;
         if k == 0 {
             return Err(Error::EmptyFills);
         }
         let mut fills = vec![Fill::default(); k];
         for (node, edges) in &self.edges {
-            let depth = node.depth as usize;
+            let depth = node.depth;
             if depth < k {
                 for &(label, _) in edges {
                     fills[depth] = fills[depth] | Fill::singleton(label);
@@ -380,8 +376,8 @@ impl Mdd {
             return u64::from(self.dp.accept(root.depth, &root.state));
         }
         let mut suffixes: HashMap<Node, HashSet<Vec<N>>> = HashMap::new();
-        let depths: HashSet<Target> = self.edges.keys().map(|n| n.depth).collect();
-        let mut depths: Vec<Target> = depths.into_iter().collect();
+        let depths: HashSet<usize> = self.edges.keys().map(|n| n.depth).collect();
+        let mut depths: Vec<usize> = depths.into_iter().collect();
         depths.sort_unstable_by(|a, b| b.cmp(a));
         for depth in depths {
             for head in self.heads_at_depth(depth) {
@@ -427,7 +423,7 @@ impl Memo for Mdd {
     }
 
     fn narrow(&self, support: &[Fill]) -> Result<Self, Error> {
-        let forbidden: HashMap<Target, HashSet<N>> = support
+        let forbidden: HashMap<usize, HashSet<N>> = support
             .iter()
             .enumerate()
             .filter_map(|(i, fill)| {
@@ -435,9 +431,7 @@ impl Memo for Mdd {
                 if excluded.is_empty() {
                     None
                 } else {
-                    // i is a cage position index, bounded by k <= 9.
-                    #[allow(clippy::cast_possible_truncation)]
-                    Some((Target::from(i as N), excluded))
+                    Some((i, excluded))
                 }
             })
             .collect();
@@ -480,7 +474,7 @@ impl CageDp {
             constraint: Constraint {
                 operator,
                 target,
-                arity: Target::from(k),
+                arity: usize::from(k),
             },
             line_meta: LineMeta::new(lines, k as usize),
         }
@@ -501,8 +495,10 @@ impl CageDp {
     /// out `v` and every larger value, [`Step::Skip`] when `v` alone is
     /// infeasible (arithmetic skip or collinear distinctness violation), and
     /// [`Step::Tail`] with the successor state otherwise.
-    fn step(&self, depth: Target, state: &State, v: N) -> Step {
-        let remaining = self.constraint.arity - depth - 1;
+    fn step(&self, depth: usize, state: &State, v: N) -> Step {
+        // remaining < arity <= 9, so the cast cannot truncate.
+        #[allow(clippy::cast_possible_truncation)]
+        let remaining = (self.constraint.arity - depth - 1) as Target;
         let i = Target::from(v);
         if self.constraint.pruned(state.target, i, remaining) {
             return Step::Stop;
@@ -514,10 +510,9 @@ impl CageDp {
             return Step::Skip;
         }
         // Collinear distinctness: skip v if already used in any open line at this depth.
-        let depth_idx = depth as usize;
         if self
             .line_meta
-            .lines_at_depth(depth_idx)
+            .lines_at_depth(depth)
             .iter()
             .any(|&(line_idx, _)| state.used[line_idx].contains(v))
         {
@@ -525,13 +520,13 @@ impl CageDp {
         }
         Step::Tail(State {
             target: self.constraint.operation(state.target, i),
-            used: self.line_meta.advance_used(&state.used, depth_idx, v),
+            used: self.line_meta.advance_used(&state.used, depth, v),
         })
     }
 
     /// Returns true if `state` at `depth` is accepting: every cell has been
     /// placed and the accumulated value equals the target.
-    const fn accept(&self, depth: Target, state: &State) -> bool {
+    const fn accept(&self, depth: usize, state: &State) -> bool {
         depth == self.constraint.arity && state.target == self.constraint.target
     }
 
@@ -701,7 +696,7 @@ struct Constraint {
     // TODO Can this be ArithmeticConstraint?
     operator: CommutativeOperator,
     target: Target,
-    arity: Target,
+    arity: usize,
 }
 
 impl Constraint {
@@ -801,7 +796,7 @@ impl LineMeta {
 /// A hash-cons key for the MDD: the DP [`State`] at a given depth.
 #[derive(Eq, PartialEq, Hash, Debug, Clone)]
 struct Node {
-    depth: Target,
+    depth: usize,
     state: State,
 }
 
@@ -1037,7 +1032,7 @@ mod tests {
         setup();
         let m = Mdd::new(3, 3, Add, 5, &no_lines()).unwrap();
         assert_eq!(
-            sorted_tuples(&m.remove_support(&HashMap::<Target, HashSet<N>>::new())),
+            sorted_tuples(&m.remove_support(&HashMap::<usize, HashSet<N>>::new())),
             sorted_tuples(&m)
         );
     }
@@ -1424,7 +1419,7 @@ mod tests {
         );
     }
 
-    fn forbidden(pairs: &[(Target, &[N])]) -> HashMap<Target, HashSet<N>> {
+    fn forbidden(pairs: &[(usize, &[N])]) -> HashMap<usize, HashSet<N>> {
         pairs
             .iter()
             .map(|&(var, vals)| (var, vals.iter().copied().collect()))
