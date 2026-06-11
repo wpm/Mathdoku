@@ -546,7 +546,7 @@ impl CageDp {
     /// cage cell.
     #[cfg(feature = "without-solution")]
     pub fn solutions<'a>(&'a self, support: &'a [Fill]) -> CageSolutions<'a> {
-        debug_assert_eq!(support.len(), self.constraint.arity as usize);
+        debug_assert_eq!(support.len(), self.constraint.arity);
         CageSolutions {
             dp: self,
             support,
@@ -599,9 +599,7 @@ impl CageSolutions<'_> {
     /// Pops the exhausted top frame: memoizes it as dead if no accepting
     /// descendant was found, otherwise propagates `found` to its parent.
     fn pop_frame(&mut self) {
-        // The stack depth is a cage position index, bounded by k <= 9.
-        #[allow(clippy::cast_possible_truncation)]
-        let depth = (self.stack.len() - 1) as Target;
+        let depth = self.stack.len() - 1;
         if let Some(frame) = self.stack.pop() {
             if frame.found {
                 if let Some(parent) = self.stack.last_mut() {
@@ -634,9 +632,7 @@ impl Iterator for CageSolutions<'_> {
             if !self.support[depth].contains(v) {
                 continue;
             }
-            // depth is a cage position index, bounded by k <= 9.
-            #[allow(clippy::cast_possible_truncation)]
-            let state = match self.dp.step(depth as Target, &frame.state, v) {
+            let state = match self.dp.step(depth, &frame.state, v) {
                 Step::Stop => {
                     frame.next_v = self.dp.n + 1;
                     continue;
@@ -644,9 +640,8 @@ impl Iterator for CageSolutions<'_> {
                 Step::Skip => continue,
                 Step::Tail(state) => state,
             };
-            #[allow(clippy::cast_possible_truncation)]
             let child = Node {
-                depth: (depth + 1) as Target,
+                depth: depth + 1,
                 state,
             };
             if self.dp.accept(child.depth, &child.state) {
