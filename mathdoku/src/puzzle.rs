@@ -16,7 +16,7 @@ use crate::operator::{CommutativeOperator, NonCommutativeOperator};
 use crate::polyomino::{Cell, Polyomino};
 #[cfg(feature = "without-solution")]
 use crate::table::Table;
-use crate::{Error, N, T};
+use crate::{Error, N, Target};
 use serde::de::Error as DeError;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::{HashMap, HashSet};
@@ -204,7 +204,7 @@ impl Puzzle {
         &self,
         polyomino: &Polyomino,
         operation: CageOperator,
-        target: T,
+        target: Target,
     ) -> Result<Option<Self>, Error> {
         self.check_in_bounds(polyomino)?;
         let n =
@@ -305,7 +305,7 @@ impl Puzzle {
         &self,
         polyomino: &Polyomino,
         operation: CageOperator,
-    ) -> Result<Vec<T>, Error> {
+    ) -> Result<Vec<Target>, Error> {
         self.check_in_bounds(polyomino)?;
         let n =
             N::try_from(self.grid.size()).map_err(|_| Error::InvalidGridSize(self.grid.size()))?;
@@ -358,7 +358,7 @@ impl Puzzle {
 }
 
 /// Deduplicated cage keys for equality and hashing: `(polyomino, operator, target)`.
-fn cage_keys(p: &Puzzle) -> Vec<(Polyomino, CageOperator, T)> {
+fn cage_keys(p: &Puzzle) -> Vec<(Polyomino, CageOperator, Target)> {
     let mut seen = HashSet::new();
     p.cages
         .values()
@@ -408,7 +408,7 @@ impl std::fmt::Display for Puzzle {
 struct CageWire {
     polyomino: Vec<Cell>,
     operation: CageOperator,
-    target: T,
+    target: Target,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -442,7 +442,7 @@ impl Serialize for Puzzle {
 }
 
 /// Extracts the `(CageOperator, T)` from a cage's support.
-fn cage_op_target(cage: &Cage) -> (CageOperator, T) {
+fn cage_op_target(cage: &Cage) -> (CageOperator, Target) {
     cage.op_target()
 }
 
@@ -478,7 +478,7 @@ impl Puzzle {
                 let cell = Cell::new(r, c);
                 let poly = Polyomino::from([cell])?;
                 puzzle = puzzle
-                    .insert(&poly, CageOperator::Given, T::from(v))?
+                    .insert(&poly, CageOperator::Given, Target::from(v))?
                     .ok_or(Error::EmptyFills)?;
             }
         }
@@ -526,9 +526,15 @@ pub fn operators_for(polyomino: &Polyomino) -> Vec<CageOperator> {
 /// Returns the tight target range for `op` derived from the fills' actual min/max values.
 /// Returns `None` if any fill is empty or no valid target exists.
 #[cfg(feature = "without-solution")]
-fn target_range(op: CageOperator, fills: &[Fill]) -> Option<std::ops::RangeInclusive<T>> {
-    let mins: Option<Vec<T>> = fills.iter().map(|f| f.min_value().map(T::from)).collect();
-    let maxs: Option<Vec<T>> = fills.iter().map(|f| f.max_value().map(T::from)).collect();
+fn target_range(op: CageOperator, fills: &[Fill]) -> Option<std::ops::RangeInclusive<Target>> {
+    let mins: Option<Vec<Target>> = fills
+        .iter()
+        .map(|f| f.min_value().map(Target::from))
+        .collect();
+    let maxs: Option<Vec<Target>> = fills
+        .iter()
+        .map(|f| f.max_value().map(Target::from))
+        .collect();
     let mins = mins?;
     let maxs = maxs?;
     match op {
@@ -595,7 +601,7 @@ fn target_is_feasible(
     n: N,
     op: CageOperator,
     fills: &[Fill],
-    target: T,
+    target: Target,
     lines: &[Vec<usize>],
 ) -> bool {
     let k = N::try_from(fills.len()).unwrap_or(N::MAX);
@@ -1468,7 +1474,7 @@ mod tests {
         let (p, poly) = equal_pinned_domino();
         assert_eq!(
             p.possible_targets(&poly, CageOperator::Subtract).unwrap(),
-            Vec::<T>::new()
+            Vec::<Target>::new()
         );
     }
 
@@ -1479,7 +1485,7 @@ mod tests {
         let (p, poly) = equal_pinned_domino();
         assert_eq!(
             p.possible_targets(&poly, CageOperator::Divide).unwrap(),
-            Vec::<T>::new()
+            Vec::<Target>::new()
         );
     }
 

@@ -4,7 +4,7 @@ use crate::fill::Fill;
 use crate::memo::Memo;
 use crate::operator::{ArithmeticConstraint, NonCommutativeOperator};
 use crate::tuples::{Tuple, Tuples};
-use crate::{Error, N, T};
+use crate::{Error, N, Target};
 
 /// A cage constraint stored as an explicit list of valid value tuples.
 ///
@@ -30,7 +30,7 @@ impl Table {
     pub fn non_commutative(
         n: N,
         operator: NonCommutativeOperator,
-        target: T,
+        target: Target,
     ) -> Result<Self, Error> {
         let constraint = ArithmeticConstraint::NonCommutativeConstraint(operator, target);
         Self::build(
@@ -119,7 +119,7 @@ mod tests {
             n: N,
             k: N,
             operator: CommutativeOperator,
-            target: T,
+            target: Target,
         ) -> Result<Self, Error> {
             let constraint = ArithmeticConstraint::CommutativeConstraint(operator, target);
             Self::build(

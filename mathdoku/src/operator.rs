@@ -1,5 +1,5 @@
 //! Arithmetic operators and cage operations for Mathdoku constraints.
-use crate::{N, T};
+use crate::{N, Target};
 use std::cmp::{max, min};
 use std::ops::Div;
 
@@ -10,9 +10,9 @@ pub enum ArithmeticConstraint {
     ///
     /// Constructed only by [`Tuples::commutative`] and [`Table::commutative`]
     /// (test utilities); commutative cages use [`Mdd`] in production.
-    CommutativeConstraint(CommutativeOperator, T),
+    CommutativeConstraint(CommutativeOperator, Target),
     /// A non-commutative operation and a target.
-    NonCommutativeConstraint(NonCommutativeOperator, T),
+    NonCommutativeConstraint(NonCommutativeOperator, Target),
 }
 
 /// A commutative, monotonically non-decreasing cage operation.
@@ -37,16 +37,16 @@ pub enum CommutativeOperator {
 impl CommutativeOperator {
     /// Applies this operator to a tuple of values, returning the result.
     #[must_use]
-    pub fn apply_to_tuple(self, ns: &[N]) -> T {
+    pub fn apply_to_tuple(self, ns: &[N]) -> Target {
         match self {
-            Self::Add => ns.iter().map(|&v| T::from(v)).sum(),
-            Self::Multiply => ns.iter().map(|&v| T::from(v)).product(),
+            Self::Add => ns.iter().map(|&v| Target::from(v)).sum(),
+            Self::Multiply => ns.iter().map(|&v| Target::from(v)).product(),
         }
     }
 
     /// Applies this operator to a single pair `(x, y)`.
     #[must_use]
-    pub const fn apply_to_pair(self, x: T, y: T) -> T {
+    pub const fn apply_to_pair(self, x: Target, y: Target) -> Target {
         match self {
             Self::Add => x + y,
             Self::Multiply => x * y,
@@ -59,7 +59,7 @@ impl CommutativeOperator {
     /// result extended by `remaining` copies of the dual identity gives the
     /// tightest reachable lower bound on the final result.
     #[must_use]
-    pub const fn identity(self) -> T {
+    pub const fn identity(self) -> Target {
         match self {
             Self::Add => 0,
             Self::Multiply => 1,
@@ -96,10 +96,10 @@ impl NonCommutativeOperator {
     /// Subtract returns `|a - b|`. Divide returns `max(a, b) / min(a, b)`
     /// using integer division.
     #[must_use]
-    pub fn apply(self, a: N, b: N) -> T {
+    pub fn apply(self, a: N, b: N) -> Target {
         match self {
-            Self::Subtract => T::from(a.abs_diff(b)),
-            Self::Divide => T::from(max(a, b).div(min(a, b))),
+            Self::Subtract => Target::from(a.abs_diff(b)),
+            Self::Divide => Target::from(max(a, b).div(min(a, b))),
         }
     }
 }

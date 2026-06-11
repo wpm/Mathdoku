@@ -48,7 +48,7 @@ use crate::memo::Memo;
 use crate::operator::{CommutativeOperator, NonCommutativeOperator};
 use crate::polyomino::{Cell, Polyomino};
 use crate::table::Table;
-use crate::{Error, Error::EmptyFills, N, T};
+use crate::{Error, Error::EmptyFills, N, Target};
 use std::fmt::{Display, Formatter};
 
 /// The arithmetic operation for a cage.
@@ -72,9 +72,9 @@ pub enum CageOperator {
 #[derive(Clone, PartialEq, Eq, Debug)]
 enum CageSupport {
     /// A commutative (monotonic) operation: add or multiply.
-    Commutative(CommutativeOperator, T, Mdd),
+    Commutative(CommutativeOperator, Target, Mdd),
     /// A non-commutative (non-monotonic) operation: subtract or divide.
-    NonCommutative(NonCommutativeOperator, T, Table),
+    NonCommutative(NonCommutativeOperator, Target, Table),
     /// A single cell with a fixed value.
     Given(N),
 }
@@ -109,7 +109,7 @@ impl Cage {
         n: N,
         polyomino: Polyomino,
         operation: CageOperator,
-        target: T,
+        target: Target,
     ) -> Result<Self, Error> {
         let k = polyomino.len();
         let result = match operation {
@@ -167,7 +167,7 @@ impl Cage {
         n: N,
         polyomino: Polyomino,
         operation: CommutativeOperator,
-        target: T,
+        target: Target,
     ) -> Result<Self, Error> {
         let k = N::try_from(polyomino.len()).map_err(|_| EmptyFills)?;
         let lines = collinear_groups(&polyomino);
@@ -189,7 +189,7 @@ impl Cage {
         n: N,
         polyomino: Polyomino,
         operation: NonCommutativeOperator,
-        target: T,
+        target: Target,
     ) -> Result<Self, Error> {
         let table = Table::non_commutative(n, operation, target)?;
         let support = CageSupport::NonCommutative(operation, target, table);
@@ -227,7 +227,7 @@ impl Cage {
 
     /// Returns the `(CageOperator, target)` pair for this cage.
     #[must_use]
-    pub fn op_target(&self) -> (CageOperator, T) {
+    pub fn op_target(&self) -> (CageOperator, Target) {
         match &self.support {
             CageSupport::Commutative(op, target, _) => (
                 match op {
@@ -243,7 +243,7 @@ impl Cage {
                 },
                 *target,
             ),
-            CageSupport::Given(n) => (CageOperator::Given, T::from(*n)),
+            CageSupport::Given(n) => (CageOperator::Given, Target::from(*n)),
         }
     }
 
