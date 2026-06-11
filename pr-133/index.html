@@ -1,0 +1,28 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Mathdoku Designer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap"
+    />
+    <link rel="stylesheet" href="/Mathdoku/pr-133/theme-eff0471e3197582e.css" integrity="sha384-8CWCR2DJwqRN0QqOiwLEyrg053Gu4G2efX6xDw67MqXpAR0L0GC+LBD3/br7Y9Kd"/>
+    <link rel="stylesheet" href="/Mathdoku/pr-133/styles-a56bc13bda7ae862.css" integrity="sha384-7R80rUzopQ/nd4NJBfC79nFVOwbqWTxdZNppZpHT3Zb6/FFsVSIU+TqJC+mHNotH"/>
+    
+<script type="module">
+import init, * as bindings from '/Mathdoku/pr-133/mathdoku-designer-ui-9873a72d7a537c6d.js';
+const wasm = await init({ module_or_path: '/Mathdoku/pr-133/mathdoku-designer-ui-9873a72d7a537c6d_bg.wasm' });
+
+
+window.wasmBindings = bindings;
+
+
+dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
+
+</script>
+  <link rel="modulepreload" href="/Mathdoku/pr-133/mathdoku-designer-ui-9873a72d7a537c6d.js" crossorigin="anonymous" integrity="sha384-a5M+cpklpQUhZw4/3XT0myOW9MLnnmc/tZR7TR56jQ1qAYtwkAscb++od/g+BfRR"><link rel="preload" href="/Mathdoku/pr-133/mathdoku-designer-ui-9873a72d7a537c6d_bg.wasm" crossorigin="anonymous" integrity="sha384-KJHi9UBnlDYQKyiI9+2rItTDHoYf35qgTM+OOXgvxnmuRR2mNon0gLUAOkQH0SJv" as="fetch" type="application/wasm"></head>
+  <body></body>
+</html>
