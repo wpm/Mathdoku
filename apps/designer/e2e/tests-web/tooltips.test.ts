@@ -25,13 +25,11 @@ test.describe('web build tooltips', () => {
       /grid size/i,
     );
     await expect(
-      page.getByRole('button', { name: 'Random Solution', exact: true }),
+      page.getByRole('button', { name: 'Create', exact: true }),
     ).toHaveAttribute('title', /random solution/i);
 
     // The grid itself: an SVG <title> child summarizes cage construction.
-    await page
-      .getByRole('button', { name: 'Random Solution', exact: true })
-      .click();
+    await page.getByRole('button', { name: 'Create', exact: true }).click();
     await waitForGrid(page);
     await expect(page.locator('.grid-svg > title')).toHaveText(/draw a cage/i);
 

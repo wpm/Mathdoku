@@ -230,6 +230,26 @@ fn trap_tab(ev: &leptos::ev::KeyboardEvent) {
 
 // ---- SizeModal ----
 
+// With-solution-only builds have a single creation path, so the modal copy
+// doesn't mention authoring modes, the lone creation button is just "Create",
+// and the Size row is centered under it. Builds with the `without-solution`
+// feature keep the two-button layout and its explanatory copy.
+#[cfg(feature = "without-solution")]
+const SIZE_MODAL_BODY: &str = "Choose a grid size, then how to author it.";
+#[cfg(not(feature = "without-solution"))]
+const SIZE_MODAL_BODY: &str = "Choose a grid size.";
+
+#[cfg(feature = "without-solution")]
+const CREATE_BTN_LABEL: &str = "Random Solution";
+#[cfg(not(feature = "without-solution"))]
+const CREATE_BTN_LABEL: &str = "Create";
+
+#[cfg(feature = "without-solution")]
+const SIZE_ROW_STYLE: &str = "display:flex;align-items:center;gap:8px;margin-bottom:20px;";
+#[cfg(not(feature = "without-solution"))]
+const SIZE_ROW_STYLE: &str =
+    "display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:20px;";
+
 #[component]
 fn SizeModal(
     default_n: usize,
@@ -271,7 +291,7 @@ fn SizeModal(
 
     // The Without-Solution creation path. Renders nothing when the
     // `without-solution` feature is off — the modal then offers only
-    // Random Solution (and Cancel).
+    // Create (and Cancel).
     #[cfg(feature = "without-solution")]
     let no_solution_btn = on_create_empty.map_or_else(
         || ().into_any(),
@@ -313,8 +333,8 @@ fn SizeModal(
                     "; outline-offset: 2px; }"
                 </style>
                 <p style=title_style()>"New puzzle"</p>
-                <p style=body_style()>"Choose a grid size, then how to author it."</p>
-                <div style="display:flex;align-items:center;gap:8px;margin-bottom:20px;">
+                <p style=body_style()>{SIZE_MODAL_BODY}</p>
+                <div style=SIZE_ROW_STYLE>
                     <label style=format!("font-size:13px;color:{INK};")>
                         "Size: "
                         <select
@@ -347,7 +367,7 @@ fn SizeModal(
                         title=RANDOM_SOLUTION_TOOLTIP
                         on:click=move |_| on_create_with_solution.run(chosen.get_untracked())
                     >
-                        "Random Solution"
+                        {CREATE_BTN_LABEL}
                     </button>
                     {(!mandatory).then(||
                         view! {
