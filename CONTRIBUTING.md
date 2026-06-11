@@ -52,6 +52,27 @@ Build and test commands are documented in the
 [README](README.md#building-and-testing); the authoritative command set lives
 in [`.github/workflows/ci.yml`] and the shared [`.githooks/pre-commit`] hook.
 
+## PR preview deploys
+
+Every pull request gets a WASM build of the Designer deployed to the
+`gh-pages` branch under `/pr-N/` (where `N` is the PR number), served at
+`https://wpm.github.io/Mathdoku/pr-N/`. You don't need to do anything to get
+one:
+
+- A sticky comment on the PR links to the preview and updates on each push
+  (via [rossjrw/pr-preview-action]).
+- When the PR closes, the preview is removed, and its entry in the
+  repository's Environments sidebar is deactivated and deleted.
+- PRs from forks skip the preview deploy — GitHub gives their workflow runs a
+  read-only `GITHUB_TOKEN` — but the bundle-size gate in
+  [`.github/workflows/ci.yml`] (the part that actually gates merge) still
+  runs for them.
+
+The workflow itself is [`.github/workflows/pr-preview.yml`].
+
+[rossjrw/pr-preview-action]: https://github.com/rossjrw/pr-preview-action
+[`.github/workflows/pr-preview.yml`]: .github/workflows/pr-preview.yml
+
 [`mathdoku/CHANGELOG.md`]: mathdoku/CHANGELOG.md
 [`.github/workflows/ci.yml`]: .github/workflows/ci.yml
 [`.githooks/pre-commit`]: .githooks/pre-commit
