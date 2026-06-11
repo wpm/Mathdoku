@@ -44,8 +44,8 @@ pub fn anchor(cells: &[Cell]) -> Cell {
     cells.iter().copied().min().unwrap_or(Cell::new(0, 0))
 }
 
-fn neighbors(cell: Cell, n: usize) -> impl Iterator<Item = Cell> {
-    cell.neighbors_4()
+fn edge_adjacent(cell: Cell, n: usize) -> impl Iterator<Item = Cell> {
+    cell.edge_adjacent_cells()
         .into_iter()
         .filter(move |c| c.row() < n && c.column() < n)
 }
@@ -79,8 +79,8 @@ pub fn assign_colors(
     let mut adjacency = vec![BTreeSet::<usize>::new(); cages.len()];
     for (i, cells) in cages.iter().enumerate() {
         for &cell in cells {
-            for nb in neighbors(cell, n) {
-                if let Some(j) = cage_index[nb.row()][nb.column()]
+            for adjacent in edge_adjacent(cell, n) {
+                if let Some(j) = cage_index[adjacent.row()][adjacent.column()]
                     && j != i
                 {
                     adjacency[i].insert(j);
@@ -339,8 +339,8 @@ mod tests {
         for r in 0..n {
             for c in 0..n {
                 let Some(a) = cage_index[r][c] else { continue };
-                for nb in neighbors(Cell::new(r, c), n) {
-                    if let Some(b) = cage_index[nb.row()][nb.column()]
+                for adjacent in edge_adjacent(Cell::new(r, c), n) {
+                    if let Some(b) = cage_index[adjacent.row()][adjacent.column()]
                         && a != b
                     {
                         assert_ne!(
