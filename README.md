@@ -63,6 +63,29 @@ Some library tests are marked `#[ignore]` because they are slow; run them with
 - **Desktop app**: with the [Tauri CLI] installed, run `cargo tauri dev` from
   `apps/designer/src-tauri/`.
 
+## Web preview deploys
+
+Hosted builds of the designer's web preview
+([ADR-0002](adr/0002-wasm-web-preview.md)) are published to GitHub Pages from
+the `gh-pages` branch:
+
+- Every push to `main` redeploys <https://wpm.github.io/Mathdoku/main/> via
+  [`deploy-main.yml`], which also publishes the website (`site/`) to the
+  Pages root.
+- Every PR from a branch in this repository gets its own preview at
+  `https://wpm.github.io/Mathdoku/pr-N/` via [`pr-preview.yml`]. A sticky PR
+  comment links to it, each push to the PR redeploys it, and it is removed
+  when the PR closes. PRs from forks skip the preview (their workflow token
+  is read-only), but the bundle-size check in CI still runs.
+
+Both workflows build with `trunk build --release --features web` and a
+`--public-url` matching the deploy directory, so there is nothing to do by
+hand — open a PR and the preview link appears. Deploys are listed in the
+repository's Environments sidebar.
+
+[`deploy-main.yml`]: .github/workflows/deploy-main.yml
+[`pr-preview.yml`]: .github/workflows/pr-preview.yml
+
 ## Contributing
 
 See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the development workflow, commit
