@@ -864,13 +864,9 @@ mod tests {
     #[cfg(feature = "without-solution")]
     use super::singleton_digit_commit;
     use super::{parked_cages, previous_cell_values, step_provisional_cage};
-    use mathdoku::{Cage, Cell, N, Operator, Polyomino};
+    use mathdoku::{Cell, Operator, Polyomino};
     use mathdoku_designer_core::State;
-
-    fn poly(positions: &[(usize, usize)]) -> Polyomino {
-        let cells: Vec<Cell> = positions.iter().map(|&(r, c)| Cell::new(r, c)).collect();
-        Polyomino::from_cells(&cells).unwrap()
-    }
+    use mathdoku_designer_core::test_support::{cage_at, poly};
 
     #[test]
     fn parked_cages_excludes_matching_polyomino() {
@@ -890,11 +886,6 @@ mod tests {
         let _ = st.provisional_cages.insert(poly(&[(2, 2)]));
         let parked = parked_cages(&st, &poly(&[(0, 0)]));
         assert_eq!(parked.len(), 1);
-    }
-
-    fn given_cage(n: N, r: usize, c: usize, target: u64) -> Cage {
-        let target = mathdoku::T::try_from(target).unwrap();
-        Cage::new(n, poly(&[(r, c)]), Operator::Given, target).unwrap()
     }
 
     #[cfg(feature = "without-solution")]
@@ -940,7 +931,7 @@ mod tests {
         let mut st = State::new(4).unwrap();
         st.puzzle = st
             .puzzle
-            .insert_cage(&given_cage(4, 0, 0, 2))
+            .insert_cage(&cage_at(4, &[(0, 0)], Operator::Given, 2))
             .unwrap()
             .unwrap();
         st.active = Cell::new(0, 0);
@@ -1013,7 +1004,7 @@ mod tests {
         let mut prev = State::new_with_solution(4).unwrap();
         prev.puzzle = prev
             .puzzle
-            .insert_cage(&given_cage(4, 0, 0, 2))
+            .insert_cage(&cage_at(4, &[(0, 0)], Operator::Given, 2))
             .unwrap()
             .unwrap();
         let vals = previous_cell_values(Some(prev), 4);

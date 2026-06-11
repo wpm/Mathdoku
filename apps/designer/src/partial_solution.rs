@@ -91,35 +91,8 @@ impl PartialSolution {
 #[allow(clippy::unwrap_used, clippy::panic)]
 mod tests {
     use super::PartialSolution;
-    use mathdoku::{Cage, Cell, N, Operator, Polyomino, Puzzle};
-
-    fn cage_at(n: N, positions: &[(usize, usize)], op: Operator, target: u64) -> Cage {
-        let cells: Vec<Cell> = positions.iter().map(|&(r, c)| Cell::new(r, c)).collect();
-        let poly = Polyomino::from_cells(&cells).unwrap();
-        let target = mathdoku::T::try_from(target).unwrap();
-        Cage::new(n, poly, op, target).unwrap()
-    }
-
-    /// A 3×3 puzzle whose cells are pinned to the Latin square
-    /// ```text
-    /// 1 2 3
-    /// 2 3 1
-    /// 3 1 2
-    /// ```
-    /// by nine `Given` cages — exactly one solution.
-    fn given_3x3() -> Puzzle {
-        let square = [[1u64, 2, 3], [2, 3, 1], [3, 1, 2]];
-        let mut puzzle = Puzzle::new(3).unwrap();
-        for (r, row) in square.iter().enumerate() {
-            for (c, &v) in row.iter().enumerate() {
-                puzzle = puzzle
-                    .insert_cage(&cage_at(3, &[(r, c)], Operator::Given, v))
-                    .unwrap()
-                    .unwrap();
-            }
-        }
-        puzzle
-    }
+    use mathdoku::{Cell, Operator, Puzzle};
+    use mathdoku_designer_core::test_support::{cage_at, given_3x3, known_3x3_solution};
 
     /// A 3×3 puzzle covered by three `Add`-6 row cages. Every row is forced to be
     /// a permutation of `{1,2,3}`, so the solutions are exactly the 12 order-3
@@ -163,9 +136,7 @@ mod tests {
 
     #[test]
     fn cell_value_singleton_reads_pinned_grid() {
-        let square: Vec<Vec<N>> = vec![vec![1, 2, 3], vec![2, 3, 1], vec![3, 1, 2]];
-        let grid = Puzzle::from_latin_square(3, &square).unwrap();
-        let ps = PartialSolution::new(Puzzle::new(3).unwrap(), grid);
+        let ps = PartialSolution::new(Puzzle::new(3).unwrap(), known_3x3_solution());
         assert_eq!(ps.cell_value_singleton(Cell::new(0, 0)), Some(1));
         assert_eq!(ps.cell_value_singleton(Cell::new(1, 0)), Some(2));
         assert_eq!(ps.cell_value_singleton(Cell::new(2, 2)), Some(2));

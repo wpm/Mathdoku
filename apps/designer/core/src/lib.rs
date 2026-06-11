@@ -15,6 +15,8 @@
 #![deny(missing_docs)]
 
 pub mod help;
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_support;
 
 use std::collections::BTreeSet;
 
@@ -493,135 +495,17 @@ mod tests {
     //! expectation; each is marked `// TODO(#NN)` against the tracking issue.
     //! Per #55 this PR is tests-only and does not fix the underlying behaviour.
 
-    /// Shared fixtures.
-    mod helpers {
-        use crate::{AppState, apply_loaded, serialize_save};
-        #[cfg(feature = "without-solution")]
-        use crate::{State, insert_cage};
-        #[cfg(feature = "without-solution")]
-        use mathdoku::{Cage, N, Operator, T};
-        use mathdoku::{Cell, Polyomino, Puzzle};
-
-        /// Builds a [`Cage`] from `(row, column)` positions, an operator, and a target.
-        #[cfg(feature = "without-solution")]
-        pub(super) fn cage_at(
-            n: N,
-            positions: &[(usize, usize)],
-            op: Operator,
-            target: u64,
-        ) -> Cage {
-            let cells: Vec<Cell> = positions.iter().map(|&(r, c)| Cell::new(r, c)).collect();
-            let poly = Polyomino::from_cells(&cells).unwrap();
-            let target = T::try_from(target).unwrap();
-            Cage::new(n, poly, op, target).unwrap()
-        }
-
-        /// Builds [`Cell`]s from `(row, column)` positions.
-        pub(super) fn cells(positions: &[(usize, usize)]) -> Vec<Cell> {
-            positions.iter().map(|&(r, c)| Cell::new(r, c)).collect()
-        }
-
-        pub(super) fn poly(positions: &[(usize, usize)]) -> Polyomino {
-            Polyomino::from_cells(&cells(positions)).unwrap()
-        }
-
-        /// Every cell of an `n`×`n` grid in row-major order.
-        #[cfg(feature = "without-solution")]
-        pub(super) fn all_cells(n: usize) -> Vec<Cell> {
-            (0..n)
-                .flat_map(|r| (0..n).map(move |c| Cell::new(r, c)))
-                .collect()
-        }
-
-        /// A 3×3 puzzle pinned to the Latin square
-        /// ```text
-        /// 1 2 3
-        /// 2 3 1
-        /// 3 1 2
-        /// ```
-        /// by nine `Given` cages — exactly one completion.
-        #[cfg(feature = "without-solution")]
-        pub(super) fn unique_3x3() -> State {
-            let mut st = State::new(3).unwrap();
-            let square = [[1u64, 2, 3], [2, 3, 1], [3, 1, 2]];
-            for (r, row) in square.iter().enumerate() {
-                for (c, &v) in row.iter().enumerate() {
-                    st.puzzle = st
-                        .puzzle
-                        .insert_cage(&cage_at(3, &[(r, c)], Operator::Given, v))
-                        .unwrap()
-                        .unwrap();
-                }
-            }
-            st
-        }
-
-        /// The canonical 3×3 Latin square used by the target-derivation tests:
-        /// ```text
-        /// 1 2 3
-        /// 2 3 1
-        /// 3 1 2
-        /// ```
-        pub(super) fn known_3x3_solution() -> Puzzle {
-            let square: Vec<Vec<mathdoku::N>> = vec![vec![1, 2, 3], vec![2, 3, 1], vec![3, 1, 2]];
-            Puzzle::from_latin_square(3, &square).unwrap()
-        }
-
-        /// A With-Solution [`AppState`] whose solution is [`known_3x3_solution`]
-        /// and whose puzzle has no cages yet.
-        pub(super) fn with_solution_3x3() -> AppState {
-            let solution = known_3x3_solution();
-            AppState {
-                puzzle: Some(Puzzle::new(3).unwrap()),
-                solution: Some(solution),
-                ..AppState::default()
-            }
-        }
-
-        /// A fresh Without-Solution `n`×`n` [`AppState`], built directly rather
-        /// than through the feature-gated `new_empty` command so it is usable
-        /// in both build configurations (solution-less states remain loadable
-        /// from save files even when the `without-solution` feature is off).
-        pub(super) fn without_solution(n: usize) -> AppState {
-            AppState {
-                puzzle: Some(Puzzle::new(n).unwrap()),
-                dirty: true,
-                ..AppState::default()
-            }
-        }
-
-        /// A 3×3 [`AppState`] pinned to the same Latin square as [`unique_3x3`]
-        /// by nine `Given` cages — exactly one completion.
-        #[cfg(feature = "without-solution")]
-        pub(super) fn unique_3x3_app_state() -> AppState {
-            let mut state = without_solution(3);
-            let square = [[1u32, 2, 3], [2, 3, 1], [3, 1, 2]];
-            for (r, row) in square.iter().enumerate() {
-                for (c, &v) in row.iter().enumerate() {
-                    let _ =
-                        insert_cage(&mut state, poly(&[(r, c)]), Operator::Given, Some(v)).unwrap();
-                }
-            }
-            state
-        }
-
-        /// Serializes `source`, loads it into a fresh state, and returns the loaded state.
-        pub(super) fn save_round_trip(source: &AppState) -> AppState {
-            let json = serialize_save(source).unwrap();
-            let mut loaded = AppState::default();
-            let _ = apply_loaded(&mut loaded, &json).unwrap();
-            loaded
-        }
-    }
+    // Shared fixtures live in `crate::test_support`, which downstream crates
+    // also use via the `test-support` feature.
 
     // ---- State constructors / mode transitions (migrated from #47) ----
 
     mod state_transitions {
         #[cfg(feature = "without-solution")]
-        use super::helpers::{cage_at, unique_3x3};
-        #[cfg(feature = "without-solution")]
         use crate::Error;
         use crate::State;
+        #[cfg(feature = "without-solution")]
+        use crate::test_support::{cage_at, unique_3x3};
         #[cfg(feature = "without-solution")]
         use mathdoku::{Cell, Operator};
         use serde_json::{from_str, to_string};
@@ -719,7 +603,7 @@ mod tests {
     // ---- Category 1: command-body error paths ----
 
     mod command_errors {
-        use super::helpers::{cells, poly, without_solution};
+        use crate::test_support::{cells, poly, without_solution};
         use crate::{
             AppState, Error, SaveEnvelope, apply_loaded, insert_cage, new_latin_square,
             remove_cage_at, serialize_save,
@@ -1036,8 +920,8 @@ mod tests {
 
     mod invariants {
         #[cfg(feature = "without-solution")]
-        use super::helpers::{all_cells, unique_3x3_app_state};
-        use super::helpers::{poly, with_solution_3x3, without_solution};
+        use crate::test_support::{all_cells, unique_3x3_app_state};
+        use crate::test_support::{poly, with_solution_3x3, without_solution};
         use crate::{AppState, insert_cage, new_latin_square, remove_cage_at};
         #[cfg(feature = "without-solution")]
         use crate::{fix, new_empty, unfix};
@@ -1250,7 +1134,7 @@ mod tests {
 
     #[cfg(feature = "without-solution")]
     mod mode_transitions {
-        use super::helpers::{all_cells, poly, unique_3x3_app_state};
+        use crate::test_support::{all_cells, poly, unique_3x3_app_state};
         use crate::{AppState, Error, fix, insert_cage, new_empty, new_latin_square, unfix};
         use mathdoku::{Cell, Operator, Polyomino, T};
         use rand::{SeedableRng, rngs::StdRng};
@@ -1363,8 +1247,8 @@ mod tests {
     // ---- Category 4: operator target derivation (With-Solution) ----
 
     mod target_derivation {
-        use super::helpers::{poly, with_solution_3x3};
         use crate::insert_cage;
+        use crate::test_support::{poly, with_solution_3x3};
         use mathdoku::Operator;
 
         // Inserts a With-Solution cage (target derived from the solution) and
@@ -1416,7 +1300,7 @@ mod tests {
     // ---- Category 5: save-format wire stability ----
 
     mod save_format {
-        use super::helpers::{poly, save_round_trip, without_solution};
+        use crate::test_support::{poly, save_round_trip, without_solution};
         use crate::{
             AppState, SAVE_VERSION, apply_loaded, insert_cage, new_latin_square, serialize_save,
         };
@@ -1589,7 +1473,7 @@ mod tests {
     // ---- Category 8: pre-condition and trivial-getter tests ----
 
     mod getters {
-        use super::helpers::{poly, without_solution};
+        use crate::test_support::{poly, without_solution};
         use crate::{
             AppState, apply_loaded, get_doc_state, get_puzzle, insert_cage, serialize_save,
             set_active_cell,
@@ -1677,7 +1561,7 @@ mod tests {
     // ---- Category 9: cage-shape edge cases ----
 
     mod cage_shapes {
-        use super::helpers::{poly, without_solution};
+        use crate::test_support::{poly, without_solution};
         use crate::{Error, insert_cage};
         use mathdoku::{Cell, Operator};
 

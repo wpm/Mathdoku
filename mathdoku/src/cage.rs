@@ -464,13 +464,7 @@ mod tests {
     use crate::operator::CommutativeOperator::{Add, Multiply};
     use crate::operator::NonCommutativeOperator::{Divide, Subtract};
 
-    fn domino(r0: usize, c0: usize, r1: usize, c1: usize) -> Polyomino {
-        Polyomino::from([Cell(r0, c0), Cell(r1, c1)]).unwrap()
-    }
-
-    fn triomino(r0: usize, c0: usize, r1: usize, c1: usize, r2: usize, c2: usize) -> Polyomino {
-        Polyomino::from([Cell(r0, c0), Cell(r1, c1), Cell(r2, c2)]).unwrap()
-    }
+    use crate::test_util::{domino, triomino};
 
     // ---- commutative ----
 

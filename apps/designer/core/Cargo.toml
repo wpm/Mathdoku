@@ -13,6 +13,11 @@ publish = false
 # with `--features without-solution`.
 without-solution = ["mathdoku/without-solution"]
 
+# Exports the `test_support` module of shared test fixtures so downstream
+# crates (the UI and Tauri shells) can use it in their tests. The module is
+# always compiled for this crate's own unit tests.
+test-support = []
+
 [dependencies]
 mathdoku = { path = "../../../mathdoku" }
 serde = { version = "1", features = ["derive"] }
