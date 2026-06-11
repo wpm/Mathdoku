@@ -2,7 +2,7 @@
 use crate::Error::{EmptyFills, InvalidCellCageIndex};
 use crate::fill::Fill;
 use crate::memo::Memo;
-use crate::operator::{ArithmeticConstraint, CommutativeOperator, NonCommutativeOperator};
+use crate::operator::{ArithmeticConstraint, NonCommutativeOperator};
 use crate::tuples::{Tuple, Tuples};
 use crate::{Error, N, T};
 
@@ -22,29 +22,6 @@ pub struct Table {
 }
 
 impl Table {
-    /// Constructs a representation of all `k`-tuples of values in `1..=n`
-    /// satisfying a commutative (add or multiply) constraint.
-    ///
-    /// Commutative cages use [`Mdd`] in production; this constructor exists as a
-    /// test utility to verify `Table` behaviour independently of operator class.
-    ///
-    /// # Errors
-    /// Returns [`EmptyFills`] if no tuples satisfy the constraint.
-    #[allow(dead_code)]
-    pub fn commutative(
-        n: N,
-        k: N,
-        operator: CommutativeOperator,
-        target: T,
-    ) -> Result<Self, Error> {
-        let constraint = ArithmeticConstraint::CommutativeConstraint(operator, target);
-        Self::build(
-            n,
-            constraint,
-            Tuples::commutative(n, k, operator, target).collect(),
-        )
-    }
-
     /// Constructs a representation of all pairs of values in `1..=n`
     /// satisfying a non-commutative (subtract or divide) constraint.
     ///
@@ -127,8 +104,31 @@ pub fn fills_from_tuples(tuples: &[Tuple]) -> Result<Vec<Fill>, Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::operator::CommutativeOperator;
     use crate::operator::NonCommutativeOperator::{Divide, Subtract};
     use crate::test_util::memo_contract;
+
+    impl Table {
+        /// Constructs a representation of all `k`-tuples of values in `1..=n`
+        /// satisfying a commutative (add or multiply) constraint.
+        ///
+        /// Commutative cages use [`Mdd`] in production; this constructor exists
+        /// as a test utility to verify `Table` behaviour independently of
+        /// operator class.
+        fn commutative(
+            n: N,
+            k: N,
+            operator: CommutativeOperator,
+            target: T,
+        ) -> Result<Self, Error> {
+            let constraint = ArithmeticConstraint::CommutativeConstraint(operator, target);
+            Self::build(
+                n,
+                constraint,
+                Tuples::commutative(n, k, operator, target).collect(),
+            )
+        }
+    }
 
     // ---- get ----
 
