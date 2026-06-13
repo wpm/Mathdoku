@@ -155,6 +155,56 @@ main,
   color: var(--paper-ink-2);
 }
 
+.downloads {
+  border-top: 1px solid var(--paper-line);
+  padding: 2rem 0 1rem;
+}
+
+.downloads h2 {
+  font-size: 1.5rem;
+  margin: 0 0 0.5rem;
+}
+
+.downloads-note {
+  color: var(--paper-ink-2);
+  max-width: 44rem;
+  margin: 0 0 1.5rem;
+}
+
+.download-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: 1rem;
+}
+
+.download-link {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.85rem 1.1rem;
+  border: 1px solid var(--paper-line);
+  border-radius: 8px;
+  color: var(--paper-ink);
+}
+
+.download-link:hover {
+  text-decoration: none;
+  border-color: var(--paper-accent);
+}
+
+.download-platform {
+  font-weight: 600;
+  color: var(--paper-accent);
+}
+
+.download-meta {
+  font-size: 0.9rem;
+  color: var(--paper-ink-3);
+}
+
 .explainer {
   border-top: 1px solid var(--paper-line);
   padding: 2rem 0 1rem;
