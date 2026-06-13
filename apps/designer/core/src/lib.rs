@@ -505,9 +505,7 @@ mod tests {
         use crate::Error;
         use crate::State;
         #[cfg(feature = "without-solution")]
-        use crate::test_support::{cage_at, unique_3x3};
-        #[cfg(feature = "without-solution")]
-        use mathdoku::CageOperator;
+        use crate::test_support::{row_sums_3x3, unique_3x3};
         use mathdoku::Cell;
         use serde_json::{from_str, to_string};
 
@@ -548,13 +546,7 @@ mod tests {
         fn fix_fails_when_not_unique() {
             // Three row-sum cages: every order-3 Latin square is a completion (12 of them).
             let mut st = State::new(3).unwrap();
-            for r in 0..3 {
-                st.puzzle = st
-                    .puzzle
-                    .insert_cage(&cage_at(3, &[(r, 0), (r, 1), (r, 2)], CageOperator::Add, 6))
-                    .unwrap()
-                    .unwrap();
-            }
+            st.puzzle = row_sums_3x3();
             assert!(matches!(st.fix(), Err(Error::NotUnique)));
             assert!(st.solution.is_none());
         }
