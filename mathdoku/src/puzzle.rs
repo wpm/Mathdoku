@@ -1290,16 +1290,8 @@ mod tests {
 
     #[test]
     fn eq_ignores_insertion_order() {
-        let add = domino(1, 1, 1, 2);
-        let given = Polyomino::from([Cell(2, 1)]).unwrap();
-        let a = Puzzle::new(4)
-            .unwrap()
-            .insert(&add, CageOperator::Add, 5)
-            .unwrap()
-            .unwrap()
-            .insert(&given, CageOperator::Given, 3)
-            .unwrap()
-            .unwrap();
+        // `a` inserts Add before Given; `b` reverses that order.
+        let (a, add, given) = two_cage_puzzle();
         let b = Puzzle::new(4)
             .unwrap()
             .insert(&given, CageOperator::Given, 3)
