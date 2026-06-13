@@ -507,22 +507,6 @@ impl Puzzle {
     }
 }
 
-/// Returns all operators valid for `polyomino`'s size (without domain-based filtering).
-#[must_use]
-pub fn operators_for(polyomino: &Polyomino) -> Vec<CageOperator> {
-    match polyomino.len() {
-        0 => vec![],
-        1 => vec![CageOperator::Given],
-        2 => vec![
-            CageOperator::Add,
-            CageOperator::Subtract,
-            CageOperator::Multiply,
-            CageOperator::Divide,
-        ],
-        _ => vec![CageOperator::Add, CageOperator::Multiply],
-    }
-}
-
 /// Returns the tight target range for `op` derived from the fills' actual min/max values.
 /// Returns `None` if any fill is empty or no valid target exists.
 #[cfg(feature = "without-solution")]
@@ -1429,13 +1413,13 @@ mod tests {
     #[test]
     fn operators_for_singleton_is_given() {
         let poly = Polyomino::from([Cell(1, 1)]).unwrap();
-        assert_eq!(operators_for(&poly), vec![CageOperator::Given]);
+        assert_eq!(poly.operators_for(), vec![CageOperator::Given]);
     }
 
     #[test]
     fn operators_for_domino_is_all_four() {
         assert_eq!(
-            operators_for(&domino(1, 1, 1, 2)),
+            domino(1, 1, 1, 2).operators_for(),
             vec![
                 CageOperator::Add,
                 CageOperator::Subtract,
@@ -1449,7 +1433,7 @@ mod tests {
     fn operators_for_triomino_is_commutative_only() {
         let poly = Polyomino::from([Cell(1, 1), Cell(1, 2), Cell(1, 3)]).unwrap();
         assert_eq!(
-            operators_for(&poly),
+            poly.operators_for(),
             vec![CageOperator::Add, CageOperator::Multiply]
         );
     }
