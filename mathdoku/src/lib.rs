@@ -15,7 +15,7 @@
 //! - **Construct** a puzzle programmatically with [`Puzzle::new`] and [`Puzzle::insert`].
 //! - **Inspect** cell values with [`Puzzle::get`].
 //! - **Solve** with [`Puzzle::solutions`].
-//! - **Query valid operators** for a polyomino with [`operators_for`].
+//! - **Query valid operators** for a polyomino with [`Polyomino::operators_for`].
 
 #![deny(missing_docs)]
 #![cfg_attr(
@@ -54,7 +54,7 @@ pub use cage::{Cage, Operation};
 pub use fill::Fill;
 pub use latin_square::generate_latin_square;
 pub use polyomino::{Cell, Polyomino};
-pub use puzzle::{CageOperator, Puzzle, operators_for};
+pub use puzzle::{CageOperator, Puzzle};
 
 /// Initialises debug logging if the `MATHDOKU_DEBUG` environment variable is set to `1`.
 ///

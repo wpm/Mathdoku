@@ -1,4 +1,4 @@
-use crate::Error;
+use crate::{CageOperator, Error};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::fmt;
@@ -134,6 +134,22 @@ impl Polyomino {
             .chain(std::iter::once(cell))
             .collect();
         Self::from(cells)
+    }
+
+    /// Returns all operators valid for this polyomino's size (without domain-based filtering).
+    #[must_use]
+    pub fn operators_for(&self) -> Vec<CageOperator> {
+        match self.len() {
+            0 => vec![],
+            1 => vec![CageOperator::Given],
+            2 => vec![
+                CageOperator::Add,
+                CageOperator::Subtract,
+                CageOperator::Multiply,
+                CageOperator::Divide,
+            ],
+            _ => vec![CageOperator::Add, CageOperator::Multiply],
+        }
     }
 }
 

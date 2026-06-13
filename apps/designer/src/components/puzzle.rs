@@ -11,7 +11,7 @@
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use mathdoku::{Cage, CageOperator, Cell, N, Polyomino, Target, operators_for};
+use mathdoku::{Cage, CageOperator, Cell, N, Polyomino, Target};
 use mathdoku_designer_core::State;
 
 use super::cage::Cage as CageComponent;
@@ -173,7 +173,7 @@ pub fn Puzzle(
         let without_solution = st.solution.is_none();
         #[cfg(not(feature = "without-solution"))]
         let without_solution = false;
-        let allowed = operators_for(&poly);
+        let allowed = poly.operators_for();
         // With-Solution singletons commit immediately (Given target read from the
         // solution); they never open the selector. Without-Solution singletons
         // need a target chosen, so they do open it.
@@ -502,7 +502,7 @@ pub fn Puzzle(
                 // With-Solution singleton: Given with a solution-derived target —
                 // commit immediately. Without-Solution singletons need a target
                 // chosen, so they fall through to the operation selector.
-                if st.solution.is_some() && operators_for(&poly) == [CageOperator::Given] {
+                if st.solution.is_some() && poly.operators_for() == [CageOperator::Given] {
                     commit_cage(
                         &poly,
                         CageOperator::Given,
