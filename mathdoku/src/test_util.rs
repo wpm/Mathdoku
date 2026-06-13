@@ -26,7 +26,7 @@ pub fn triomino(r0: usize, c0: usize, r1: usize, c1: usize, r2: usize, c2: usize
     Polyomino::from([Cell(r0, c0), Cell(r1, c1), Cell(r2, c2)]).unwrap()
 }
 
-/// Behavioural contract every [`Memo`](crate::memo::Memo) implementation must
+/// Behavioural contract every [`Memo`](Memo) implementation must
 /// satisfy. `Table` and `Mdd` unit tests both delegate here, passing a
 /// constructor closure `(n, k, operator, target)` for the implementation
 /// under test.

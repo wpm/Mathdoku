@@ -507,7 +507,8 @@ mod tests {
         #[cfg(feature = "without-solution")]
         use crate::test_support::{cage_at, unique_3x3};
         #[cfg(feature = "without-solution")]
-        use mathdoku::{CageOperator, Cell};
+        use mathdoku::CageOperator;
+        use mathdoku::Cell;
         use serde_json::{from_str, to_string};
 
         #[cfg(feature = "without-solution")]
@@ -575,7 +576,7 @@ mod tests {
             let st = State {
                 puzzle: mathdoku::Puzzle::new(4).unwrap(),
                 solution: None,
-                active: mathdoku::Cell::new(0, 0),
+                active: Cell::new(0, 0),
                 provisional_cages: std::collections::BTreeSet::new(),
             };
             let json = to_string(&st).unwrap();

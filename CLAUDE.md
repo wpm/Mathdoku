@@ -19,5 +19,7 @@ the published `mathdoku` crate. Consequently:
 - Branch commits are squashed away, so their messages are not enforced —
   but use the conventional format there too; it keeps history legible and
   PR titles honest.
+- When creating a PR for an issue, ensure that it when it closes, the issue
+  closes as well.
 - Never use the word "KenKen" anywhere (trademark). The project and genre
   name is "Mathdoku".
