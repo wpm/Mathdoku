@@ -135,6 +135,23 @@ jobs:
           prerelease: false
           args: --target ${{ matrix.platform.target }}
 
+      # Hand the freshly built Linux bundles to the smoke-test workflow so it
+      # gates the release against the *real* bundles rather than rebuilding
+      # them. These are the local build outputs (tauri-bundler's default names);
+      # the smoke checks glob by extension, so the later asset renames don't
+      # matter here. The .AppImage.tar.gz updater archive is excluded.
+      - name: Upload Linux bundles for the smoke test
+        if: matrix.platform.runner == 'ubuntu-22.04'
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-designer-bundles
+          path: |
+            target/x86_64-unknown-linux-gnu/release/bundle/deb/*.deb
+            target/x86_64-unknown-linux-gnu/release/bundle/rpm/*.rpm
+            target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage
+          if-no-files-found: error
+          retention-days: 7
+
       # tauri-bundler notarizes and staples the .app, but the .dmg wrapper is
       # assembled afterwards and only codesigned, so it carries no notarization
       # ticket. Notarize and staple the dmg too, then swap the stapled copy
@@ -213,3 +230,17 @@ jobs:
               echo "Renamed .$ext bundle to ${fixed[$ext]}."
             fi
           done
+
+  # Gate the release: install and launch the real Linux bundles on clean images
+  # before the release is considered good. Reuses the same checks that run
+  # continuously on pushes to main; skip-build makes it test the bundles the
+  # release job just uploaded (in this same run) instead of rebuilding them.
+  linux-smoke:
+    name: Linux smoke test
+    needs: release-designer
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/linux-smoke.yml
+    with:
+      skip-build: true
