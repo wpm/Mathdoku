@@ -1023,56 +1023,47 @@ mod tests {
     #[test]
     fn insert_infeasible_cage_returns_none() {
         // pin (1,1)=1 and (1,2)=1 in a 2×2 — AllDifferent makes it infeasible
-        let p = Puzzle::from_parts(InternalGrid::new(2).unwrap(), vec![]);
-        let p = p
-            .insert(
-                &Polyomino::from([Cell(1, 1)]).unwrap(),
-                CageOperator::Given,
-                1,
-            )
-            .unwrap()
-            .unwrap();
+        let p = crate::test_util::pinned_2x2();
         let poly = Polyomino::from([Cell(1, 2)]).unwrap();
         assert!(p.insert(&poly, CageOperator::Given, 1).unwrap().is_none());
     }
 
+    /// Inserts an `op`/`target` cage on the (1,1)-(1,2) domino of an empty 4×4
+    /// and asserts both cells narrow to exactly `expected`.
+    fn assert_domino_prunes(op: CageOperator, target: Target, expected: &[N]) {
+        let poly = domino(1, 1, 1, 2);
+        let fp = Puzzle::new(4)
+            .unwrap()
+            .insert(&poly, op, target)
+            .unwrap()
+            .unwrap();
+        let want = Fill::from(expected);
+        assert_eq!(fp.get(Cell(1, 1)).unwrap(), want);
+        assert_eq!(fp.get(Cell(1, 2)).unwrap(), want);
+    }
+
     #[test]
     fn insert_add_cage_prunes_cells() {
-        let p = Puzzle::from_parts(InternalGrid::new(4).unwrap(), vec![]);
-        let poly = domino(1, 1, 1, 2);
-        let fp = p.insert(&poly, CageOperator::Add, 3).unwrap().unwrap();
-        assert_eq!(fp.get(Cell(1, 1)).unwrap(), Fill::from(&[1, 2]));
-        assert_eq!(fp.get(Cell(1, 2)).unwrap(), Fill::from(&[1, 2]));
+        // Add 3 in a 4×4: only pairs (1,2),(2,1) satisfy it, so both cells narrow to {1,2}.
+        assert_domino_prunes(CageOperator::Add, 3, &[1, 2]);
     }
 
     #[test]
     fn insert_multiply_cage_prunes_cells() {
         // Multiply 6 in a 4×4: valid pairs are (1,6)—out of range—(2,3),(3,2). So both {2,3}.
-        let p = Puzzle::from_parts(InternalGrid::new(4).unwrap(), vec![]);
-        let poly = domino(1, 1, 1, 2);
-        let fp = p.insert(&poly, CageOperator::Multiply, 6).unwrap().unwrap();
-        assert_eq!(fp.get(Cell(1, 1)).unwrap(), Fill::from(&[2, 3]));
-        assert_eq!(fp.get(Cell(1, 2)).unwrap(), Fill::from(&[2, 3]));
+        assert_domino_prunes(CageOperator::Multiply, 6, &[2, 3]);
     }
 
     #[test]
     fn insert_subtract_cage_prunes_cells() {
         // Subtract 3 in a 4×4: only valid pair is (4,1)/(1,4). Both cells narrow to {1,4}.
-        let p = Puzzle::from_parts(InternalGrid::new(4).unwrap(), vec![]);
-        let poly = domino(1, 1, 1, 2);
-        let fp = p.insert(&poly, CageOperator::Subtract, 3).unwrap().unwrap();
-        assert_eq!(fp.get(Cell(1, 1)).unwrap(), Fill::from(&[1, 4]));
-        assert_eq!(fp.get(Cell(1, 2)).unwrap(), Fill::from(&[1, 4]));
+        assert_domino_prunes(CageOperator::Subtract, 3, &[1, 4]);
     }
 
     #[test]
     fn insert_divide_cage_prunes_cells() {
         // Divide 4 in a 4×4: only valid pair is (4,1)/(1,4). Both cells narrow to {1,4}.
-        let p = Puzzle::from_parts(InternalGrid::new(4).unwrap(), vec![]);
-        let poly = domino(1, 1, 1, 2);
-        let fp = p.insert(&poly, CageOperator::Divide, 4).unwrap().unwrap();
-        assert_eq!(fp.get(Cell(1, 1)).unwrap(), Fill::from(&[1, 4]));
-        assert_eq!(fp.get(Cell(1, 2)).unwrap(), Fill::from(&[1, 4]));
+        assert_domino_prunes(CageOperator::Divide, 4, &[1, 4]);
     }
 
     #[test]
