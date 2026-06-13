@@ -13,7 +13,7 @@
 use crate::{AppState, apply_loaded, serialize_save};
 #[cfg(feature = "without-solution")]
 use crate::{State, insert_cage};
-use mathdoku::{Cage, Cell, N, Operator, Polyomino, Puzzle, Target};
+use mathdoku::{Cage, CageOperator, Cell, N, Polyomino, Puzzle, Target};
 
 /// The canonical 3×3 Latin square used by the fixtures below:
 /// ```text
@@ -34,7 +34,7 @@ pub fn poly(positions: &[(usize, usize)]) -> Polyomino {
 }
 
 /// Builds a [`Cage`] from `(row, column)` positions, an operator, and a target.
-pub fn cage_at(n: N, positions: &[(usize, usize)], op: Operator, target: u64) -> Cage {
+pub fn cage_at(n: N, positions: &[(usize, usize)], op: CageOperator, target: u64) -> Cage {
     let target = Target::try_from(target).unwrap();
     Cage::new(n, poly(positions), op, target).unwrap()
 }
@@ -53,7 +53,7 @@ pub fn given_3x3() -> Puzzle {
     for (r, row) in LATIN_3X3.iter().enumerate() {
         for (c, &v) in row.iter().enumerate() {
             puzzle = puzzle
-                .insert_cage(&cage_at(3, &[(r, c)], Operator::Given, u64::from(v)))
+                .insert_cage(&cage_at(3, &[(r, c)], CageOperator::Given, u64::from(v)))
                 .unwrap()
                 .unwrap();
         }
@@ -111,7 +111,7 @@ pub fn unique_3x3_app_state() -> AppState {
             let _ = insert_cage(
                 &mut state,
                 poly(&[(r, c)]),
-                Operator::Given,
+                CageOperator::Given,
                 Some(Target::from(v)),
             )
             .unwrap();

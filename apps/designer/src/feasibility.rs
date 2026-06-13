@@ -18,7 +18,7 @@ use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
-use mathdoku::{Cage, Error, N, Operator, Polyomino, Puzzle, Target};
+use mathdoku::{Cage, CageOperator, Error, N, Polyomino, Puzzle, Target};
 
 /// Returns `true` if the puzzle extended with `candidate` is viable.
 ///
@@ -63,7 +63,7 @@ pub fn is_globally_feasible(puzzle: &Puzzle, candidate: &Cage) -> bool {
 pub fn feasible_op_targets(
     puzzle: &Puzzle,
     polyomino: &Polyomino,
-) -> Result<Vec<(Operator, Target)>, Error> {
+) -> Result<Vec<(CageOperator, Target)>, Error> {
     let n = N::try_from(puzzle.n()).map_err(|_| Error::InvalidGridSize(puzzle.n()))?;
     let covered: usize = puzzle.cages().map(|cage| cage.polyomino.len()).sum();
     let completes_coverage = covered + polyomino.len() == puzzle.n() * puzzle.n();
@@ -94,7 +94,7 @@ pub fn feasible_op_targets(
 
 /// Cache key: a content hash of the committed cages, plus the candidate polyomino.
 type CacheKey = (u64, Polyomino);
-type FeasibleCache = HashMap<CacheKey, Vec<(Operator, Target)>>;
+type FeasibleCache = HashMap<CacheKey, Vec<(CageOperator, Target)>>;
 
 thread_local! {
     static CACHE: RefCell<FeasibleCache> = RefCell::new(FeasibleCache::new());
@@ -120,7 +120,7 @@ fn puzzle_key(puzzle: &Puzzle) -> u64 {
 pub fn cached_feasible_op_targets(
     puzzle: &Puzzle,
     polyomino: &Polyomino,
-) -> Result<Vec<(Operator, Target)>, Error> {
+) -> Result<Vec<(CageOperator, Target)>, Error> {
     let key = (puzzle_key(puzzle), polyomino.clone());
     if let Some(hit) = CACHE.with_borrow(|c| c.get(&key).cloned()) {
         return Ok(hit);
@@ -138,8 +138,8 @@ pub fn cached_feasible_op_targets(
 /// Without-Solution two-step picker: the operator strip shows the keys, and
 /// clicking one reveals its targets.
 #[must_use]
-pub fn group_by_operator(pairs: &[(Operator, Target)]) -> Vec<(Operator, Vec<Target>)> {
-    let mut grouped: Vec<(Operator, Vec<Target>)> = Vec::new();
+pub fn group_by_operator(pairs: &[(CageOperator, Target)]) -> Vec<(CageOperator, Vec<Target>)> {
+    let mut grouped: Vec<(CageOperator, Vec<Target>)> = Vec::new();
     for (op, target) in pairs {
         if let Some(entry) = grouped.iter_mut().find(|(o, _)| o == op) {
             entry.1.push(*target);
@@ -156,7 +156,7 @@ mod tests {
     use super::{
         cached_feasible_op_targets, feasible_op_targets, group_by_operator, is_globally_feasible,
     };
-    use mathdoku::{Cage, N, Operator, Puzzle};
+    use mathdoku::{Cage, CageOperator, N, Puzzle};
     use mathdoku_designer_core::test_support::{cage_at, poly};
 
     #[test]
@@ -164,7 +164,7 @@ mod tests {
         let puzzle = Puzzle::new(3).unwrap();
         assert!(is_globally_feasible(
             &puzzle,
-            &cage_at(3, &[(0, 0)], Operator::Given, 2)
+            &cage_at(3, &[(0, 0)], CageOperator::Given, 2)
         ));
     }
 
@@ -173,7 +173,7 @@ mod tests {
         let puzzle = Puzzle::new(3).unwrap();
         assert!(!is_globally_feasible(
             &puzzle,
-            &cage_at(3, &[(0, 0)], Operator::Given, 9)
+            &cage_at(3, &[(0, 0)], CageOperator::Given, 9)
         ));
     }
 
@@ -182,12 +182,12 @@ mod tests {
         // A cage conflict (overlapping an existing cage) is never feasible.
         let puzzle = Puzzle::new(3)
             .unwrap()
-            .insert_cage(&cage_at(3, &[(0, 0), (0, 1)], Operator::Add, 3))
+            .insert_cage(&cage_at(3, &[(0, 0), (0, 1)], CageOperator::Add, 3))
             .unwrap()
             .unwrap();
         assert!(!is_globally_feasible(
             &puzzle,
-            &cage_at(3, &[(0, 0)], Operator::Given, 1)
+            &cage_at(3, &[(0, 0)], CageOperator::Given, 1)
         ));
     }
 
@@ -198,7 +198,7 @@ mod tests {
         // Givens fail, with no completion search either way.
         let puzzle = Puzzle::new(4).unwrap();
         for target in 1..=6 {
-            let candidate = cage_at(4, &[(0, 0)], Operator::Given, target);
+            let candidate = cage_at(4, &[(0, 0)], CageOperator::Given, target);
             assert_eq!(
                 is_globally_feasible(&puzzle, &candidate),
                 matches!(puzzle.insert_cage(&candidate), Ok(Some(_)))
@@ -213,15 +213,15 @@ mod tests {
         // Latin squares all satisfy it.
         let puzzle = Puzzle::new(3)
             .unwrap()
-            .insert_cage(&cage_at(3, &[(0, 0), (0, 1), (0, 2)], Operator::Add, 6))
+            .insert_cage(&cage_at(3, &[(0, 0), (0, 1), (0, 2)], CageOperator::Add, 6))
             .unwrap()
             .unwrap()
-            .insert_cage(&cage_at(3, &[(1, 0), (1, 1), (1, 2)], Operator::Add, 6))
+            .insert_cage(&cage_at(3, &[(1, 0), (1, 1), (1, 2)], CageOperator::Add, 6))
             .unwrap()
             .unwrap();
         assert!(is_globally_feasible(
             &puzzle,
-            &cage_at(3, &[(2, 0), (2, 1), (2, 2)], Operator::Add, 6)
+            &cage_at(3, &[(2, 0), (2, 1), (2, 2)], CageOperator::Add, 6)
         ));
     }
 
@@ -232,7 +232,7 @@ mod tests {
         // A single cell in an empty 4×4 can hold any of 1..=4.
         let targets: Vec<mathdoku::Target> = pairs.iter().map(|&(_, t)| t).collect();
         assert_eq!(targets, vec![1, 2, 3, 4]);
-        assert!(pairs.iter().all(|(op, _)| *op == Operator::Given));
+        assert!(pairs.iter().all(|(op, _)| *op == CageOperator::Given));
     }
 
     #[test]
@@ -240,12 +240,12 @@ mod tests {
         // A full row of a 3×3 must be a permutation of {1,2,3}: sum 6, product 6.
         let puzzle = Puzzle::new(3).unwrap();
         let pairs = feasible_op_targets(&puzzle, &poly(&[(0, 0), (0, 1), (0, 2)])).unwrap();
-        assert!(pairs.contains(&(Operator::Add, 6)));
-        assert!(pairs.contains(&(Operator::Multiply, 6)));
+        assert!(pairs.contains(&(CageOperator::Add, 6)));
+        assert!(pairs.contains(&(CageOperator::Multiply, 6)));
         // No other Add/Multiply targets are reachable.
         for (op, target) in &pairs {
             match op {
-                Operator::Add | Operator::Multiply => assert_eq!(*target, 6),
+                CageOperator::Add | CageOperator::Multiply => assert_eq!(*target, 6),
                 other => panic!("unexpected operator {other:?} for a triple"),
             }
         }
@@ -270,7 +270,7 @@ mod tests {
         // locally-feasible pair through `is_globally_feasible`.
         let puzzle = Puzzle::new(4)
             .unwrap()
-            .insert_cage(&cage_at(4, &[(0, 0), (0, 1)], Operator::Add, 3))
+            .insert_cage(&cage_at(4, &[(0, 0), (0, 1)], CageOperator::Add, 3))
             .unwrap()
             .unwrap();
         let p = poly(&[(1, 0), (1, 1)]);
@@ -296,15 +296,15 @@ mod tests {
         // (sum 6, product 6) survive it.
         let puzzle = Puzzle::new(3)
             .unwrap()
-            .insert_cage(&cage_at(3, &[(0, 0), (0, 1), (0, 2)], Operator::Add, 6))
+            .insert_cage(&cage_at(3, &[(0, 0), (0, 1), (0, 2)], CageOperator::Add, 6))
             .unwrap()
             .unwrap()
-            .insert_cage(&cage_at(3, &[(1, 0), (1, 1), (1, 2)], Operator::Add, 6))
+            .insert_cage(&cage_at(3, &[(1, 0), (1, 1), (1, 2)], CageOperator::Add, 6))
             .unwrap()
             .unwrap();
         let pairs = feasible_op_targets(&puzzle, &poly(&[(2, 0), (2, 1), (2, 2)])).unwrap();
-        assert!(pairs.contains(&(Operator::Add, 6)));
-        assert!(pairs.contains(&(Operator::Multiply, 6)));
+        assert!(pairs.contains(&(CageOperator::Add, 6)));
+        assert!(pairs.contains(&(CageOperator::Multiply, 6)));
     }
 
     #[test]
@@ -321,14 +321,14 @@ mod tests {
     #[test]
     fn group_by_operator_preserves_operator_order_and_collects_targets() {
         let pairs = vec![
-            (Operator::Add, 3),
-            (Operator::Add, 4),
-            (Operator::Subtract, 1),
+            (CageOperator::Add, 3),
+            (CageOperator::Add, 4),
+            (CageOperator::Subtract, 1),
         ];
         let grouped = group_by_operator(&pairs);
-        assert_eq!(grouped[0].0, Operator::Add);
+        assert_eq!(grouped[0].0, CageOperator::Add);
         assert_eq!(grouped[0].1, vec![3, 4]);
-        assert_eq!(grouped[1].0, Operator::Subtract);
+        assert_eq!(grouped[1].0, CageOperator::Subtract);
         assert_eq!(grouped[1].1, vec![1]);
     }
 

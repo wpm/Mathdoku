@@ -20,7 +20,7 @@ pub mod test_support;
 
 use std::collections::BTreeSet;
 
-use mathdoku::{Cage, Cell, N, Operator, Polyomino, Puzzle, Target, generate_latin_square};
+use mathdoku::{Cage, CageOperator, Cell, N, Polyomino, Puzzle, Target, generate_latin_square};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use serde_json::{from_str, to_string_pretty};
@@ -330,7 +330,7 @@ pub fn new_latin_square<R: Rng>(
 pub fn insert_cage(
     state: &mut AppState,
     poly: Polyomino,
-    operator: Operator,
+    operator: CageOperator,
     target: Option<Target>,
 ) -> Result<State, Error> {
     let puzzle = state.puzzle.as_ref().ok_or(Error::NoPuzzle)?;
@@ -356,11 +356,11 @@ pub fn insert_cage(
                 .collect()
         });
         let raw: u64 = match (&operator, true_values.as_deref()) {
-            (Operator::Given, Some(vals)) => vals[0],
-            (Operator::Add, Some(vals)) => vals.iter().sum(),
-            (Operator::Multiply, Some(vals)) => vals.iter().product(),
-            (Operator::Subtract, Some(vals)) => vals[0].abs_diff(vals[1]),
-            (Operator::Divide, Some(vals)) => vals[0].max(vals[1]) / vals[0].min(vals[1]),
+            (CageOperator::Given, Some(vals)) => vals[0],
+            (CageOperator::Add, Some(vals)) => vals.iter().sum(),
+            (CageOperator::Multiply, Some(vals)) => vals.iter().product(),
+            (CageOperator::Subtract, Some(vals)) => vals[0].abs_diff(vals[1]),
+            (CageOperator::Divide, Some(vals)) => vals[0].max(vals[1]) / vals[0].min(vals[1]),
             _ => 0,
         };
         Target::try_from(raw).map_err(|_| mathdoku::Error::InfeasibleCage(poly.clone(), raw))?
@@ -507,7 +507,7 @@ mod tests {
         #[cfg(feature = "without-solution")]
         use crate::test_support::{cage_at, unique_3x3};
         #[cfg(feature = "without-solution")]
-        use mathdoku::{Cell, Operator};
+        use mathdoku::{CageOperator, Cell};
         use serde_json::{from_str, to_string};
 
         #[cfg(feature = "without-solution")]
@@ -550,7 +550,7 @@ mod tests {
             for r in 0..3 {
                 st.puzzle = st
                     .puzzle
-                    .insert_cage(&cage_at(3, &[(r, 0), (r, 1), (r, 2)], Operator::Add, 6))
+                    .insert_cage(&cage_at(3, &[(r, 0), (r, 1), (r, 2)], CageOperator::Add, 6))
                     .unwrap()
                     .unwrap();
             }
@@ -610,7 +610,7 @@ mod tests {
         };
         #[cfg(feature = "without-solution")]
         use crate::{fix, new_empty, unfix};
-        use mathdoku::{Cell, Operator, Polyomino, Puzzle};
+        use mathdoku::{CageOperator, Cell, Polyomino, Puzzle};
         use rand::{SeedableRng, rngs::StdRng};
         use serde_json::to_string;
 
@@ -622,7 +622,7 @@ mod tests {
             let r = insert_cage(
                 &mut state,
                 Polyomino::from_cells(&[Cell::new(0, 0)]).unwrap(),
-                Operator::Given,
+                CageOperator::Given,
                 Some(1),
             );
             assert!(matches!(r, Err(Error::NoPuzzle)));
@@ -639,9 +639,14 @@ mod tests {
         #[test]
         fn insert_cage_overlap_is_cage_conflict() {
             let mut state = without_solution(4);
-            let _ =
-                insert_cage(&mut state, poly(&[(0, 0), (0, 1)]), Operator::Add, Some(3)).unwrap();
-            let r = insert_cage(&mut state, poly(&[(0, 0)]), Operator::Given, Some(1));
+            let _ = insert_cage(
+                &mut state,
+                poly(&[(0, 0), (0, 1)]),
+                CageOperator::Add,
+                Some(3),
+            )
+            .unwrap();
+            let r = insert_cage(&mut state, poly(&[(0, 0)]), CageOperator::Given, Some(1));
             // An overlapping region surfaces as the mathdoku-level `CageConflict`.
             assert!(matches!(
                 r,
@@ -656,7 +661,7 @@ mod tests {
                 insert_cage(
                     &mut state,
                     poly(&[(0, 0), (0, 1), (0, 2)]),
-                    Operator::Subtract,
+                    CageOperator::Subtract,
                     Some(1)
                 ),
                 Err(Error::Mathdoku(mathdoku::Error::InfeasibleCage(_, _)))
@@ -670,7 +675,7 @@ mod tests {
                 insert_cage(
                     &mut state,
                     poly(&[(0, 0), (0, 1)]),
-                    Operator::Given,
+                    CageOperator::Given,
                     Some(2)
                 ),
                 Err(Error::Mathdoku(mathdoku::Error::InfeasibleCage(_, _)))
@@ -684,7 +689,12 @@ mod tests {
             // immediately and returns InfeasibleCage — insert_cage propagates the error.
             let mut state = without_solution(3);
             assert!(matches!(
-                insert_cage(&mut state, poly(&[(0, 0), (0, 1)]), Operator::Add, Some(2)),
+                insert_cage(
+                    &mut state,
+                    poly(&[(0, 0), (0, 1)]),
+                    CageOperator::Add,
+                    Some(2)
+                ),
                 Err(Error::Mathdoku(mathdoku::Error::InfeasibleCage(_, _)))
             ));
         }
@@ -703,7 +713,7 @@ mod tests {
         #[test]
         fn remove_cage_at_unknown_polyomino_is_cage_not_found() {
             let mut state = without_solution(4);
-            let _ = insert_cage(&mut state, poly(&[(0, 0)]), Operator::Given, Some(1)).unwrap();
+            let _ = insert_cage(&mut state, poly(&[(0, 0)]), CageOperator::Given, Some(1)).unwrap();
             assert!(matches!(
                 remove_cage_at(&mut state, &poly(&[(1, 1)])),
                 Err(Error::CageNotFound)
@@ -733,12 +743,14 @@ mod tests {
             // Two Given cells in the same row both fixed to 1 — propagation detects the
             // conflict and insert_cage returns Ok(None); the designer abandons the operation.
             let mut state = without_solution(3);
-            let cage_before = insert_cage(&mut state, poly(&[(0, 0)]), Operator::Given, Some(1))
-                .unwrap()
-                .puzzle;
+            let cage_before =
+                insert_cage(&mut state, poly(&[(0, 0)]), CageOperator::Given, Some(1))
+                    .unwrap()
+                    .puzzle;
             // Second Given(1) in the same row makes the puzzle infeasible: fixpoint returns
             // None, so insert_cage succeeds (Ok) but leaves the puzzle unchanged.
-            let st = insert_cage(&mut state, poly(&[(0, 1)]), Operator::Given, Some(1)).unwrap();
+            let st =
+                insert_cage(&mut state, poly(&[(0, 1)]), CageOperator::Given, Some(1)).unwrap();
             assert_eq!(st.puzzle, cage_before);
             assert_eq!(state.puzzle.as_ref().unwrap().cages().count(), 1);
         }
@@ -752,7 +764,7 @@ mod tests {
             let _ = insert_cage(
                 &mut state,
                 poly(&[(0, 0), (0, 1), (0, 2), (0, 3)]),
-                Operator::Add,
+                CageOperator::Add,
                 Some(10),
             )
             .unwrap();
@@ -989,7 +1001,7 @@ mod tests {
         fn insert_cage_uses_author_target_without_solution() {
             let mut state = without_solution(4);
             let p = Polyomino::from_cells(&[Cell::new(0, 0), Cell::new(0, 1)]).unwrap();
-            let st = insert_cage(&mut state, p, mathdoku::Operator::Add, Some(7)).unwrap();
+            let st = insert_cage(&mut state, p, mathdoku::CageOperator::Add, Some(7)).unwrap();
             let cage = st.puzzle.cages().next().unwrap();
             assert_eq!(cage.operation().target, 7);
             assert!(st.solution.is_none());
@@ -999,8 +1011,13 @@ mod tests {
         fn insert_cage_with_solution_keeps_current_constrained() {
             let mut state = with_solution_3x3();
             let region = poly(&[(0, 0)]);
-            let st =
-                insert_cage(&mut state, region.clone(), mathdoku::Operator::Given, None).unwrap();
+            let st = insert_cage(
+                &mut state,
+                region.clone(),
+                mathdoku::CageOperator::Given,
+                None,
+            )
+            .unwrap();
             let puzzle = state.puzzle.as_ref().unwrap();
             assert!(puzzle.cages().any(|c| c.polyomino() == &region));
             // current() is always the puzzle's own propagated grid.
@@ -1018,7 +1035,7 @@ mod tests {
             let mut state = with_solution_3x3();
             // Add(3) on (0,0)+(0,1) constrains both to {1,2}.
             let region = poly(&[(0, 0), (0, 1)]);
-            let st = insert_cage(&mut state, region, mathdoku::Operator::Add, Some(3)).unwrap();
+            let st = insert_cage(&mut state, region, mathdoku::CageOperator::Add, Some(3)).unwrap();
             let grid = st.current().unwrap();
             // Both caged cells must show {1,2} — multi-value, not the solution singleton.
             let fill_00 = grid.get(Cell::new(0, 0)).unwrap();
@@ -1037,8 +1054,13 @@ mod tests {
         fn insert_cage_without_solution_keeps_current_constrained() {
             let mut state = without_solution(4);
             let region = poly(&[(0, 0), (0, 1)]);
-            let st =
-                insert_cage(&mut state, region.clone(), mathdoku::Operator::Add, Some(3)).unwrap();
+            let st = insert_cage(
+                &mut state,
+                region.clone(),
+                mathdoku::CageOperator::Add,
+                Some(3),
+            )
+            .unwrap();
             let puzzle = state.puzzle.as_ref().unwrap();
             assert!(puzzle.cages().any(|c| c.polyomino() == &region));
             let expected = puzzle.clone();
@@ -1050,12 +1072,17 @@ mod tests {
         fn remove_cage_re_constrains_current() {
             let mut state = without_solution(4);
             let region = poly(&[(0, 0), (0, 1)]);
-            let _ =
-                insert_cage(&mut state, region.clone(), mathdoku::Operator::Add, Some(3)).unwrap();
+            let _ = insert_cage(
+                &mut state,
+                region.clone(),
+                mathdoku::CageOperator::Add,
+                Some(3),
+            )
+            .unwrap();
             let _ = insert_cage(
                 &mut state,
                 poly(&[(1, 0)]),
-                mathdoku::Operator::Given,
+                mathdoku::CageOperator::Given,
                 Some(2),
             )
             .unwrap();
@@ -1136,7 +1163,7 @@ mod tests {
     mod mode_transitions {
         use crate::test_support::{all_cells, poly, unique_3x3_app_state};
         use crate::{AppState, Error, fix, insert_cage, new_empty, new_latin_square, unfix};
-        use mathdoku::{Cell, Operator, Polyomino, Target};
+        use mathdoku::{CageOperator, Cell, Polyomino, Target};
         use rand::{SeedableRng, rngs::StdRng};
 
         #[test]
@@ -1145,14 +1172,19 @@ mod tests {
             // `fix` succeeds after only two cages.
             let mut state = AppState::default();
             let _ = new_empty(&mut state, 2).unwrap();
-            let _ = insert_cage(&mut state, poly(&[(0, 0)]), Operator::Given, Some(1)).unwrap();
-            let _ =
-                insert_cage(&mut state, poly(&[(0, 1), (1, 1)]), Operator::Add, Some(3)).unwrap();
+            let _ = insert_cage(&mut state, poly(&[(0, 0)]), CageOperator::Given, Some(1)).unwrap();
+            let _ = insert_cage(
+                &mut state,
+                poly(&[(0, 1), (1, 1)]),
+                CageOperator::Add,
+                Some(3),
+            )
+            .unwrap();
             let _ = fix(&mut state).unwrap();
             assert!(state.solution.is_some());
             let _ = unfix(&mut state).unwrap();
             assert!(state.solution.is_none());
-            let _ = insert_cage(&mut state, poly(&[(1, 0)]), Operator::Given, Some(2)).unwrap();
+            let _ = insert_cage(&mut state, poly(&[(1, 0)]), CageOperator::Given, Some(2)).unwrap();
             let puzzle = state.puzzle.as_ref().unwrap();
             assert_eq!(puzzle.cages().count(), 3);
             assert!(state.solution.is_none());
@@ -1173,7 +1205,7 @@ mod tests {
             for cell in all_cells(3) {
                 let v = Target::from(original.get(cell).unwrap().values()[0]);
                 let p = Polyomino::from_cells(&[cell]).unwrap();
-                let _ = insert_cage(&mut state, p, Operator::Given, Some(v)).unwrap();
+                let _ = insert_cage(&mut state, p, CageOperator::Given, Some(v)).unwrap();
             }
             let _ = unfix(&mut state).unwrap();
             assert!(state.solution.is_none());
@@ -1207,7 +1239,7 @@ mod tests {
 
             // With-Solution: target derived from the solution.
             let p00 = Polyomino::from_cells(&[Cell::new(0, 0)]).unwrap();
-            let st1 = insert_cage(&mut state, p00.clone(), Operator::Given, None).unwrap();
+            let st1 = insert_cage(&mut state, p00.clone(), CageOperator::Given, None).unwrap();
             let derived = st1
                 .puzzle
                 .cages()
@@ -1224,7 +1256,7 @@ mod tests {
             let _ = insert_cage(
                 &mut state,
                 Polyomino::from_cells(&[Cell::new(0, 1)]).unwrap(),
-                Operator::Given,
+                CageOperator::Given,
                 Some(Target::try_from(value_at(0, 1)).unwrap()),
             )
             .unwrap();
@@ -1249,12 +1281,12 @@ mod tests {
     mod target_derivation {
         use crate::insert_cage;
         use crate::test_support::{poly, with_solution_3x3};
-        use mathdoku::Operator;
+        use mathdoku::CageOperator;
 
         // Inserts a With-Solution cage (target derived from the solution) and
         // returns the derived target. The solution is `known_3x3_solution`:
         //   1 2 3 / 2 3 1 / 3 1 2
-        fn derived_target(op: Operator, region: &[(usize, usize)]) -> u64 {
+        fn derived_target(op: CageOperator, region: &[(usize, usize)]) -> u64 {
             let mut state = with_solution_3x3();
             let p = poly(region);
             let st = insert_cage(&mut state, p.clone(), op, None).unwrap();
@@ -1269,31 +1301,31 @@ mod tests {
         #[test]
         fn given_derives_cell_value() {
             // (0,0) = 1.
-            assert_eq!(derived_target(Operator::Given, &[(0, 0)]), 1);
+            assert_eq!(derived_target(CageOperator::Given, &[(0, 0)]), 1);
         }
 
         #[test]
         fn add_derives_sum() {
             // (0,0)=1 + (0,1)=2 = 3.
-            assert_eq!(derived_target(Operator::Add, &[(0, 0), (0, 1)]), 3);
+            assert_eq!(derived_target(CageOperator::Add, &[(0, 0), (0, 1)]), 3);
         }
 
         #[test]
         fn multiply_derives_product() {
             // (0,0)=1 * (0,1)=2 = 2.
-            assert_eq!(derived_target(Operator::Multiply, &[(0, 0), (0, 1)]), 2);
+            assert_eq!(derived_target(CageOperator::Multiply, &[(0, 0), (0, 1)]), 2);
         }
 
         #[test]
         fn subtract_derives_absolute_difference() {
             // |1 - 2| = 1.
-            assert_eq!(derived_target(Operator::Subtract, &[(0, 0), (0, 1)]), 1);
+            assert_eq!(derived_target(CageOperator::Subtract, &[(0, 0), (0, 1)]), 1);
         }
 
         #[test]
         fn divide_derives_quotient() {
             // max(1,2) / min(1,2) = 2.
-            assert_eq!(derived_target(Operator::Divide, &[(0, 0), (0, 1)]), 2);
+            assert_eq!(derived_target(CageOperator::Divide, &[(0, 0), (0, 1)]), 2);
         }
     }
 
@@ -1304,7 +1336,7 @@ mod tests {
         use crate::{
             AppState, SAVE_VERSION, apply_loaded, insert_cage, new_latin_square, serialize_save,
         };
-        use mathdoku::{Cell, Operator, Puzzle};
+        use mathdoku::{CageOperator, Cell, Puzzle};
         use rand::{SeedableRng, rngs::StdRng};
 
         #[test]
@@ -1331,8 +1363,13 @@ mod tests {
         #[test]
         fn without_solution_save_omits_solution_key() {
             let mut state = without_solution(4);
-            let _ =
-                insert_cage(&mut state, poly(&[(0, 0), (0, 1)]), Operator::Add, Some(3)).unwrap();
+            let _ = insert_cage(
+                &mut state,
+                poly(&[(0, 0), (0, 1)]),
+                CageOperator::Add,
+                Some(3),
+            )
+            .unwrap();
             let json = serialize_save(&state).unwrap();
             assert!(!json.contains("\"solution\""));
         }
@@ -1349,8 +1386,13 @@ mod tests {
         #[test]
         fn without_solution_round_trips_bit_identical() {
             let mut source = without_solution(4);
-            let _ =
-                insert_cage(&mut source, poly(&[(0, 0), (0, 1)]), Operator::Add, Some(3)).unwrap();
+            let _ = insert_cage(
+                &mut source,
+                poly(&[(0, 0), (0, 1)]),
+                CageOperator::Add,
+                Some(3),
+            )
+            .unwrap();
             let loaded = save_round_trip(&source);
             assert_eq!(loaded.puzzle, source.puzzle);
             assert_eq!(loaded.solution, source.solution);
@@ -1478,7 +1520,7 @@ mod tests {
             AppState, apply_loaded, get_doc_state, get_puzzle, insert_cage, serialize_save,
             set_active_cell,
         };
-        use mathdoku::{Cell, Operator, Puzzle};
+        use mathdoku::{CageOperator, Cell, Puzzle};
 
         #[test]
         fn get_doc_state_returns_current_values() {
@@ -1551,8 +1593,13 @@ mod tests {
         #[test]
         fn to_designer_state_always_has_empty_provisional_cages() {
             let mut state = without_solution(4);
-            let _ =
-                insert_cage(&mut state, poly(&[(0, 0), (0, 1)]), Operator::Add, Some(3)).unwrap();
+            let _ = insert_cage(
+                &mut state,
+                poly(&[(0, 0), (0, 1)]),
+                CageOperator::Add,
+                Some(3),
+            )
+            .unwrap();
             let designer = state.to_designer_state().unwrap();
             assert!(designer.provisional_cages.is_empty());
         }
@@ -1563,13 +1610,13 @@ mod tests {
     mod cage_shapes {
         use crate::test_support::{poly, without_solution};
         use crate::{Error, insert_cage};
-        use mathdoku::{Cell, Operator};
+        use mathdoku::{CageOperator, Cell};
 
         #[test]
         fn single_cell_given_succeeds() {
             let mut state = without_solution(4);
             let region = poly(&[(0, 0)]);
-            let st = insert_cage(&mut state, region.clone(), Operator::Given, Some(3)).unwrap();
+            let st = insert_cage(&mut state, region.clone(), CageOperator::Given, Some(3)).unwrap();
             assert!(st.puzzle.cages().any(|c| c.polyomino() == &region));
             assert!(
                 !st.current()
@@ -1583,10 +1630,10 @@ mod tests {
         #[test]
         fn row_pair_all_binary_operators_succeed() {
             for (op, target) in [
-                (Operator::Add, 3),
-                (Operator::Subtract, 1),
-                (Operator::Multiply, 2),
-                (Operator::Divide, 2),
+                (CageOperator::Add, 3),
+                (CageOperator::Subtract, 1),
+                (CageOperator::Multiply, 2),
+                (CageOperator::Divide, 2),
             ] {
                 let mut state = without_solution(4);
                 let st =
@@ -1605,10 +1652,10 @@ mod tests {
         #[test]
         fn column_pair_all_binary_operators_succeed() {
             for (op, target) in [
-                (Operator::Add, 3),
-                (Operator::Subtract, 1),
-                (Operator::Multiply, 2),
-                (Operator::Divide, 2),
+                (CageOperator::Add, 3),
+                (CageOperator::Subtract, 1),
+                (CageOperator::Multiply, 2),
+                (CageOperator::Divide, 2),
             ] {
                 let mut state = without_solution(4);
                 let st =
@@ -1626,7 +1673,7 @@ mod tests {
 
         #[test]
         fn row_triomino_add_and_multiply_succeed() {
-            for (op, target) in [(Operator::Add, 6), (Operator::Multiply, 6)] {
+            for (op, target) in [(CageOperator::Add, 6), (CageOperator::Multiply, 6)] {
                 let mut state = without_solution(4);
                 let st = insert_cage(
                     &mut state,
@@ -1651,7 +1698,7 @@ mod tests {
             let st = insert_cage(
                 &mut state,
                 poly(&[(0, 0), (1, 0), (1, 1)]),
-                Operator::Add,
+                CageOperator::Add,
                 Some(6),
             )
             .unwrap();
@@ -1669,7 +1716,8 @@ mod tests {
             // T-tetromino: (0,0),(0,1),(0,2),(1,1).
             let mut state = without_solution(4);
             let region = poly(&[(0, 0), (0, 1), (0, 2), (1, 1)]);
-            let st = insert_cage(&mut state, region.clone(), Operator::Multiply, Some(24)).unwrap();
+            let st =
+                insert_cage(&mut state, region.clone(), CageOperator::Multiply, Some(24)).unwrap();
             assert!(st.puzzle.cages().any(|c| c.polyomino() == &region));
             assert!(
                 !st.current()
@@ -1685,7 +1733,7 @@ mod tests {
             // 2×2 square block.
             let mut state = without_solution(4);
             let region = poly(&[(0, 0), (0, 1), (1, 0), (1, 1)]);
-            let st = insert_cage(&mut state, region.clone(), Operator::Add, Some(10)).unwrap();
+            let st = insert_cage(&mut state, region.clone(), CageOperator::Add, Some(10)).unwrap();
             assert!(st.puzzle.cages().any(|c| c.polyomino() == &region));
             assert!(
                 !st.current()
@@ -1700,13 +1748,18 @@ mod tests {
         fn boundary_cages_succeed() {
             // Corner and edge cages on a 3×3 — confirm no special-case bugs.
             let mut state = without_solution(3);
-            let _ = insert_cage(&mut state, poly(&[(2, 2)]), Operator::Given, Some(1)).unwrap();
-            let _ =
-                insert_cage(&mut state, poly(&[(0, 2), (1, 2)]), Operator::Add, Some(5)).unwrap();
+            let _ = insert_cage(&mut state, poly(&[(2, 2)]), CageOperator::Given, Some(1)).unwrap();
+            let _ = insert_cage(
+                &mut state,
+                poly(&[(0, 2), (1, 2)]),
+                CageOperator::Add,
+                Some(5),
+            )
+            .unwrap();
             let st = insert_cage(
                 &mut state,
                 poly(&[(2, 0), (2, 1)]),
-                Operator::Subtract,
+                CageOperator::Subtract,
                 Some(1),
             )
             .unwrap();
@@ -1720,7 +1773,7 @@ mod tests {
                 insert_cage(
                     &mut state,
                     poly(&[(0, 0), (0, 1), (0, 2)]),
-                    Operator::Given,
+                    CageOperator::Given,
                     Some(1)
                 ),
                 Err(Error::Mathdoku(mathdoku::Error::InfeasibleCage(_, _)))
@@ -1734,7 +1787,7 @@ mod tests {
                 insert_cage(
                     &mut state,
                     poly(&[(0, 0), (0, 1), (0, 2)]),
-                    Operator::Subtract,
+                    CageOperator::Subtract,
                     Some(1)
                 ),
                 Err(Error::Mathdoku(mathdoku::Error::InfeasibleCage(_, _)))
@@ -1748,7 +1801,7 @@ mod tests {
         use crate::{
             AppState, apply_loaded, insert_cage, new_latin_square, remove_cage_at, serialize_save,
         };
-        use mathdoku::{Cell, Operator, Target};
+        use mathdoku::{CageOperator, Cell, Target};
         use proptest::prelude::*;
         use rand::{SeedableRng, rngs::StdRng};
 
@@ -1803,7 +1856,7 @@ mod tests {
                     let Ok(p) = mathdoku::Polyomino::from_cells(&[Cell::new(r, c)]) else {
                         return false;
                     };
-                    insert_cage(state, p, Operator::Given, Some(target)).is_ok()
+                    insert_cage(state, p, CageOperator::Given, Some(target)).is_ok()
                 }
                 Op::AddPair {
                     r,
@@ -1819,7 +1872,7 @@ mod tests {
                     let Ok(p) = mathdoku::Polyomino::from_cells(&[Cell::new(r, c), second]) else {
                         return false;
                     };
-                    insert_cage(state, p, Operator::Add, Some(target)).is_ok()
+                    insert_cage(state, p, CageOperator::Add, Some(target)).is_ok()
                 }
                 Op::Remove { r, c } => {
                     let Ok(poly) = mathdoku::Polyomino::from_cells(&[Cell::new(r, c)]) else {

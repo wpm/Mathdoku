@@ -77,9 +77,6 @@ pub type N = u8;
 /// `u32` is wide enough for any realistic Mathdoku constraint.
 pub type Target = u32;
 
-/// Alias for [`CageOperator`].
-pub type Operator = CageOperator;
-
 /// Errors returned by mathdoku operations.
 #[derive(Debug)]
 pub enum Error {

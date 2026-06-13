@@ -6,7 +6,7 @@ use std::collections::BTreeSet;
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use mathdoku::{Operator, Polyomino, Target};
+use mathdoku::{CageOperator, Polyomino, Target};
 use mathdoku_designer_core::State;
 
 use crate::ipc;
@@ -43,7 +43,7 @@ fn apply_ipc_result(
 #[allow(clippy::too_many_arguments)]
 pub fn commit_cage(
     polyomino: &Polyomino,
-    operator: Operator,
+    operator: CageOperator,
     target: Option<Target>,
     parked: BTreeSet<Polyomino>,
     undo_stack: RwSignal<Vec<State>>,

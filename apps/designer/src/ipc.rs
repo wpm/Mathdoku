@@ -15,7 +15,7 @@
     unused_results,                  // quit_app discards its fire-and-forget JsValue
 )]
 
-use mathdoku::{Cell, Operator, Polyomino, Target};
+use mathdoku::{CageOperator, Cell, Polyomino, Target};
 use mathdoku_designer_core::{DocState, SaveResult, State};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -80,7 +80,7 @@ struct ActiveArgs {
 #[derive(Serialize)]
 struct InsertCageArgs {
     polyomino: Polyomino,
-    operator: Operator,
+    operator: CageOperator,
     /// `Some` in Without-Solution mode (author-chosen target); `None` in
     /// With-Solution mode (the backend derives the target from the solution).
     target: Option<Target>,
@@ -236,7 +236,7 @@ pub async fn set_active_cell(active: Cell) -> Result<(), IpcError> {
 #[cfg(not(feature = "web"))]
 pub async fn insert_cage(
     polyomino: Polyomino,
-    operator: Operator,
+    operator: CageOperator,
     target: Option<Target>,
 ) -> Result<State, IpcError> {
     call(
@@ -254,7 +254,7 @@ pub async fn insert_cage(
 // WASM-only: no Tauri command bus on web — call core directly against thread-local state.
 pub async fn insert_cage(
     polyomino: Polyomino,
-    operator: Operator,
+    operator: CageOperator,
     target: Option<Target>,
 ) -> Result<State, IpcError> {
     crate::web_state::with_state_mut(|s| {

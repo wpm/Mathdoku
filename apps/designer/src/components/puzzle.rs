@@ -11,7 +11,7 @@
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use mathdoku::{Cage, Cell, N, Operator, Polyomino, Target, operators_for};
+use mathdoku::{Cage, CageOperator, Cell, N, Polyomino, Target, operators_for};
 use mathdoku_designer_core::State;
 
 use super::cage::Cage as CageComponent;
@@ -177,12 +177,12 @@ pub fn Puzzle(
         // With-Solution singletons commit immediately (Given target read from the
         // solution); they never open the selector. Without-Solution singletons
         // need a target chosen, so they do open it.
-        if !without_solution && allowed == [Operator::Given] {
+        if !without_solution && allowed == [CageOperator::Given] {
             return;
         }
         let poly_for_cb = poly.clone();
         let parked = parked_cages(&st, &poly);
-        let on_commit = Callback::new(move |(op, target): (Operator, Option<Target>)| {
+        let on_commit = Callback::new(move |(op, target): (CageOperator, Option<Target>)| {
             pending_commit.set(None);
             commit_cage(
                 &poly_for_cb,
@@ -201,7 +201,7 @@ pub fn Puzzle(
         // the picker opens straight onto the numeric value dropdown.
         #[cfg(feature = "without-solution")]
         let picked_operator =
-            RwSignal::new((without_solution && poly.len() == 1).then_some(Operator::Given));
+            RwSignal::new((without_solution && poly.len() == 1).then_some(CageOperator::Given));
         // Without-Solution mode computes the globally-feasible (op, target) pairs
         // for the dropdown, showing a spinner via the Computing state meanwhile.
         #[cfg(feature = "without-solution")]
@@ -502,10 +502,10 @@ pub fn Puzzle(
                 // With-Solution singleton: Given with a solution-derived target —
                 // commit immediately. Without-Solution singletons need a target
                 // chosen, so they fall through to the operation selector.
-                if st.solution.is_some() && operators_for(&poly) == [Operator::Given] {
+                if st.solution.is_some() && operators_for(&poly) == [CageOperator::Given] {
                     commit_cage(
                         &poly,
-                        Operator::Given,
+                        CageOperator::Given,
                         None,
                         parked_cages(&st, &poly),
                         undo_stack,
@@ -530,7 +530,7 @@ pub fn Puzzle(
                     ev.prevent_default();
                     commit_cage(
                         &commit.poly,
-                        Operator::Given,
+                        CageOperator::Given,
                         Some(commit.target),
                         commit.parked,
                         undo_stack,
@@ -780,7 +780,7 @@ fn singleton_digit_commit(state: &State, key: &str) -> Result<Option<SingletonDi
     let target = Target::from(value);
     let n = N::try_from(state.puzzle.n())
         .map_err(|_| mathdoku::Error::InvalidGridSize(state.puzzle.n()))?;
-    let cage = Cage::new(n, poly.clone(), Operator::Given, target)?;
+    let cage = Cage::new(n, poly.clone(), CageOperator::Given, target)?;
     if !crate::feasibility::is_globally_feasible(&state.puzzle, &cage) {
         return Ok(None);
     }
@@ -864,7 +864,7 @@ mod tests {
     #[cfg(feature = "without-solution")]
     use super::singleton_digit_commit;
     use super::{parked_cages, previous_cell_values, step_provisional_cage};
-    use mathdoku::{Cell, Operator, Polyomino};
+    use mathdoku::{CageOperator, Cell, Polyomino};
     use mathdoku_designer_core::State;
     use mathdoku_designer_core::test_support::{cage_at, poly};
 
@@ -931,7 +931,7 @@ mod tests {
         let mut st = State::new(4).unwrap();
         st.puzzle = st
             .puzzle
-            .insert_cage(&cage_at(4, &[(0, 0)], Operator::Given, 2))
+            .insert_cage(&cage_at(4, &[(0, 0)], CageOperator::Given, 2))
             .unwrap()
             .unwrap();
         st.active = Cell::new(0, 0);
@@ -1004,7 +1004,7 @@ mod tests {
         let mut prev = State::new_with_solution(4).unwrap();
         prev.puzzle = prev
             .puzzle
-            .insert_cage(&cage_at(4, &[(0, 0)], Operator::Given, 2))
+            .insert_cage(&cage_at(4, &[(0, 0)], CageOperator::Given, 2))
             .unwrap()
             .unwrap();
         let vals = previous_cell_values(Some(prev), 4);

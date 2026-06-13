@@ -21,7 +21,7 @@
 )]
 
 use leptos::prelude::*;
-use mathdoku::{Operation, Operator, Polyomino, Target};
+use mathdoku::{CageOperator, Operation, Polyomino, Target};
 
 use super::puzzle::InteractionState;
 #[cfg(feature = "without-solution")]
@@ -43,7 +43,7 @@ pub enum FeasibilityState {
     /// Feasibility is being computed; the picker shows a spinner.
     Computing,
     /// Computation finished with the given feasible pairs (possibly empty).
-    Ready(Vec<(Operator, Target)>),
+    Ready(Vec<(CageOperator, Target)>),
 }
 
 /// Floating tab well rendered over the anchor cell of the pending cage.
@@ -101,8 +101,8 @@ fn with_solution_view(
 ) -> AnyView {
     // Singleton: only Given is allowed — commit immediately without showing UI.
     // (The Enter handler already handles this case, but guard here too.)
-    if pending.allowed == [Operator::Given] {
-        pending.on_commit.run((Operator::Given, None));
+    if pending.allowed == [CageOperator::Given] {
+        pending.on_commit.run((CageOperator::Given, None));
         return ().into_any();
     }
 
@@ -116,7 +116,7 @@ fn with_solution_view(
     // Build (operator, label) pairs using the known solution values.
     // Omit any operator for which no valid target exists (e.g. Divide when
     // the solution values are not exactly divisible).
-    let ops: Vec<(Operator, String)> = pending
+    let ops: Vec<(CageOperator, String)> = pending
         .allowed
         .iter()
         .filter_map(|&op| {
@@ -252,8 +252,8 @@ fn empty_message_view(x: f64, y: f64) -> AnyView {
 #[cfg(feature = "without-solution")]
 #[allow(clippy::too_many_arguments)]
 fn operator_strip_view(
-    pairs: &[(Operator, Target)],
-    picked: RwSignal<Option<Operator>>,
+    pairs: &[(CageOperator, Target)],
+    picked: RwSignal<Option<CageOperator>>,
     selected_idx: RwSignal<usize>,
     tab_w: f64,
     tab_h: f64,
@@ -262,7 +262,7 @@ fn operator_strip_view(
     x: f64,
     y: f64,
 ) -> AnyView {
-    let ops: Vec<Operator> = group_by_operator(pairs)
+    let ops: Vec<CageOperator> = group_by_operator(pairs)
         .into_iter()
         .map(|(op, _)| op)
         .collect();
@@ -319,9 +319,9 @@ fn operator_strip_view(
 #[cfg(feature = "without-solution")]
 #[allow(clippy::too_many_arguments)]
 fn target_select_view(
-    pairs: &[(Operator, Target)],
-    op: Operator,
-    on_commit: Callback<(Operator, Option<Target>)>,
+    pairs: &[(CageOperator, Target)],
+    op: CageOperator,
+    on_commit: Callback<(CageOperator, Option<Target>)>,
     tab_w: f64,
     tab_h: f64,
     pad: f64,
@@ -388,39 +388,39 @@ pub struct PendingCommit {
     /// The operators that are valid for this cage's polyomino size (With-Solution
     /// operator tabs). Unused in Without-Solution mode, where the strip is derived
     /// from `feasible`.
-    pub allowed: Vec<Operator>,
+    pub allowed: Vec<CageOperator>,
     /// Index of the currently keyboard-focused tab (for Tab / arrow navigation + highlight).
     pub selected_idx: RwSignal<usize>,
     /// Called with the chosen `(operator, target)` to commit the cage. `target`
     /// is `None` in With-Solution mode and `Some` in Without-Solution mode.
-    pub on_commit: Callback<(Operator, Option<Target>)>,
+    pub on_commit: Callback<(CageOperator, Option<Target>)>,
     /// Without-Solution feasibility state. `None` selects With-Solution rendering.
     #[cfg(feature = "without-solution")]
     pub feasible: Option<RwSignal<FeasibilityState>>,
     /// Without-Solution: the operator whose target sub-picker is open.
     #[cfg(feature = "without-solution")]
-    pub picked_operator: RwSignal<Option<Operator>>,
+    pub picked_operator: RwSignal<Option<CageOperator>>,
 }
 
 /// Computes the target value for `op` from a slice of known cell values.
 /// Returns `None` if any value is absent or the operation has no valid target
 /// (e.g. Divide when the values are not exactly divisible).
-fn compute_target_from_values(op: Operator, vals: &[Option<mathdoku::N>]) -> Option<u64> {
+fn compute_target_from_values(op: CageOperator, vals: &[Option<mathdoku::N>]) -> Option<u64> {
     let vals: Vec<u64> = vals
         .iter()
         .map(|v| v.map(u64::from))
         .collect::<Option<Vec<_>>>()?;
 
     Some(match op {
-        Operator::Given => vals[0],
-        Operator::Add => vals.iter().sum(),
-        Operator::Multiply => vals.iter().product(),
-        Operator::Subtract => {
+        CageOperator::Given => vals[0],
+        CageOperator::Add => vals.iter().sum(),
+        CageOperator::Multiply => vals.iter().product(),
+        CageOperator::Subtract => {
             let a = vals[0];
             let b = vals[1];
             a.abs_diff(b)
         }
-        Operator::Divide => {
+        CageOperator::Divide => {
             let hi = vals[0].max(vals[1]);
             let lo = vals[0].min(vals[1]);
             if lo == 0 || !hi.is_multiple_of(lo) {
@@ -433,12 +433,12 @@ fn compute_target_from_values(op: Operator, vals: &[Option<mathdoku::N>]) -> Opt
 
 /// Handles shortcut keys for the operation selector.
 /// Returns `Some(operator)` if a key maps to an allowed operator, `None` otherwise.
-pub fn key_to_operator(key: &str, allowed: &[Operator]) -> Option<Operator> {
+pub fn key_to_operator(key: &str, allowed: &[CageOperator]) -> Option<CageOperator> {
     let op = match key {
-        "+" => Some(Operator::Add),
-        "-" => Some(Operator::Subtract),
-        "x" | "X" => Some(Operator::Multiply),
-        "/" => Some(Operator::Divide),
+        "+" => Some(CageOperator::Add),
+        "-" => Some(CageOperator::Subtract),
+        "x" | "X" => Some(CageOperator::Multiply),
+        "/" => Some(CageOperator::Divide),
         _ => None,
     }?;
     allowed.contains(&op).then_some(op)
@@ -505,7 +505,7 @@ fn handle_key_without_solution(
         // Step one: operator strip (horizontal). Enter or a shortcut key opens
         // the chosen operator's target list.
         None => {
-            let ops: Vec<Operator> = group_by_operator(&pairs)
+            let ops: Vec<CageOperator> = group_by_operator(&pairs)
                 .into_iter()
                 .map(|(op, _)| op)
                 .collect();
@@ -619,7 +619,7 @@ pub fn handle_key(
 mod tests {
     use super::{compute_target_from_values, key_to_operator};
     use crate::partial_solution::PartialSolution;
-    use mathdoku::{Operator, Polyomino, Puzzle};
+    use mathdoku::{CageOperator, Polyomino, Puzzle};
     use mathdoku_designer_core::test_support::{known_3x3_solution, poly};
 
     /// A `PartialSolution` whose grid pins every cell to [`known_3x3_solution`].
@@ -627,7 +627,11 @@ mod tests {
         PartialSolution::new(Puzzle::new(3).unwrap(), known_3x3_solution())
     }
 
-    fn compute_target(polyomino: &Polyomino, op: Operator, ps: &PartialSolution) -> Option<u64> {
+    fn compute_target(
+        polyomino: &Polyomino,
+        op: CageOperator,
+        ps: &PartialSolution,
+    ) -> Option<u64> {
         let vals: Vec<Option<mathdoku::N>> = polyomino
             .cells()
             .iter()
@@ -640,7 +644,7 @@ mod tests {
     fn compute_target_given_is_first_cell_value() {
         let ps = pinned_3x3();
         assert_eq!(
-            compute_target(&poly(&[(0, 1)]), Operator::Given, &ps),
+            compute_target(&poly(&[(0, 1)]), CageOperator::Given, &ps),
             Some(2)
         );
     }
@@ -650,7 +654,7 @@ mod tests {
         let ps = pinned_3x3();
         // (0,0)=1, (0,1)=2, (0,2)=3 → 6
         assert_eq!(
-            compute_target(&poly(&[(0, 0), (0, 1), (0, 2)]), Operator::Add, &ps),
+            compute_target(&poly(&[(0, 0), (0, 1), (0, 2)]), CageOperator::Add, &ps),
             Some(6)
         );
     }
@@ -660,7 +664,7 @@ mod tests {
         let ps = pinned_3x3();
         // (1,0)=2, (1,1)=3 → 6
         assert_eq!(
-            compute_target(&poly(&[(1, 0), (1, 1)]), Operator::Multiply, &ps),
+            compute_target(&poly(&[(1, 0), (1, 1)]), CageOperator::Multiply, &ps),
             Some(6)
         );
     }
@@ -670,7 +674,7 @@ mod tests {
         let ps = pinned_3x3();
         // (0,0)=1, (0,1)=2 → |1-2| = 1
         assert_eq!(
-            compute_target(&poly(&[(0, 0), (0, 1)]), Operator::Subtract, &ps),
+            compute_target(&poly(&[(0, 0), (0, 1)]), CageOperator::Subtract, &ps),
             Some(1)
         );
     }
@@ -692,7 +696,7 @@ mod tests {
         let ps = PartialSolution::new(Puzzle::new(6).unwrap(), grid);
         // (0,0)=2, (0,1)=6 → 6/2 = 3
         assert_eq!(
-            compute_target(&poly(&[(0, 0), (0, 1)]), Operator::Divide, &ps),
+            compute_target(&poly(&[(0, 0), (0, 1)]), CageOperator::Divide, &ps),
             Some(3)
         );
     }
@@ -702,7 +706,7 @@ mod tests {
         let ps = pinned_3x3();
         // (0,1)=2, (0,2)=3 → 3 not divisible by 2 → None
         assert_eq!(
-            compute_target(&poly(&[(0, 1), (0, 2)]), Operator::Divide, &ps),
+            compute_target(&poly(&[(0, 1), (0, 2)]), CageOperator::Divide, &ps),
             None
         );
     }
@@ -712,16 +716,16 @@ mod tests {
         // 2 and 3 are relatively prime: 3 is not an integer multiple of 2.
         // Divide must be suppressed so the operator never appears in the UI.
         assert_eq!(
-            compute_target_from_values(Operator::Divide, &[Some(2), Some(3)]),
+            compute_target_from_values(CageOperator::Divide, &[Some(2), Some(3)]),
             None
         );
         assert_eq!(
-            compute_target_from_values(Operator::Divide, &[Some(3), Some(5)]),
+            compute_target_from_values(CageOperator::Divide, &[Some(3), Some(5)]),
             None
         );
         // Exactly-divisible pairs do produce a target.
         assert_eq!(
-            compute_target_from_values(Operator::Divide, &[Some(2), Some(6)]),
+            compute_target_from_values(CageOperator::Divide, &[Some(2), Some(6)]),
             Some(3)
         );
     }
@@ -730,27 +734,30 @@ mod tests {
     fn compute_target_none_when_values_not_singleton() {
         // Unconstrained grid: every cell's values are {1,2,3}, not a singleton.
         let ps = PartialSolution::new(Puzzle::new(3).unwrap(), Puzzle::new(3).unwrap());
-        assert_eq!(compute_target(&poly(&[(0, 0)]), Operator::Given, &ps), None);
+        assert_eq!(
+            compute_target(&poly(&[(0, 0)]), CageOperator::Given, &ps),
+            None
+        );
     }
 
     #[test]
     fn key_to_operator_maps_known_keys() {
         let all = [
-            Operator::Add,
-            Operator::Subtract,
-            Operator::Multiply,
-            Operator::Divide,
+            CageOperator::Add,
+            CageOperator::Subtract,
+            CageOperator::Multiply,
+            CageOperator::Divide,
         ];
-        assert_eq!(key_to_operator("+", &all), Some(Operator::Add));
-        assert_eq!(key_to_operator("-", &all), Some(Operator::Subtract));
-        assert_eq!(key_to_operator("x", &all), Some(Operator::Multiply));
-        assert_eq!(key_to_operator("X", &all), Some(Operator::Multiply));
-        assert_eq!(key_to_operator("/", &all), Some(Operator::Divide));
+        assert_eq!(key_to_operator("+", &all), Some(CageOperator::Add));
+        assert_eq!(key_to_operator("-", &all), Some(CageOperator::Subtract));
+        assert_eq!(key_to_operator("x", &all), Some(CageOperator::Multiply));
+        assert_eq!(key_to_operator("X", &all), Some(CageOperator::Multiply));
+        assert_eq!(key_to_operator("/", &all), Some(CageOperator::Divide));
     }
 
     #[test]
     fn key_to_operator_unknown_key_is_none() {
-        let all = [Operator::Add, Operator::Multiply];
+        let all = [CageOperator::Add, CageOperator::Multiply];
         assert_eq!(key_to_operator("q", &all), None);
         assert_eq!(key_to_operator("", &all), None);
     }
@@ -758,10 +765,10 @@ mod tests {
     #[test]
     fn key_to_operator_none_when_not_allowed() {
         // Subtract/Divide are not in the allowed list for this polyomino size.
-        let allowed = [Operator::Add, Operator::Multiply];
+        let allowed = [CageOperator::Add, CageOperator::Multiply];
         assert_eq!(key_to_operator("-", &allowed), None);
         assert_eq!(key_to_operator("/", &allowed), None);
-        assert_eq!(key_to_operator("+", &allowed), Some(Operator::Add));
+        assert_eq!(key_to_operator("+", &allowed), Some(CageOperator::Add));
     }
 
     mod handle_key {
@@ -770,21 +777,22 @@ mod tests {
         use crate::keys::{ARROW_LEFT, ARROW_RIGHT, ENTER, ESCAPE, TAB};
         use leptos::prelude::*;
         use leptos::reactive::owner::Owner;
-        use mathdoku::{Operator, Target};
+        use mathdoku::{CageOperator, Target};
         use mathdoku_designer_core::State;
 
-        const ALL_OPS: [Operator; 4] = [
-            Operator::Add,
-            Operator::Subtract,
-            Operator::Multiply,
-            Operator::Divide,
+        const ALL_OPS: [CageOperator; 4] = [
+            CageOperator::Add,
+            CageOperator::Subtract,
+            CageOperator::Multiply,
+            CageOperator::Divide,
         ];
 
-        type Committed = RwSignal<Option<(Operator, Option<Target>)>>;
+        type Committed = RwSignal<Option<(CageOperator, Option<Target>)>>;
 
         fn pending(committed: Committed) -> PendingCommit {
-            let on_commit =
-                Callback::new(move |pair: (Operator, Option<Target>)| committed.set(Some(pair)));
+            let on_commit = Callback::new(move |pair: (CageOperator, Option<Target>)| {
+                committed.set(Some(pair));
+            });
             PendingCommit {
                 polyomino: poly(&[(0, 0), (0, 1)]),
                 allowed: ALL_OPS.to_vec(),
@@ -926,7 +934,10 @@ mod tests {
                 );
 
                 assert!(consumed);
-                assert_eq!(committed.get_untracked(), Some((Operator::Multiply, None)));
+                assert_eq!(
+                    committed.get_untracked(),
+                    Some((CageOperator::Multiply, None))
+                );
             });
         }
 
@@ -949,7 +960,7 @@ mod tests {
                 );
 
                 assert!(consumed);
-                assert_eq!(committed.get_untracked(), Some((Operator::Add, None)));
+                assert_eq!(committed.get_untracked(), Some((CageOperator::Add, None)));
             });
         }
 
@@ -980,7 +991,10 @@ mod tests {
         use super::super::FeasibilityState;
 
         #[cfg(feature = "without-solution")]
-        fn ready_pending(committed: Committed, pairs: Vec<(Operator, Target)>) -> PendingCommit {
+        fn ready_pending(
+            committed: Committed,
+            pairs: Vec<(CageOperator, Target)>,
+        ) -> PendingCommit {
             let mut p = pending(committed);
             p.feasible = Some(RwSignal::new(FeasibilityState::Ready(pairs)));
             p
@@ -991,8 +1005,8 @@ mod tests {
         fn without_solution_strip_tab_navigates_and_enter_picks() {
             Owner::new().with(|| {
                 let committed = RwSignal::new(None);
-                let pairs: Vec<(Operator, Target)> =
-                    vec![(Operator::Add, 3), (Operator::Subtract, 1)];
+                let pairs: Vec<(CageOperator, Target)> =
+                    vec![(CageOperator::Add, 3), (CageOperator::Subtract, 1)];
                 let p = ready_pending(committed, pairs);
                 let designer_state = RwSignal::new(State::new_with_solution(4).unwrap());
                 let pending_commit = RwSignal::new(Some(p.clone()));
@@ -1019,7 +1033,10 @@ mod tests {
                     designer_state,
                     on_state_change,
                 ));
-                assert_eq!(p.picked_operator.get_untracked(), Some(Operator::Subtract));
+                assert_eq!(
+                    p.picked_operator.get_untracked(),
+                    Some(CageOperator::Subtract)
+                );
                 assert_eq!(p.selected_idx.get_untracked(), 0);
                 assert!(committed.get_untracked().is_none());
             });
@@ -1030,8 +1047,8 @@ mod tests {
         fn without_solution_shortcut_key_picks_operator() {
             Owner::new().with(|| {
                 let committed = RwSignal::new(None);
-                let pairs: Vec<(Operator, Target)> =
-                    vec![(Operator::Add, 3), (Operator::Subtract, 1)];
+                let pairs: Vec<(CageOperator, Target)> =
+                    vec![(CageOperator::Add, 3), (CageOperator::Subtract, 1)];
                 let p = ready_pending(committed, pairs);
                 let designer_state = RwSignal::new(State::new_with_solution(4).unwrap());
                 let pending_commit = RwSignal::new(Some(p.clone()));
@@ -1046,7 +1063,10 @@ mod tests {
                     designer_state,
                     on_state_change,
                 ));
-                assert_eq!(p.picked_operator.get_untracked(), Some(Operator::Subtract));
+                assert_eq!(
+                    p.picked_operator.get_untracked(),
+                    Some(CageOperator::Subtract)
+                );
                 assert!(committed.get_untracked().is_none());
             });
         }
@@ -1056,9 +1076,9 @@ mod tests {
         fn without_solution_escape_backs_out_then_cancels() {
             Owner::new().with(|| {
                 let committed = RwSignal::new(None);
-                let pairs: Vec<(Operator, Target)> = vec![(Operator::Add, 3)];
+                let pairs: Vec<(CageOperator, Target)> = vec![(CageOperator::Add, 3)];
                 let p = ready_pending(committed, pairs);
-                p.picked_operator.set(Some(Operator::Add));
+                p.picked_operator.set(Some(CageOperator::Add));
 
                 let mut st = State::new_with_solution(4).unwrap();
                 let _ = st.provisional_cages.insert(p.polyomino.clone());
@@ -1121,20 +1141,20 @@ mod tests {
         fn without_solution_singleton_escape_cancels_instead_of_backing_out() {
             Owner::new().with(|| {
                 let committed = RwSignal::new(None);
-                let on_commit = Callback::new(move |pair: (Operator, Option<Target>)| {
+                let on_commit = Callback::new(move |pair: (CageOperator, Option<Target>)| {
                     committed.set(Some(pair));
                 });
                 // A singleton opens straight on the value dropdown (picked = Given).
                 let p = PendingCommit {
                     polyomino: poly(&[(0, 0)]),
-                    allowed: vec![Operator::Given],
+                    allowed: vec![CageOperator::Given],
                     selected_idx: RwSignal::new(0usize),
                     on_commit,
                     feasible: Some(RwSignal::new(FeasibilityState::Ready(vec![
-                        (Operator::Given, 1),
-                        (Operator::Given, 2),
+                        (CageOperator::Given, 1),
+                        (CageOperator::Given, 2),
                     ]))),
-                    picked_operator: RwSignal::new(Some(Operator::Given)),
+                    picked_operator: RwSignal::new(Some(CageOperator::Given)),
                 };
 
                 let mut st = State::new_with_solution(4).unwrap();
@@ -1230,8 +1250,8 @@ mod tests {
         fn without_solution_strip_steps_backwards_with_arrow_left() {
             Owner::new().with(|| {
                 let committed = RwSignal::new(None);
-                let pairs: Vec<(Operator, Target)> =
-                    vec![(Operator::Add, 3), (Operator::Subtract, 1)];
+                let pairs: Vec<(CageOperator, Target)> =
+                    vec![(CageOperator::Add, 3), (CageOperator::Subtract, 1)];
                 let p = ready_pending(committed, pairs);
                 let designer_state = RwSignal::new(State::new_with_solution(4).unwrap());
                 let pending_commit = RwSignal::new(Some(p.clone()));
@@ -1256,9 +1276,9 @@ mod tests {
         fn without_solution_target_step_ignores_non_escape_keys() {
             Owner::new().with(|| {
                 let committed = RwSignal::new(None);
-                let pairs: Vec<(Operator, Target)> = vec![(Operator::Add, 3)];
+                let pairs: Vec<(CageOperator, Target)> = vec![(CageOperator::Add, 3)];
                 let p = ready_pending(committed, pairs);
-                p.picked_operator.set(Some(Operator::Add));
+                p.picked_operator.set(Some(CageOperator::Add));
                 let designer_state = RwSignal::new(State::new_with_solution(4).unwrap());
                 let pending_commit = RwSignal::new(Some(p.clone()));
                 let on_state_change = Callback::new(|_: State| {});
@@ -1273,7 +1293,7 @@ mod tests {
                     designer_state,
                     on_state_change,
                 ));
-                assert_eq!(p.picked_operator.get_untracked(), Some(Operator::Add));
+                assert_eq!(p.picked_operator.get_untracked(), Some(CageOperator::Add));
                 assert!(pending_commit.get_untracked().is_some());
                 assert!(committed.get_untracked().is_none());
             });
