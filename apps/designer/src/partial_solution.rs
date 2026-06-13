@@ -91,7 +91,7 @@ impl PartialSolution {
 #[allow(clippy::unwrap_used, clippy::panic)]
 mod tests {
     use super::PartialSolution;
-    use mathdoku::{Cell, Operator, Puzzle};
+    use mathdoku::{CageOperator, Cell, Puzzle};
     use mathdoku_designer_core::test_support::{cage_at, given_3x3, known_3x3_solution};
 
     /// A 3×3 puzzle covered by three `Add`-6 row cages. Every row is forced to be
@@ -101,7 +101,7 @@ mod tests {
         let mut puzzle = Puzzle::new(3).unwrap();
         for r in 0..3 {
             puzzle = puzzle
-                .insert_cage(&cage_at(3, &[(r, 0), (r, 1), (r, 2)], Operator::Add, 6))
+                .insert_cage(&cage_at(3, &[(r, 0), (r, 1), (r, 2)], CageOperator::Add, 6))
                 .unwrap()
                 .unwrap();
         }
@@ -127,7 +127,7 @@ mod tests {
         // Only one cell is covered, so most of the grid is uncaged.
         let puzzle = Puzzle::new(3)
             .unwrap()
-            .insert_cage(&cage_at(3, &[(0, 0)], Operator::Given, 1))
+            .insert_cage(&cage_at(3, &[(0, 0)], CageOperator::Given, 1))
             .unwrap()
             .unwrap();
         let ps = PartialSolution::new(puzzle, Puzzle::new(3).unwrap());
@@ -166,7 +166,7 @@ mod tests {
         // ((1,4),(2,3),(3,2),(4,1)) and 2 multisets ({1,4},{2,3}).
         let puzzle = Puzzle::new(4)
             .unwrap()
-            .insert_cage(&cage_at(4, &[(0, 0), (0, 1)], Operator::Add, 5))
+            .insert_cage(&cage_at(4, &[(0, 0), (0, 1)], CageOperator::Add, 5))
             .unwrap()
             .unwrap();
         let ps = PartialSolution::new(puzzle, Puzzle::new(4).unwrap());
@@ -187,10 +187,10 @@ mod tests {
         // enumeration finds the single valid tuple (3,).
         let puzzle = Puzzle::new(3)
             .unwrap()
-            .insert_cage(&cage_at(3, &[(0, 0), (0, 1)], Operator::Add, 3))
+            .insert_cage(&cage_at(3, &[(0, 0), (0, 1)], CageOperator::Add, 3))
             .unwrap()
             .unwrap()
-            .insert_cage(&cage_at(3, &[(0, 2)], Operator::Given, 3))
+            .insert_cage(&cage_at(3, &[(0, 2)], CageOperator::Given, 3))
             .unwrap()
             .unwrap();
         let ps = PartialSolution::new(puzzle, Puzzle::new(3).unwrap());
@@ -202,7 +202,7 @@ mod tests {
     fn cage_index_at_covered_and_uncovered() {
         let puzzle = Puzzle::new(3)
             .unwrap()
-            .insert_cage(&cage_at(3, &[(0, 0), (0, 1)], Operator::Add, 3))
+            .insert_cage(&cage_at(3, &[(0, 0), (0, 1)], CageOperator::Add, 3))
             .unwrap()
             .unwrap();
         let ps = PartialSolution::new(puzzle, Puzzle::new(3).unwrap());

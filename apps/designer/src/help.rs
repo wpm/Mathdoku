@@ -10,20 +10,20 @@
 //! Centralizing the copy in one module keeps it reviewable as user-facing UI
 //! text and keeps wording consistent across the components that show it.
 
-use mathdoku::Operator;
+use mathdoku::CageOperator;
 
 /// Tooltip for an operator tab in the operation selector, explaining the
 /// constraint that operator places on the cage.
 #[must_use]
-pub const fn operator_tooltip(op: Operator) -> &'static str {
+pub const fn operator_tooltip(op: CageOperator) -> &'static str {
     match op {
-        Operator::Given => "Given: the cell holds exactly this value.",
-        Operator::Add => "Add: the cage's values must sum to the target.",
-        Operator::Subtract => {
+        CageOperator::Given => "Given: the cell holds exactly this value.",
+        CageOperator::Add => "Add: the cage's values must sum to the target.",
+        CageOperator::Subtract => {
             "Subtract: the difference between the cage's two values must equal the target."
         }
-        Operator::Multiply => "Multiply: the cage's values must multiply to the target.",
-        Operator::Divide => {
+        CageOperator::Multiply => "Multiply: the cage's values must multiply to the target.",
+        CageOperator::Divide => {
             "Divide: the larger of the cage's two values divided by the smaller \
              must equal the target."
         }
@@ -72,14 +72,14 @@ pub const DISCARD_TOOLTIP: &str = "Close without saving; unsaved changes are los
 #[cfg(test)]
 mod tests {
     use super::operator_tooltip;
-    use mathdoku::Operator;
+    use mathdoku::CageOperator;
 
-    const ALL_OPERATORS: [Operator; 5] = [
-        Operator::Given,
-        Operator::Add,
-        Operator::Subtract,
-        Operator::Multiply,
-        Operator::Divide,
+    const ALL_OPERATORS: [CageOperator; 5] = [
+        CageOperator::Given,
+        CageOperator::Add,
+        CageOperator::Subtract,
+        CageOperator::Multiply,
+        CageOperator::Divide,
     ];
 
     #[test]
@@ -97,10 +97,10 @@ mod tests {
     #[test]
     fn arithmetic_tooltips_mention_the_target() {
         for op in [
-            Operator::Add,
-            Operator::Subtract,
-            Operator::Multiply,
-            Operator::Divide,
+            CageOperator::Add,
+            CageOperator::Subtract,
+            CageOperator::Multiply,
+            CageOperator::Divide,
         ] {
             assert!(
                 operator_tooltip(op).contains("target"),

@@ -88,7 +88,7 @@ mod tests {
     //! Each test re-seeds the puzzle through `seed_blank_4x4` first, since the
     //! thread-local is shared across tests on the single wasm thread.
 
-    use mathdoku::{Cell, Operator, Polyomino, Puzzle};
+    use mathdoku::{CageOperator, Cell, Polyomino, Puzzle};
     use mathdoku_designer_core::{AppState, apply_loaded, serialize_save};
     use wasm_bindgen_test::{wasm_bindgen_test, wasm_bindgen_test_configure};
 
@@ -127,7 +127,7 @@ mod tests {
         seed_blank_4x4();
         ipc::set_active_cell(Cell::new(1, 2)).await.unwrap();
         let poly = Polyomino::from_cells(&[Cell::new(0, 0), Cell::new(0, 1)]).unwrap();
-        let state = ipc::insert_cage(poly, Operator::Add, Some(3))
+        let state = ipc::insert_cage(poly, CageOperator::Add, Some(3))
             .await
             .unwrap();
         assert_eq!(state.puzzle.cages().count(), 1);
@@ -142,7 +142,7 @@ mod tests {
     async fn store_survives_save_load_round_trip() {
         seed_blank_4x4();
         let poly = Polyomino::from_cells(&[Cell::new(0, 0), Cell::new(0, 1)]).unwrap();
-        let _ = ipc::insert_cage(poly, Operator::Add, Some(3))
+        let _ = ipc::insert_cage(poly, CageOperator::Add, Some(3))
             .await
             .unwrap();
 
