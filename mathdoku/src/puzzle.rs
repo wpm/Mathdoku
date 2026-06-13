@@ -1204,15 +1204,7 @@ mod tests {
 
     #[test]
     fn is_fully_covered_partial_coverage_is_false() {
-        let p = Puzzle::new(2)
-            .unwrap()
-            .insert(
-                &Polyomino::from([Cell(1, 1)]).unwrap(),
-                CageOperator::Given,
-                1,
-            )
-            .unwrap()
-            .unwrap();
+        let p = crate::test_util::pinned_2x2();
         assert!(!p.is_fully_covered());
     }
 

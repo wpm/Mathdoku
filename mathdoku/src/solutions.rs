@@ -78,8 +78,8 @@ impl Iterator for Solutions {
 #[cfg(test)]
 mod tests {
     use crate::fill::Fill;
-    use crate::polyomino::{Cell, Polyomino};
-    use crate::puzzle::{CageOperator, Puzzle};
+    use crate::polyomino::Cell;
+    use crate::puzzle::Puzzle;
 
     fn solved_puzzles(puzzle: &Puzzle) -> Vec<Puzzle> {
         puzzle.solutions().map(Result::unwrap).collect()
@@ -110,15 +110,7 @@ mod tests {
     #[test]
     fn given_cage_pins_solution() {
         // Pinning (1,1)=1 in a 2×2 leaves exactly one Latin square.
-        let p = Puzzle::new(2)
-            .unwrap()
-            .insert(
-                &Polyomino::from([Cell(1, 1)]).unwrap(),
-                CageOperator::Given,
-                1,
-            )
-            .unwrap()
-            .unwrap();
+        let p = crate::test_util::pinned_2x2();
         let solutions = solved_puzzles(&p);
         assert_eq!(solutions.len(), 1);
         assert_eq!(solutions[0].get(Cell(1, 1)).unwrap(), Fill::from(&[1]));
