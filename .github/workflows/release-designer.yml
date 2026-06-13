@@ -47,20 +47,25 @@ jobs:
       fail-fast: false
       matrix:
         platform:
-          # Apple Silicon and Intel macOS are built separately so each ships a
-          # native bundle; tauri-action merges them into one release.
-          - name: macOS (Apple Silicon)
+          # macOS ships a single universal (arm64 + x86_64) bundle: Tauri's
+          # `universal-apple-darwin` target lipo-fuses both slices into one
+          # binary on a single runner, which tauri-action then signs and
+          # notarizes as if it were single-arch. `rustTargets` lists the real
+          # rustup targets to install — `universal-apple-darwin` is a Tauri
+          # meta-target, not an installable rustup target, and the fused build
+          # needs both arch slices present.
+          - name: macOS (Universal)
             runner: macos-latest
-            target: aarch64-apple-darwin
-          - name: macOS (Intel)
-            runner: macos-13
-            target: x86_64-apple-darwin
+            target: universal-apple-darwin
+            rustTargets: aarch64-apple-darwin, x86_64-apple-darwin
           - name: Linux
             runner: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
+            rustTargets: x86_64-unknown-linux-gnu
           - name: Windows
             runner: windows-latest
             target: x86_64-pc-windows-msvc
+            rustTargets: x86_64-pc-windows-msvc
 
     steps:
       - uses: actions/checkout@v4
@@ -69,12 +74,13 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           # The frontend is a wasm app; the desktop shell builds for the host.
-          targets: wasm32-unknown-unknown, ${{ matrix.platform.target }}
+          # macOS installs both arch slices for the universal build.
+          targets: wasm32-unknown-unknown, ${{ matrix.platform.rustTargets }}
 
       - name: Cache cargo registry & build artifacts
         uses: Swatinem/rust-cache@v2
         with:
-          # Keyed per target so the four matrix legs don't clobber each other.
+          # Keyed per target so the matrix legs don't clobber each other.
           key: ${{ matrix.platform.target }}
 
       # Linux desktop builds need GTK/WebKitGTK and friends. macOS and Windows
@@ -106,7 +112,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           # The key was generated without a password.
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
-          # Apple Developer ID signing + notarization. Only the macOS legs use
+          # Apple Developer ID signing + notarization. Only the macOS leg uses
           # these; they are inert on Linux/Windows. APPLE_CERTIFICATE is the
           # base64-encoded .p12 export of the Developer ID Application cert;
           # tauri-action imports it into a throwaway keychain on the runner.
@@ -144,6 +150,8 @@ jobs:
           RELEASE_ID: ${{ steps.tauri.outputs.releaseId }}
         run: |
           set -euo pipefail
+          # The universal build lands the dmg under the universal-apple-darwin
+          # target dir; the glob resolves the single produced dmg.
           dmg=(target/${{ matrix.platform.target }}/release/bundle/dmg/*.dmg)
           dmg="${dmg[0]}"
           xcrun notarytool submit "$dmg" \
@@ -155,15 +163,53 @@ jobs:
             echo "No release to update (manual run without a tag); done."
             exit 0
           fi
-          # GitHub stores asset names with spaces replaced by dots.
-          name="$(basename "$dmg" | tr ' ' '.')"
-          asset_id="$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets" \
-            --jq ".[] | select(.name == \"$name\") | .id")"
-          if [ -n "$asset_id" ]; then
-            gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets/$asset_id"
-          fi
+          # tauri-action already uploaded the dmg under tauri-bundler's
+          # version-stamped default name (GitHub stores asset names with spaces
+          # replaced by dots). Delete that, plus any fixed-name asset left by a
+          # re-run, then upload the stapled copy under the fixed, version-less
+          # name the website's download link hardcodes.
+          fixed="Designer-macos-universal.dmg"
+          orig="$(basename "$dmg" | tr ' ' '.')"
+          for name in "$orig" "$fixed"; do
+            asset_id="$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets" \
+              --jq ".[] | select(.name == \"$name\") | .id")"
+            if [ -n "$asset_id" ]; then
+              gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets/$asset_id"
+            fi
+          done
           gh api -X POST \
             -H "Content-Type: application/octet-stream" \
-            "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?name=$name" \
+            "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?name=$fixed" \
             --input "$dmg" > /dev/null
-          echo "Replaced $name with the stapled copy."
+          echo "Uploaded the stapled dmg as $fixed."
+
+      # tauri-action uploads the Linux bundles under tauri-bundler's
+      # version-stamped default names. Rename them in place to fixed,
+      # version-less names so the website can hardcode the download links. The
+      # auto-updater is unaffected: latest.json references the separate
+      # .AppImage.tar.gz updater archive, not the bare .AppImage we rename here.
+      - name: Pin Linux bundle names
+        if: matrix.platform.runner == 'ubuntu-22.04' && steps.tauri.outputs.releaseId != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_ID: ${{ steps.tauri.outputs.releaseId }}
+        run: |
+          set -euo pipefail
+          declare -A fixed=(
+            [deb]="Designer-linux-x86_64.deb"
+            [rpm]="Designer-linux-x86_64.rpm"
+            [AppImage]="Designer-linux-x86_64.AppImage"
+          )
+          assets="$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets")"
+          for ext in deb rpm AppImage; do
+            # endswith(".AppImage") excludes the ".AppImage.tar.gz" updater
+            # archive and its .sig, leaving only the user-facing bundle.
+            asset_id="$(echo "$assets" \
+              | jq -r ".[] | select(.name | endswith(\".$ext\")) | .id" | head -n1)"
+            if [ -n "$asset_id" ]; then
+              gh api -X PATCH \
+                "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id" \
+                -f name="${fixed[$ext]}" > /dev/null
+              echo "Renamed .$ext bundle to ${fixed[$ext]}."
+            fi
+          done
