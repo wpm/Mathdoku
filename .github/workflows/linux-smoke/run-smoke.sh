@@ -58,6 +58,26 @@ case "$format" in
     bin=/usr/bin/mathdoku-designer
     ;;
   AppImage)
+    # AppImages deliberately do not bundle host graphics libraries: libEGL.so.1 /
+    # libGL.so.1 are driver-specific (libglvnd/Mesa) and are expected to come from
+    # the host. The .deb/.rpm legs get these transitively when the package manager
+    # resolves the bundle's declared deps (libEGL.so.1 arrives via
+    # libwebkit2gtk-4.1-0), but the AppImage runs on the bare runner, which has no
+    # EGL library — so the app dies at the dynamic-link step before it can render.
+    # A real Linux desktop ships Mesa/libEGL; install that baseline here so the
+    # smoke harness provides the graphical floor a desktop would. Scoped to the
+    # AppImage leg: the container legs must keep honestly proving their packages
+    # declare their own dependencies, so they are not pre-seeded.
+    #
+    # libegl1 provides the libEGL.so.1 dispatch; libegl-mesa0 + libgl1-mesa-dri
+    # give it a working software implementation under LIBGL_ALWAYS_SOFTWARE=1.
+    $SUDO apt-get install -y \
+      libegl1 \
+      libegl-mesa0 \
+      libgl1 \
+      libglx-mesa0 \
+      libgl1-mesa-dri
+
     # No FUSE on CI runners, so extract instead of mounting and run AppRun.
     chmod +x "$bundle"
     "$bundle" --appimage-extract >/dev/null
