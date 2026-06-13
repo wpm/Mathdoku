@@ -61,10 +61,14 @@ unrelated to the `mathdoku-v<version>` crate tags.
 
 A push of a tag matching `designer-v*` triggers
 [`.github/workflows/release-designer.yml`](.github/workflows/release-designer.yml),
-which builds the app for macOS (Apple Silicon + Intel), Windows, and Linux via
+which builds the app for macOS (a single universal Apple Silicon + Intel
+bundle), Windows, and Linux via
 [`tauri-action`](https://github.com/tauri-apps/tauri-action), signs each bundle
 and the auto-updater manifest, and creates a **draft** GitHub release carrying
-the installers and a signed `latest.json`.
+the installers and a signed `latest.json`. The macOS dmg and the Linux
+`.deb`/`.rpm`/`.AppImage` bundles are published under fixed, version-less names
+(`Designer-macos-universal.dmg`, `Designer-linux-x86_64.{deb,rpm,AppImage}`) so
+the website can hardcode their `releases/latest/download/` links.
 
 ### Prerequisites (one-time)
 
@@ -95,8 +99,9 @@ variables → Actions):
    The tag — not a branch push — is what triggers the workflow. (You can also
    run it manually from the Actions tab via `workflow_dispatch`, in which case
    the version comes from `tauri.conf.json`.)
-3. **Wait for the matrix build.** All four platform jobs must succeed; each
-   uploads its installer(s) to the same draft release.
+3. **Wait for the matrix build.** All three platform jobs (macOS, Linux,
+   Windows) must succeed; each uploads its installer(s) to the same draft
+   release.
 4. **On the first release, confirm the manifest filename.** The updater
    endpoint in `tauri.conf.json` points at `latest.json`, which is
    `tauri-action`'s default manifest name. Check that the draft release
