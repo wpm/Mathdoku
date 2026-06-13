@@ -6,3 +6,8 @@ test-results/
 dist/
 dist-web/
 docs/
+
+# local signing credentials + helper (not for CI)
+sign-build.sh
+sign-build.log
+staple-dmg.sh

@@ -10,10 +10,16 @@ name: Release Designer
 # trigger: push a `designer-v<version>` tag, or dispatch it manually. It does
 # NOT fire on crate releases.
 #
-# Signing: tauri-action signs each bundle and the update manifest with the
-# minisign private key in the TAURI_SIGNING_PRIVATE_KEY secret. The key was
-# generated with `cargo tauri signer generate` and has no password (hence the
-# empty TAURI_SIGNING_PRIVATE_KEY_PASSWORD). Its public half is embedded in
+# Signing is two independent mechanisms:
+#   1. Updater integrity: tauri-action signs each bundle and the update
+#      manifest with the minisign private key in TAURI_SIGNING_PRIVATE_KEY.
+#   2. macOS Gatekeeper: the APPLE_* secrets drive Developer ID code-signing
+#      and notarization of the .app (handled by tauri-action) and of the .dmg
+#      (the explicit staple step below; the bundler only codesigns the dmg).
+#      With the APPLE_* secrets unset, macOS builds are produced unsigned.
+#
+# The minisign key was generated with `cargo tauri signer generate` and has no
+# password (hence the empty TAURI_SIGNING_PRIVATE_KEY_PASSWORD). Its public half is embedded in
 # tauri.conf.json under plugins.updater.pubkey; the private half is never
 # committed. Lose the private key and existing installs can no longer verify
 # updates.
@@ -93,12 +99,25 @@ jobs:
           tool: trunk
 
       - name: Build, sign, and release
+        id: tauri
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           # The key was generated without a password.
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+          # Apple Developer ID signing + notarization. Only the macOS legs use
+          # these; they are inert on Linux/Windows. APPLE_CERTIFICATE is the
+          # base64-encoded .p12 export of the Developer ID Application cert;
+          # tauri-action imports it into a throwaway keychain on the runner.
+          # The identity lives in a secret (not tauri.conf.json) so the repo
+          # carries no personal identifiers and local unsigned dev builds work.
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           projectPath: apps/designer/src-tauri
           # Reuse the pushed tag (designer-v<version>) as the release; for a
@@ -109,3 +128,42 @@ jobs:
           releaseDraft: true
           prerelease: false
           args: --target ${{ matrix.platform.target }}
+
+      # tauri-bundler notarizes and staples the .app, but the .dmg wrapper is
+      # assembled afterwards and only codesigned, so it carries no notarization
+      # ticket. Notarize and staple the dmg too, then swap the stapled copy
+      # into the draft release. The auto-updater is unaffected: latest.json
+      # references the .app.tar.gz updater archive, not the dmg.
+      - name: Notarize and staple the DMG
+        if: startsWith(matrix.platform.runner, 'macos')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          RELEASE_ID: ${{ steps.tauri.outputs.releaseId }}
+        run: |
+          set -euo pipefail
+          dmg=(target/${{ matrix.platform.target }}/release/bundle/dmg/*.dmg)
+          dmg="${dmg[0]}"
+          xcrun notarytool submit "$dmg" \
+            --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" --wait
+          xcrun stapler staple "$dmg"
+          xcrun stapler validate "$dmg"
+          if [ -z "$RELEASE_ID" ]; then
+            echo "No release to update (manual run without a tag); done."
+            exit 0
+          fi
+          # GitHub stores asset names with spaces replaced by dots.
+          name="$(basename "$dmg" | tr ' ' '.')"
+          asset_id="$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets" \
+            --jq ".[] | select(.name == \"$name\") | .id")"
+          if [ -n "$asset_id" ]; then
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets/$asset_id"
+          fi
+          gh api -X POST \
+            -H "Content-Type: application/octet-stream" \
+            "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?name=$name" \
+            --input "$dmg" > /dev/null
+          echo "Replaced $name with the stapled copy."
