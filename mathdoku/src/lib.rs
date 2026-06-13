@@ -12,7 +12,6 @@
 //!
 //! ## Entry points
 //!
-//! - **Generate** a random puzzle with [`generate()`].
 //! - **Construct** a puzzle programmatically with [`Puzzle::new`] and [`Puzzle::insert`].
 //! - **Inspect** cell values with [`Puzzle::get`].
 //! - **Solve** with [`Puzzle::solutions`].
@@ -32,6 +31,10 @@
 pub(crate) mod cage;
 pub(crate) mod csp;
 pub(crate) mod fill;
+// This module is genuinely only test-exercised right now: nothing in non-test
+// code calls it, since `generate` is not yet re-exported. It is slated to
+// become a public entry point; drop this allow when the `pub use` lands.
+#[allow(dead_code)]
 mod generate;
 pub(crate) mod grid;
 mod latin_square;
@@ -49,7 +52,6 @@ pub(crate) mod tuples;
 
 pub use cage::{Cage, Operation};
 pub use fill::Fill;
-pub use generate::generate;
 pub use latin_square::generate_latin_square;
 pub use polyomino::{Cell, Polyomino};
 pub use puzzle::{CageOperator, Puzzle, operators_for};
