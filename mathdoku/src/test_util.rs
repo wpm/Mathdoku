@@ -1,10 +1,24 @@
 //! Helpers shared by the crate's unit tests.
 
 use crate::polyomino::{Cell, Polyomino};
+use crate::puzzle::{CageOperator, Puzzle};
 
 /// A two-cell polyomino from 1-indexed `(row, column)` coordinates.
 pub fn domino(r0: usize, c0: usize, r1: usize, c1: usize) -> Polyomino {
     Polyomino::from([Cell(r0, c0), Cell(r1, c1)]).unwrap()
+}
+
+/// A 2×2 puzzle with a single-cell `Given` cage pinning `(1,1)=1`.
+pub fn pinned_2x2() -> Puzzle {
+    Puzzle::new(2)
+        .unwrap()
+        .insert(
+            &Polyomino::from([Cell(1, 1)]).unwrap(),
+            CageOperator::Given,
+            1,
+        )
+        .unwrap()
+        .unwrap()
 }
 
 /// A three-cell polyomino from 1-indexed `(row, column)` coordinates.

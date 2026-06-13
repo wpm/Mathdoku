@@ -730,7 +730,7 @@ mod tests {
     #[cfg(feature = "without-solution")]
     #[test]
     fn possible_targets_given_singleton() {
-        let p = Puzzle::from_parts(InternalGrid::new(4).unwrap(), vec![]);
+        let p = Puzzle::new(4).unwrap();
         let poly = Polyomino::from([Cell(1, 1)]).unwrap();
         let targets = p.possible_targets(&poly, CageOperator::Given).unwrap();
         assert_eq!(targets, vec![1, 2, 3, 4]);
@@ -739,7 +739,7 @@ mod tests {
     #[cfg(feature = "without-solution")]
     #[test]
     fn possible_targets_add_domino() {
-        let p = Puzzle::from_parts(InternalGrid::new(4).unwrap(), vec![]);
+        let p = Puzzle::new(4).unwrap();
         let poly = domino(1, 1, 1, 2);
         let targets = p.possible_targets(&poly, CageOperator::Add).unwrap();
         // Pairs from {1,2,3,4} with distinct values: sums 3..=7
@@ -754,7 +754,7 @@ mod tests {
     #[cfg(feature = "without-solution")]
     #[test]
     fn possible_targets_subtract_excludes_zero() {
-        let p = Puzzle::from_parts(InternalGrid::new(4).unwrap(), vec![]);
+        let p = Puzzle::new(4).unwrap();
         let poly = domino(1, 1, 1, 2);
         let targets = p.possible_targets(&poly, CageOperator::Subtract).unwrap();
         assert!(!targets.is_empty());
@@ -764,7 +764,7 @@ mod tests {
     #[cfg(feature = "without-solution")]
     #[test]
     fn possible_targets_divide_starts_at_two() {
-        let p = Puzzle::from_parts(InternalGrid::new(4).unwrap(), vec![]);
+        let p = Puzzle::new(4).unwrap();
         let poly = domino(1, 1, 1, 2);
         let targets = p.possible_targets(&poly, CageOperator::Divide).unwrap();
         assert!(!targets.is_empty());
@@ -775,7 +775,7 @@ mod tests {
     #[cfg(feature = "without-solution")]
     #[test]
     fn possible_targets_multiply_domino() {
-        let p = Puzzle::from_parts(InternalGrid::new(4).unwrap(), vec![]);
+        let p = Puzzle::new(4).unwrap();
         let poly = domino(1, 1, 1, 2);
         let targets = p.possible_targets(&poly, CageOperator::Multiply).unwrap();
         // Valid products of distinct pairs from {1,2,3,4}: 2,3,4,6,8,12
@@ -789,7 +789,7 @@ mod tests {
     #[cfg(feature = "without-solution")]
     #[test]
     fn possible_targets_narrows_with_constrained_cell() {
-        let p = Puzzle::from_parts(InternalGrid::new(4).unwrap(), vec![]);
+        let p = Puzzle::new(4).unwrap();
         let poly = domino(1, 1, 1, 2);
         let all_targets = p.possible_targets(&poly, CageOperator::Add).unwrap();
         // Pin cell (1,1) to 1; Add targets must include 1 in the pair, so max sum is 1+4=5
@@ -802,7 +802,7 @@ mod tests {
     #[cfg(feature = "without-solution")]
     #[test]
     fn possible_targets_missing_cell_error() {
-        let p = Puzzle::from_parts(InternalGrid::new(4).unwrap(), vec![]);
+        let p = Puzzle::new(4).unwrap();
         // Cell (5,1) is out of a 4×4 grid
         let poly = Polyomino::from([Cell(5, 1)]).unwrap();
         assert!(p.possible_targets(&poly, CageOperator::Given).is_err());
@@ -830,7 +830,7 @@ mod tests {
         let mut cells: Vec<Cell> = (1..=5).map(|r| Cell(r, 1)).collect();
         cells.extend((5..=9).map(|r| Cell(r, 2)));
         let poly = Polyomino::from(cells).unwrap();
-        let p = Puzzle::from_parts(InternalGrid::new(9).unwrap(), vec![]);
+        let p = Puzzle::new(9).unwrap();
         let ops = p.possible_operations(&poly).unwrap();
         assert!(ops.iter().any(|o| matches!(o, CageOperator::Add)));
         assert!(ops.iter().any(|o| matches!(o, CageOperator::Multiply)));
@@ -842,7 +842,7 @@ mod tests {
     #[cfg(feature = "without-solution")]
     #[test]
     fn possible_operations_singleton_returns_only_given() {
-        let p = Puzzle::from_parts(InternalGrid::new(4).unwrap(), vec![]);
+        let p = Puzzle::new(4).unwrap();
         let poly = Polyomino::from([Cell(1, 1)]).unwrap();
         let ops = p.possible_operations(&poly).unwrap();
         assert_eq!(ops.len(), 1);
@@ -852,7 +852,7 @@ mod tests {
     #[cfg(feature = "without-solution")]
     #[test]
     fn possible_operations_domino_includes_all_four() {
-        let p = Puzzle::from_parts(InternalGrid::new(4).unwrap(), vec![]);
+        let p = Puzzle::new(4).unwrap();
         let poly = domino(1, 1, 1, 2);
         let ops = p.possible_operations(&poly).unwrap();
         assert!(ops.iter().any(|o| matches!(o, CageOperator::Add)));
@@ -866,7 +866,7 @@ mod tests {
         // Divide target 1 would require max(a,b)/min(a,b)=1, i.e. a==b,
         // which all-different forbids. Cage::new rejects target < 2 for Divide
         // before even building the tuple table.
-        let p = Puzzle::from_parts(InternalGrid::new(4).unwrap(), vec![]);
+        let p = Puzzle::new(4).unwrap();
         let poly = domino(1, 1, 1, 2);
         // Insert a Divide cage with target 1 — must be an error, not Ok(Some(_)).
         assert!(
@@ -878,7 +878,7 @@ mod tests {
     #[cfg(feature = "without-solution")]
     #[test]
     fn possible_operations_triomino_excludes_non_commutative() {
-        let p = Puzzle::from_parts(InternalGrid::new(4).unwrap(), vec![]);
+        let p = Puzzle::new(4).unwrap();
         let poly = Polyomino::from([Cell(1, 1), Cell(1, 2), Cell(1, 3)]).unwrap();
         let ops = p.possible_operations(&poly).unwrap();
         assert!(ops.iter().any(|o| matches!(o, CageOperator::Add)));
@@ -890,7 +890,7 @@ mod tests {
     #[cfg(feature = "without-solution")]
     #[test]
     fn possible_operations_returns_error_for_out_of_grid_cell() {
-        let p = Puzzle::from_parts(InternalGrid::new(2).unwrap(), vec![]);
+        let p = Puzzle::new(2).unwrap();
         let poly = Polyomino::from([Cell(9, 9)]).unwrap();
         assert!(matches!(
             p.possible_operations(&poly),
@@ -993,7 +993,7 @@ mod tests {
 
     #[test]
     fn insert_cage_pins_cell() {
-        let p = Puzzle::from_parts(InternalGrid::new(4).unwrap(), vec![]);
+        let p = Puzzle::new(4).unwrap();
         let poly = Polyomino::from([Cell(1, 1)]).unwrap();
         let fp = p.insert(&poly, CageOperator::Given, 3).unwrap().unwrap();
         assert_eq!(fp.get(Cell(1, 1)).unwrap(), Fill::from(&[3]));
@@ -1001,7 +1001,7 @@ mod tests {
 
     #[test]
     fn insert_missing_polyomino_returns_error() {
-        let p = Puzzle::from_parts(InternalGrid::new(2).unwrap(), vec![]);
+        let p = Puzzle::new(2).unwrap();
         let poly = Polyomino::from([Cell(9, 9)]).unwrap();
         assert!(matches!(
             p.insert(&poly, CageOperator::Given, 1),
@@ -1023,62 +1023,53 @@ mod tests {
     #[test]
     fn insert_infeasible_cage_returns_none() {
         // pin (1,1)=1 and (1,2)=1 in a 2×2 — AllDifferent makes it infeasible
-        let p = Puzzle::from_parts(InternalGrid::new(2).unwrap(), vec![]);
-        let p = p
-            .insert(
-                &Polyomino::from([Cell(1, 1)]).unwrap(),
-                CageOperator::Given,
-                1,
-            )
-            .unwrap()
-            .unwrap();
+        let p = crate::test_util::pinned_2x2();
         let poly = Polyomino::from([Cell(1, 2)]).unwrap();
         assert!(p.insert(&poly, CageOperator::Given, 1).unwrap().is_none());
     }
 
+    /// Inserts an `op`/`target` cage on the (1,1)-(1,2) domino of an empty 4×4
+    /// and asserts both cells narrow to exactly `expected`.
+    fn assert_domino_prunes(op: CageOperator, target: Target, expected: &[N]) {
+        let poly = domino(1, 1, 1, 2);
+        let fp = Puzzle::new(4)
+            .unwrap()
+            .insert(&poly, op, target)
+            .unwrap()
+            .unwrap();
+        let want = Fill::from(expected);
+        assert_eq!(fp.get(Cell(1, 1)).unwrap(), want);
+        assert_eq!(fp.get(Cell(1, 2)).unwrap(), want);
+    }
+
     #[test]
     fn insert_add_cage_prunes_cells() {
-        let p = Puzzle::from_parts(InternalGrid::new(4).unwrap(), vec![]);
-        let poly = domino(1, 1, 1, 2);
-        let fp = p.insert(&poly, CageOperator::Add, 3).unwrap().unwrap();
-        assert_eq!(fp.get(Cell(1, 1)).unwrap(), Fill::from(&[1, 2]));
-        assert_eq!(fp.get(Cell(1, 2)).unwrap(), Fill::from(&[1, 2]));
+        // Add 3 in a 4×4: only pairs (1,2),(2,1) satisfy it, so both cells narrow to {1,2}.
+        assert_domino_prunes(CageOperator::Add, 3, &[1, 2]);
     }
 
     #[test]
     fn insert_multiply_cage_prunes_cells() {
         // Multiply 6 in a 4×4: valid pairs are (1,6)—out of range—(2,3),(3,2). So both {2,3}.
-        let p = Puzzle::from_parts(InternalGrid::new(4).unwrap(), vec![]);
-        let poly = domino(1, 1, 1, 2);
-        let fp = p.insert(&poly, CageOperator::Multiply, 6).unwrap().unwrap();
-        assert_eq!(fp.get(Cell(1, 1)).unwrap(), Fill::from(&[2, 3]));
-        assert_eq!(fp.get(Cell(1, 2)).unwrap(), Fill::from(&[2, 3]));
+        assert_domino_prunes(CageOperator::Multiply, 6, &[2, 3]);
     }
 
     #[test]
     fn insert_subtract_cage_prunes_cells() {
         // Subtract 3 in a 4×4: only valid pair is (4,1)/(1,4). Both cells narrow to {1,4}.
-        let p = Puzzle::from_parts(InternalGrid::new(4).unwrap(), vec![]);
-        let poly = domino(1, 1, 1, 2);
-        let fp = p.insert(&poly, CageOperator::Subtract, 3).unwrap().unwrap();
-        assert_eq!(fp.get(Cell(1, 1)).unwrap(), Fill::from(&[1, 4]));
-        assert_eq!(fp.get(Cell(1, 2)).unwrap(), Fill::from(&[1, 4]));
+        assert_domino_prunes(CageOperator::Subtract, 3, &[1, 4]);
     }
 
     #[test]
     fn insert_divide_cage_prunes_cells() {
         // Divide 4 in a 4×4: only valid pair is (4,1)/(1,4). Both cells narrow to {1,4}.
-        let p = Puzzle::from_parts(InternalGrid::new(4).unwrap(), vec![]);
-        let poly = domino(1, 1, 1, 2);
-        let fp = p.insert(&poly, CageOperator::Divide, 4).unwrap().unwrap();
-        assert_eq!(fp.get(Cell(1, 1)).unwrap(), Fill::from(&[1, 4]));
-        assert_eq!(fp.get(Cell(1, 2)).unwrap(), Fill::from(&[1, 4]));
+        assert_domino_prunes(CageOperator::Divide, 4, &[1, 4]);
     }
 
     #[test]
     fn insert_does_not_affect_unrelated_cells() {
         // Adding a cage to (1,1) should leave (2,2) at its full candidate set.
-        let p = Puzzle::from_parts(InternalGrid::new(4).unwrap(), vec![]);
+        let p = Puzzle::new(4).unwrap();
         let poly = Polyomino::from([Cell(1, 1)]).unwrap();
         let fp = p.insert(&poly, CageOperator::Given, 3).unwrap().unwrap();
         assert_eq!(fp.get(Cell(2, 2)).unwrap(), Fill::all(4));
@@ -1087,14 +1078,14 @@ mod tests {
     #[test]
     fn insert_cell_at_boundary_succeeds() {
         // (n, n) is a valid cell; inserting a cage there should work.
-        let p = Puzzle::from_parts(InternalGrid::new(4).unwrap(), vec![]);
+        let p = Puzzle::new(4).unwrap();
         let poly = Polyomino::from([Cell(4, 4)]).unwrap();
         assert!(p.insert(&poly, CageOperator::Given, 4).unwrap().is_some());
     }
 
     #[test]
     fn insert_cell_row_zero_returns_missing_polyomino() {
-        let p = Puzzle::from_parts(InternalGrid::new(4).unwrap(), vec![]);
+        let p = Puzzle::new(4).unwrap();
         let poly = Polyomino::from([Cell(0, 1)]).unwrap();
         assert!(matches!(
             p.insert(&poly, CageOperator::Given, 1),
@@ -1104,7 +1095,7 @@ mod tests {
 
     #[test]
     fn insert_cell_col_zero_returns_missing_polyomino() {
-        let p = Puzzle::from_parts(InternalGrid::new(4).unwrap(), vec![]);
+        let p = Puzzle::new(4).unwrap();
         let poly = Polyomino::from([Cell(1, 0)]).unwrap();
         assert!(matches!(
             p.insert(&poly, CageOperator::Given, 1),
@@ -1114,19 +1105,19 @@ mod tests {
 
     #[test]
     fn get_returns_full_fill_for_unconstrained_cell() {
-        let p = Puzzle::from_parts(InternalGrid::new(3).unwrap(), vec![]);
+        let p = Puzzle::new(3).unwrap();
         assert_eq!(p.get(Cell(2, 2)).unwrap(), Fill::all(3));
     }
 
     #[test]
     fn get_missing_cell_returns_error() {
-        let p = Puzzle::from_parts(InternalGrid::new(3).unwrap(), vec![]);
+        let p = Puzzle::new(3).unwrap();
         assert!(matches!(p.get(Cell(9, 9)), Err(MissingCell(_))));
     }
 
     #[test]
     fn set_pins_cell_to_value() {
-        let p = Puzzle::from_parts(InternalGrid::new(4).unwrap(), vec![]);
+        let p = Puzzle::new(4).unwrap();
         let p2 = p.set(Cell(1, 1), 3).unwrap();
         assert_eq!(p2.get(Cell(1, 1)).unwrap(), Fill::from(&[3]));
     }
@@ -1146,7 +1137,7 @@ mod tests {
     #[test]
     fn fixpoint_no_cages_full_grid_unchanged() {
         // With no cages and a full grid, AllDifferent has nothing to prune.
-        let p = Puzzle::from_parts(InternalGrid::new(2).unwrap(), vec![]);
+        let p = Puzzle::new(2).unwrap();
         let fp = p.fixpoint().unwrap();
         assert_eq!(fp.get(Cell(1, 1)).unwrap(), Fill::all(2));
         assert_eq!(fp.get(Cell(1, 2)).unwrap(), Fill::all(2));
@@ -1204,15 +1195,7 @@ mod tests {
 
     #[test]
     fn is_fully_covered_partial_coverage_is_false() {
-        let p = Puzzle::new(2)
-            .unwrap()
-            .insert(
-                &Polyomino::from([Cell(1, 1)]).unwrap(),
-                CageOperator::Given,
-                1,
-            )
-            .unwrap()
-            .unwrap();
+        let p = crate::test_util::pinned_2x2();
         assert!(!p.is_fully_covered());
     }
 
@@ -1298,16 +1281,8 @@ mod tests {
 
     #[test]
     fn eq_ignores_insertion_order() {
-        let add = domino(1, 1, 1, 2);
-        let given = Polyomino::from([Cell(2, 1)]).unwrap();
-        let a = Puzzle::new(4)
-            .unwrap()
-            .insert(&add, CageOperator::Add, 5)
-            .unwrap()
-            .unwrap()
-            .insert(&given, CageOperator::Given, 3)
-            .unwrap()
-            .unwrap();
+        // `a` inserts Add before Given; `b` reverses that order.
+        let (a, add, given) = two_cage_puzzle();
         let b = Puzzle::new(4)
             .unwrap()
             .insert(&given, CageOperator::Given, 3)
