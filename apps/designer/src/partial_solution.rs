@@ -92,21 +92,9 @@ impl PartialSolution {
 mod tests {
     use super::PartialSolution;
     use mathdoku::{CageOperator, Cell, Puzzle};
-    use mathdoku_designer_core::test_support::{cage_at, given_3x3, known_3x3_solution};
-
-    /// A 3×3 puzzle covered by three `Add`-6 row cages. Every row is forced to be
-    /// a permutation of `{1,2,3}`, so the solutions are exactly the 12 order-3
-    /// Latin squares.
-    fn row_sums_3x3() -> Puzzle {
-        let mut puzzle = Puzzle::new(3).unwrap();
-        for r in 0..3 {
-            puzzle = puzzle
-                .insert_cage(&cage_at(3, &[(r, 0), (r, 1), (r, 2)], CageOperator::Add, 6))
-                .unwrap()
-                .unwrap();
-        }
-        puzzle
-    }
+    use mathdoku_designer_core::test_support::{
+        cage_at, given_3x3, known_3x3_solution, row_sums_3x3,
+    };
 
     #[test]
     fn solution_count_unique_puzzle_is_one() {

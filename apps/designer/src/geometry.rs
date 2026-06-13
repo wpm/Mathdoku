@@ -280,7 +280,7 @@ mod tests {
         // A triangle (three mutually adjacent cages) cannot be properly
         // colored with two colors, forcing the backtracking search to
         // exhaust every branch and fail.
-        let adjacency: Vec<std::collections::BTreeSet<usize>> = vec![
+        let adjacency: Vec<BTreeSet<usize>> = vec![
             [1, 2].into_iter().collect(),
             [0, 2].into_iter().collect(),
             [0, 1].into_iter().collect(),

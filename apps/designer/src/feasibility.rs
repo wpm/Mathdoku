@@ -157,7 +157,7 @@ mod tests {
         cached_feasible_op_targets, feasible_op_targets, group_by_operator, is_globally_feasible,
     };
     use mathdoku::{Cage, CageOperator, N, Puzzle};
-    use mathdoku_designer_core::test_support::{cage_at, poly};
+    use mathdoku_designer_core::test_support::{cage_at, poly, row_sum_cage};
 
     #[test]
     fn given_in_range_is_feasible_in_empty_puzzle() {
@@ -213,16 +213,13 @@ mod tests {
         // Latin squares all satisfy it.
         let puzzle = Puzzle::new(3)
             .unwrap()
-            .insert_cage(&cage_at(3, &[(0, 0), (0, 1), (0, 2)], CageOperator::Add, 6))
+            .insert_cage(&row_sum_cage(0))
             .unwrap()
             .unwrap()
-            .insert_cage(&cage_at(3, &[(1, 0), (1, 1), (1, 2)], CageOperator::Add, 6))
+            .insert_cage(&row_sum_cage(1))
             .unwrap()
             .unwrap();
-        assert!(is_globally_feasible(
-            &puzzle,
-            &cage_at(3, &[(2, 0), (2, 1), (2, 2)], CageOperator::Add, 6)
-        ));
+        assert!(is_globally_feasible(&puzzle, &row_sum_cage(2)));
     }
 
     #[test]
@@ -296,10 +293,10 @@ mod tests {
         // (sum 6, product 6) survive it.
         let puzzle = Puzzle::new(3)
             .unwrap()
-            .insert_cage(&cage_at(3, &[(0, 0), (0, 1), (0, 2)], CageOperator::Add, 6))
+            .insert_cage(&row_sum_cage(0))
             .unwrap()
             .unwrap()
-            .insert_cage(&cage_at(3, &[(1, 0), (1, 1), (1, 2)], CageOperator::Add, 6))
+            .insert_cage(&row_sum_cage(1))
             .unwrap()
             .unwrap();
         let pairs = feasible_op_targets(&puzzle, &poly(&[(2, 0), (2, 1), (2, 2)])).unwrap();

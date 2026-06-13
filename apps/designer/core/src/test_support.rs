@@ -61,6 +61,23 @@ pub fn given_3x3() -> Puzzle {
     puzzle
 }
 
+/// The `Add`-6 cage covering row `r` of a 3×3 grid. Each row is then forced to
+/// be a permutation of `{1, 2, 3}`.
+pub fn row_sum_cage(r: usize) -> Cage {
+    cage_at(3, &[(r, 0), (r, 1), (r, 2)], CageOperator::Add, 6)
+}
+
+/// A 3×3 [`Puzzle`] covered by three [`row_sum_cage`]s. Every row is forced to
+/// be a permutation of `{1, 2, 3}`, so the solutions are exactly the 12 order-3
+/// Latin squares.
+pub fn row_sums_3x3() -> Puzzle {
+    let mut puzzle = Puzzle::new(3).unwrap();
+    for r in 0..3 {
+        puzzle = puzzle.insert_cage(&row_sum_cage(r)).unwrap().unwrap();
+    }
+    puzzle
+}
+
 /// A Without-Solution [`State`] whose puzzle is [`given_3x3`] — exactly one
 /// completion.
 #[cfg(feature = "without-solution")]
