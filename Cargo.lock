@@ -2676,7 +2676,7 @@ dependencies = [
 
 [[package]]
 name = "mathdoku-designer-core"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "getrandom 0.4.2",
  "mathdoku",
@@ -2689,7 +2689,7 @@ dependencies = [
 
 [[package]]
 name = "mathdoku-designer-tauri"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "mathdoku",
  "mathdoku-designer-core",
@@ -2705,7 +2705,7 @@ dependencies = [
 
 [[package]]
 name = "mathdoku-designer-ui"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "console_error_panic_hook",
  "getrandom 0.4.2",
