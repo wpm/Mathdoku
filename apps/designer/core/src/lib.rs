@@ -57,7 +57,9 @@ pub enum Error {
     /// Serializing or deserializing a save file failed.
     #[error("serialization failed: {0}")]
     Serde(String),
-    /// The save file's [`SaveEnvelope::version`] does not match [`SAVE_VERSION`].
+    /// The save file's [`SaveEnvelope::version`] is newer than [`SAVE_VERSION`],
+    /// so this build cannot read it. Older-or-equal versions are accepted and
+    /// upgraded through the load-time migration seam, so they never reach here.
     #[error("unsupported save version: {0}")]
     UnsupportedVersion(u32),
 }
@@ -460,8 +462,37 @@ pub fn serialize_save(state: &AppState) -> Result<String, Error> {
     to_string_pretty(&envelope).map_err(|e| Error::Serde(e.to_string()))
 }
 
-/// Parses a [`SaveEnvelope`] from `json`, version-checks it, and writes the
-/// result into `state`.
+/// Upgrades a freshly parsed [`SaveEnvelope`] to the current [`SAVE_VERSION`]
+/// in-memory shape.
+///
+/// This is the backward-read migration seam. Each older format upgrades to the
+/// next as a dedicated match arm, chaining `vN -> vN+1` steps until the envelope
+/// is current. v1 is the only version today, so there is nothing to migrate yet
+/// and current files pass straight through — but this is exactly where a future
+/// `1 => migrate_v1_to_v2(envelope)` arm slots in once `SAVE_VERSION` is bumped.
+///
+/// The caller ([`apply_loaded`]) guarantees `envelope.version <= SAVE_VERSION`,
+/// so any version below `SAVE_VERSION` is an older, migratable shape.
+fn migrate_envelope(envelope: SaveEnvelope) -> SaveEnvelope {
+    match envelope.version {
+        // Already current: nothing to migrate.
+        SAVE_VERSION => envelope,
+        // Older shapes upgrade here once a newer `SAVE_VERSION` exists. With v1
+        // as the lowest and only version, this arm carries no migration today.
+        older => {
+            debug_assert!(older < SAVE_VERSION, "caller must reject newer versions");
+            envelope
+        }
+    }
+}
+
+/// Parses a [`SaveEnvelope`] from `json`, migrates it to the current shape, and
+/// writes the result into `state`.
+///
+/// Backward read-compat: any file whose `version <= SAVE_VERSION` is accepted
+/// and upgraded through [`migrate_envelope`]; only files newer than
+/// [`SAVE_VERSION`] are rejected, since an older app cannot guess at a future
+/// format.
 ///
 /// On success the puzzle and solution are replaced, `dirty` is cleared, and
 /// `active` is reset to `None`. Returns the loaded designer [`State`]. The
@@ -469,12 +500,16 @@ pub fn serialize_save(state: &AppState) -> Result<String, Error> {
 ///
 /// # Errors
 /// Returns [`Error::Serde`] if the JSON is malformed, or
-/// [`Error::UnsupportedVersion`] if the save version is not supported.
+/// [`Error::UnsupportedVersion`] if the save version is newer than
+/// [`SAVE_VERSION`].
 pub fn apply_loaded(state: &mut AppState, json: &str) -> Result<State, Error> {
     let envelope: SaveEnvelope = from_str(json).map_err(|e| Error::Serde(e.to_string()))?;
-    if envelope.version != SAVE_VERSION {
+    // Reject only formats newer than this build understands; read everything at
+    // or below SAVE_VERSION, upgrading older shapes through the migration seam.
+    if envelope.version > SAVE_VERSION {
         return Err(Error::UnsupportedVersion(envelope.version));
     }
+    let envelope = migrate_envelope(envelope);
     state.puzzle = Some(envelope.puzzle);
     state.solution = envelope.solution;
     state.dirty = false;
@@ -598,8 +633,8 @@ mod tests {
     mod command_errors {
         use crate::test_support::{cells, poly, without_solution};
         use crate::{
-            AppState, Error, SaveEnvelope, apply_loaded, insert_cage, new_latin_square,
-            remove_cage_at, serialize_save,
+            AppState, Error, SAVE_VERSION, SaveEnvelope, apply_loaded, insert_cage,
+            new_latin_square, remove_cage_at, serialize_save,
         };
         #[cfg(feature = "without-solution")]
         use crate::{fix, new_empty, unfix};
@@ -845,7 +880,25 @@ mod tests {
         }
 
         #[test]
-        fn apply_loaded_rejects_wrong_version() {
+        fn apply_loaded_rejects_newer_than_current_version() {
+            // A version above SAVE_VERSION is the one case load still refuses:
+            // an older app cannot guess at a future format.
+            let envelope = SaveEnvelope {
+                version: SAVE_VERSION + 1,
+                puzzle: Puzzle::new(3).unwrap(),
+                solution: None,
+            };
+            let json = to_string(&envelope).unwrap();
+            let mut state = AppState::default();
+            assert!(matches!(
+                apply_loaded(&mut state, &json),
+                Err(Error::UnsupportedVersion(v)) if v == SAVE_VERSION + 1
+            ));
+        }
+
+        #[test]
+        fn apply_loaded_rejects_far_future_version() {
+            // Any version newer than SAVE_VERSION rejects, not just the next one.
             let envelope = SaveEnvelope {
                 version: 99,
                 puzzle: Puzzle::new(3).unwrap(),
@@ -860,7 +913,13 @@ mod tests {
         }
 
         #[test]
-        fn apply_loaded_rejects_version_zero() {
+        fn apply_loaded_accepts_version_at_or_below_current() {
+            // Backward read-compat: load widened from strict equality to
+            // `version <= SAVE_VERSION`. A below-current version (0, here) is
+            // treated as an older shape and read via the migration seam rather
+            // than rejected. There is no v0 format to migrate today, so it loads
+            // as the current shape; this is the seam future `vN -> vN+1` steps
+            // hook into.
             let envelope = SaveEnvelope {
                 version: 0,
                 puzzle: Puzzle::new(3).unwrap(),
@@ -868,10 +927,25 @@ mod tests {
             };
             let json = to_string(&envelope).unwrap();
             let mut state = AppState::default();
-            assert!(matches!(
-                apply_loaded(&mut state, &json),
-                Err(Error::UnsupportedVersion(0))
-            ));
+            let designer = apply_loaded(&mut state, &json).unwrap();
+            assert_eq!(designer.puzzle.n(), 3);
+        }
+
+        #[test]
+        fn apply_loaded_current_version_loads_via_migration_seam() {
+            // The migration seam reads any accepted version. v1 is the only
+            // version today, so this pins the current-version path through the
+            // seam; when v2 lands, add a sibling test that a v1 file upgrades.
+            let envelope = SaveEnvelope {
+                version: SAVE_VERSION,
+                puzzle: Puzzle::new(3).unwrap(),
+                solution: None,
+            };
+            let json = to_string(&envelope).unwrap();
+            let mut state = AppState::default();
+            let designer = apply_loaded(&mut state, &json).unwrap();
+            assert_eq!(designer.puzzle.n(), 3);
+            assert!(designer.solution.is_none());
         }
 
         #[test]
