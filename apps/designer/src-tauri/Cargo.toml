@@ -1,6 +1,5 @@
 [package]
 name = "mathdoku-designer-tauri"
-version = "0.1.0"
 description = "Mathdoku Designer"
 edition.workspace = true
 authors.workspace = true
