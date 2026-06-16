@@ -92,9 +92,17 @@ jobs:
         with:
           tool: tauri-cli
 
+      # createUpdaterArtifacts is committed `true` in tauri.conf.json so the
+      # real release (release-designer.yml) emits signed updater artifacts.
+      # That flag also forces *this* unsigned smoke build to demand
+      # TAURI_SIGNING_PRIVATE_KEY, which it intentionally doesn't set. The
+      # smoke test only installs and launches the .deb/.rpm/.AppImage and has
+      # no use for updater artifacts, so override the flag off here.
       - name: Build unsigned Linux bundles
         working-directory: apps/designer/src-tauri
-        run: cargo tauri build --target x86_64-unknown-linux-gnu
+        run: |
+          cargo tauri build --target x86_64-unknown-linux-gnu \
+            --config '{"bundle":{"createUpdaterArtifacts":false}}'
 
       - name: Upload Linux bundles
         uses: actions/upload-artifact@v4
