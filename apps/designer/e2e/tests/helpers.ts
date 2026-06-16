@@ -85,6 +85,12 @@ export async function installTauriStubs(
                 (args as { title?: string } | undefined)?.title ?? '';
               return Promise.resolve(null);
             }
+            // The app checks for an update on mount. Report none available so
+            // the Updating modal never opens during tests. (install_update is
+            // never reached when available is false, but is stubbed for safety.)
+            if (cmd === 'check_for_update')
+              return Promise.resolve({ available: false, version: null });
+            if (cmd === 'install_update') return Promise.resolve(null);
             if (cmd === 'remove_cage_at') {
               // polyomino arg is [[row,col],...] 1-indexed tuples.
               const typedArgs = args as
