@@ -87,6 +87,18 @@ fn basename(path: &str) -> &str {
     path.rsplit(&['/', '\\']).next().unwrap_or(path)
 }
 
+/// Download progress as a 0–100 percentage, or `None` when the total size is
+/// unknown (the Updating bar then renders as indeterminate). Clamps to the
+/// total so a server that over-reports can't drive the bar past full.
+#[cfg(not(feature = "web"))]
+#[allow(clippy::cast_precision_loss)] // download sizes are far below f64's 2^52 exact range
+fn progress_percent(downloaded: u64, total: Option<u64>) -> Option<f64> {
+    match total {
+        Some(t) if t > 0 => Some(downloaded.min(t) as f64 / t as f64 * 100.0),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -120,6 +132,25 @@ mod tests {
     #[test]
     fn basename_trailing_separator_is_empty() {
         assert_eq!(basename("/home/user/"), "");
+    }
+
+    #[cfg(not(feature = "web"))]
+    #[test]
+    fn progress_percent_is_none_without_a_known_total() {
+        use super::progress_percent;
+        assert_eq!(progress_percent(100, None), None);
+        assert_eq!(progress_percent(100, Some(0)), None);
+    }
+
+    #[cfg(not(feature = "web"))]
+    #[test]
+    fn progress_percent_scales_and_clamps_to_full() {
+        use super::progress_percent;
+        assert_eq!(progress_percent(0, Some(200)), Some(0.0));
+        assert_eq!(progress_percent(50, Some(200)), Some(25.0));
+        assert_eq!(progress_percent(200, Some(200)), Some(100.0));
+        // An over-reporting server can't push the bar past full.
+        assert_eq!(progress_percent(500, Some(200)), Some(100.0));
     }
 
     #[test]
@@ -488,6 +519,123 @@ fn ErrorToast(message: String, on_dismiss: Callback<()>) -> impl IntoView {
     }
 }
 
+// ---- UpdatingModal ----
+
+// The progress UI for the self-update flow. Tauri ships no updater UI, so the
+// app builds its own: while a newer release downloads this modal shows a
+// progress bar (advancing when the server announces a size, indeterminate when
+// it doesn't), then the app installs and relaunches. If the check, download, or
+// install fails, `error` is set and the modal swaps to a dismissible message so
+// the failure is never swallowed. The browser preview has no self-update, so
+// the whole component is Tauri-only.
+#[cfg(not(feature = "web"))]
+#[component]
+fn UpdatingModal(
+    /// Running downloaded byte count, fed by the `update://progress` event.
+    downloaded: RwSignal<u64>,
+    /// Total download size, or `None` for an indeterminate bar.
+    total: RwSignal<Option<u64>>,
+    /// `Some(msg)` switches the modal from progress to a dismissible error.
+    error: RwSignal<Option<String>>,
+    /// Dismisses the modal; only reachable from the error state.
+    on_dismiss: Callback<()>,
+) -> impl IntoView {
+    use crate::theme::ACCENT;
+
+    let track_style = format!(
+        "height:8px;border-radius:4px;background:{LINE};overflow:hidden;margin:4px 0 4px 0;"
+    );
+    // The fill animates its width so a determinate bar glides between updates;
+    // an indeterminate bar (unknown total) just shows a full accent track.
+    let fill_style = move || {
+        let width = progress_percent(downloaded.get(), total.get()).unwrap_or(100.0);
+        format!(
+            "height:100%;width:{width}%;background:{ACCENT};\
+             transition:width 0.2s ease;"
+        )
+    };
+    let status = move || {
+        progress_percent(downloaded.get(), total.get()).map_or_else(
+            || "Downloading update…".to_string(),
+            |pct| format!("Downloading update… {pct:.0}%"),
+        )
+    };
+
+    view! {
+        <div style=overlay_style()>
+            <div style=dialog_style(320, 420) tabindex="-1" on:keydown=|ev| trap_tab(&ev)>
+                <style>
+                    ".upd-btn:focus-visible { outline: 2px solid "
+                    {ACCENT}
+                    "; outline-offset: 2px; }"
+                </style>
+                {move || error.get().map_or_else(
+                    // Progress state: title, animated bar, percentage text.
+                    || view! {
+                        <p style=title_style()>"Updating Mathdoku Designer"</p>
+                        <p style=body_style()>{status}</p>
+                        <div style=track_style.clone()>
+                            <div style=fill_style></div>
+                        </div>
+                        <p style=format!("font-size:12px;color:{INK2};margin:8px 0 0 0;")>
+                            "The app will relaunch automatically when the update is installed."
+                        </p>
+                    }.into_any(),
+                    // Error state: message plus a dismiss button.
+                    |msg| view! {
+                        <p style=title_style()>"Update failed"</p>
+                        <p style=body_style()>{msg}</p>
+                        <div style="display:flex;justify-content:flex-end;">
+                            <button
+                                class="upd-btn"
+                                style=primary_btn_style()
+                                on:click=move |_| on_dismiss.run(())
+                            >
+                                "Dismiss"
+                            </button>
+                        </div>
+                    }.into_any(),
+                )}
+            </div>
+        </div>
+    }
+}
+
+/// Renders the Updating modal when `show` is set (Tauri build only).
+#[cfg(not(feature = "web"))]
+fn update_modal_view(
+    show: RwSignal<bool>,
+    downloaded: RwSignal<u64>,
+    total: RwSignal<Option<u64>>,
+    error: RwSignal<Option<String>>,
+    on_dismiss: Callback<()>,
+) -> impl IntoView {
+    move || {
+        show.get().then(|| {
+            view! {
+                <UpdatingModal
+                    downloaded=downloaded
+                    total=total
+                    error=error
+                    on_dismiss=on_dismiss
+                />
+            }
+        })
+    }
+}
+
+/// Web build: the browser preview has no self-update, so this renders nothing.
+#[cfg(feature = "web")]
+fn update_modal_view(
+    show: RwSignal<bool>,
+    downloaded: RwSignal<u64>,
+    total: RwSignal<Option<u64>>,
+    error: RwSignal<Option<String>>,
+    on_dismiss: Callback<()>,
+) -> impl IntoView {
+    let _ = (show, downloaded, total, error, on_dismiss);
+}
+
 // ---- App ----
 
 #[component]
@@ -510,6 +658,15 @@ pub fn App() -> impl IntoView {
     // happens in the new Puzzle's scope, not the disposed old one.
     let pending_selector: RwSignal<Option<mathdoku::Polyomino>> = RwSignal::new(None);
 
+    // Self-update modal state. `show_update_modal` gates the Updating modal;
+    // the byte counts drive its progress bar; `update_error` swaps it to a
+    // dismissible error. These are read by `update_modal_view` on every build
+    // (the web variant ignores them) and driven by the Tauri-only check flow.
+    let show_update_modal = RwSignal::new(false);
+    let update_downloaded = RwSignal::new(0_u64);
+    let update_total: RwSignal<Option<u64>> = RwSignal::new(None);
+    let update_error: RwSignal<Option<String>> = RwSignal::new(None);
+
     // Check if a puzzle was already restored from the recent file on startup.
     // If not, show the Size Modal so the user can create a new puzzle.
     spawn_local(async move {
@@ -519,6 +676,46 @@ pub fn App() -> impl IntoView {
             designer_state.set(Some(st));
         } else {
             show_size_modal.set(true);
+        }
+    });
+
+    // Drive the self-update check from the frontend on mount (issue #172). The
+    // progress listener is registered *before* the check so no `update://progress`
+    // chunk event can fire before the webview is listening. Tauri's updater never
+    // runs on its own; this is the call that makes it go. Gated to the Tauri build
+    // — the browser preview has no command bus or self-update.
+    #[cfg(not(feature = "web"))]
+    spawn_local(async move {
+        let progress_cb = Closure::wrap(Box::new(move |event: JsValue| {
+            if let Some(p) = ipc::parse_update_progress(&event) {
+                update_downloaded.set(p.downloaded);
+                update_total.set(p.total);
+            }
+        }) as Box<dyn Fn(JsValue)>);
+        // Event names must match the EVENT_UPDATE_* constants in src-tauri/src/commands.rs.
+        listen("update://progress", progress_cb.as_ref().unchecked_ref()).await;
+        progress_cb.forget();
+
+        match ipc::check_for_update().await {
+            Ok(check) if check.available => {
+                // Auto-start the download (a pre-install confirmation can come
+                // later, per the issue). Open the modal, then install: any
+                // error from the install drives the modal's error state.
+                update_downloaded.set(0);
+                update_total.set(None);
+                update_error.set(None);
+                show_update_modal.set(true);
+                if let Err(e) = ipc::install_update().await {
+                    update_error.set(Some(e.to_string()));
+                }
+                // On success the process restarts and never reaches here.
+            }
+            Ok(_) => {} // up to date: no modal, startup unaffected
+            Err(e) => {
+                // Don't fail silently: surface check/permission errors too.
+                update_error.set(Some(e.to_string()));
+                show_update_modal.set(true);
+            }
         }
     });
 
@@ -680,6 +877,21 @@ pub fn App() -> impl IntoView {
 
     let on_dismiss_error = Callback::new(move |(): ()| error_msg.set(None));
 
+    // Dismissing the Updating modal only happens from its error state: clear the
+    // message and close it. (A successful update restarts the app, so the
+    // progress state is never dismissed by hand.)
+    let on_update_dismiss = Callback::new(move |(): ()| {
+        update_error.set(None);
+        show_update_modal.set(false);
+    });
+    let update_modal = update_modal_view(
+        show_update_modal,
+        update_downloaded,
+        update_total,
+        update_error,
+        on_update_dismiss,
+    );
+
     // These callbacks are stable for the app's lifetime and must not be
     // re-created inside the reactive closure below. Puzzle instances capture
     // them in async closures (demote → commit chains) that outlive the Puzzle
@@ -745,6 +957,7 @@ pub fn App() -> impl IntoView {
             {move || error_msg.get().map(|msg| view! {
                 <ErrorToast message=msg on_dismiss=on_dismiss_error />
             })}
+            {update_modal}
         </main>
     }
 }

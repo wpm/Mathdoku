@@ -17,6 +17,8 @@
 
 use mathdoku::{CageOperator, Cell, Polyomino, Target};
 use mathdoku_designer_core::{DocState, SaveResult, State};
+#[cfg(not(feature = "web"))]
+use serde::Deserialize;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_wasm_bindgen::{from_value, to_value};
@@ -354,6 +356,60 @@ pub async fn quit_app() {
 /// Web build: there is no application process to exit, so this is a no-op.
 #[cfg(feature = "web")]
 pub async fn quit_app() {}
+
+// ---- auto-update ----
+//
+// Only the Tauri (non-`web`) build talks to the updater plugin; the browser
+// preview has no Tauri command bus and no self-update story, so these wrappers
+// and their payload types are absent there.
+
+/// Outcome of [`check_for_update`]: whether a newer release exists and, if so,
+/// its version string. Mirrors the backend `UpdateCheck`.
+#[cfg(not(feature = "web"))]
+#[derive(Clone, Deserialize)]
+pub struct UpdateCheck {
+    pub available: bool,
+    pub version: Option<String>,
+}
+
+/// Payload of the `update://progress` event: the running downloaded byte count
+/// and the total content length (`None` when the server announces none).
+#[cfg(not(feature = "web"))]
+#[derive(Clone, Deserialize)]
+pub struct UpdateProgress {
+    pub downloaded: u64,
+    pub total: Option<u64>,
+}
+
+/// Asks the backend whether a newer release is available (no download yet).
+#[cfg(not(feature = "web"))]
+pub async fn check_for_update() -> Result<UpdateCheck, IpcError> {
+    let result = raw_invoke("check_for_update", JsValue::NULL).await;
+    if let Some(err) = command_error(&result) {
+        return Err(err);
+    }
+    from_value(result).map_err(|e| IpcError::Serde(e.to_string()))
+}
+
+/// Downloads, installs, and relaunches into the newer release.
+///
+/// On success the process is replaced, so this future never resolves to `Ok`;
+/// any `Err` is a check/download/install failure that the caller must surface.
+#[cfg(not(feature = "web"))]
+pub async fn install_update() -> Result<(), IpcError> {
+    let result = raw_invoke("install_update", JsValue::NULL).await;
+    command_error(&result).map_or(Ok(()), Err)
+}
+
+/// Extracts the [`UpdateProgress`] payload from a Tauri `update://progress`
+/// event object (`{ event, id, payload }`), returning `None` if the shape is
+/// unexpected.
+#[cfg(not(feature = "web"))]
+#[must_use]
+pub fn parse_update_progress(event: &JsValue) -> Option<UpdateProgress> {
+    let payload = js_sys::Reflect::get(event, &JsValue::from_str("payload")).ok()?;
+    from_value(payload).ok()
+}
 
 // ---- file dialogs ----
 
