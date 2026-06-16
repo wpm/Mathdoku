@@ -21,8 +21,9 @@ use tauri::{AppHandle, Emitter, Manager, Runtime, WindowEvent};
 #[cfg(feature = "without-solution")]
 use commands::{PuzzleMenu, fix, new_empty, set_puzzle_menu_enabled, unfix};
 use commands::{
-    get_doc_state, get_puzzle, insert_cage, load_puzzle, new_latin_square, quit_app, read_recent,
-    remove_cage_at, save_puzzle, set_active_cell, set_window_title,
+    check_for_update, get_doc_state, get_puzzle, insert_cage, install_update, load_puzzle,
+    new_latin_square, quit_app, read_recent, remove_cage_at, save_puzzle, set_active_cell,
+    set_window_title,
 };
 
 const EVENT_NEW: &str = "menu-new";
@@ -299,6 +300,8 @@ pub fn run() {
         fix,
         unfix,
         set_puzzle_menu_enabled,
+        check_for_update,
+        install_update,
     ];
     #[cfg(not(feature = "without-solution"))]
     let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
@@ -312,6 +315,8 @@ pub fn run() {
         quit_app,
         insert_cage,
         remove_cage_at,
+        check_for_update,
+        install_update,
     ];
     let builder = tauri::Builder::default().plugin(tauri_plugin_dialog::init());
     // The updater plugin is desktop-only; mobile app stores handle their own updates.

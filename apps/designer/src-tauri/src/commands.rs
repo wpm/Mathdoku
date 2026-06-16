@@ -14,7 +14,7 @@ use mathdoku::{CageOperator, Cell, Polyomino, Target};
 use mathdoku_designer_core::{self as core, AppState, DocState, SaveResult, State};
 #[cfg(feature = "without-solution")]
 use tauri::menu::MenuItem;
-use tauri::{AppHandle, Manager, Runtime, State as TauriState};
+use tauri::{AppHandle, Emitter, Manager, Runtime, State as TauriState};
 
 /// Handles to the native Puzzle menu's Fix / Unfix items, stored in app state so
 /// [`set_puzzle_menu_enabled`] can toggle their enabled state from the frontend.
@@ -267,4 +267,125 @@ pub fn remove_cage_at(
 ) -> Result<State, String> {
     let mut s = state.lock().map_err(|e| e.to_string())?;
     core::remove_cage_at(&mut s, &polyomino).map_err(|e| e.to_string())
+}
+
+// ---- auto-update ----
+//
+// Tauri's updater never runs on its own: registering the plugin only makes the
+// capability available, so the app has to call `check()` / `download_and_install()`
+// itself. These two commands are the backend half of that flow; the frontend
+// drives them from its mount (see `app.rs`). The updater plugin is desktop-only,
+// so the bodies are gated on `desktop`; the mobile stubs keep the commands in
+// the IPC handler (which can't carry `#[cfg]` per entry) and just report that
+// updating is unsupported there.
+
+/// The Tauri event carrying download progress.
+///
+/// Payload is `{ downloaded, total }`, where `downloaded` is the running byte
+/// count and `total` is the content length (or `null` when the server doesn't
+/// announce one — an indeterminate bar).
+pub const EVENT_UPDATE_PROGRESS: &str = "update://progress";
+/// The Tauri event signalling the download has finished and install is starting.
+pub const EVENT_UPDATE_DOWNLOAD_FINISHED: &str = "update://download-finished";
+
+/// Outcome of an update check: whether a newer release is available and, if so,
+/// its version string (shown in the Updating modal).
+#[derive(Serialize)]
+pub struct UpdateCheck {
+    pub available: bool,
+    pub version: Option<String>,
+}
+
+/// Running download progress emitted over [`EVENT_UPDATE_PROGRESS`].
+#[cfg(desktop)]
+#[derive(Clone, Serialize)]
+struct UpdateProgress {
+    downloaded: usize,
+    total: Option<u64>,
+}
+
+/// Checks the configured endpoint for a newer release without downloading it.
+///
+/// # Errors
+/// Returns an error string if the updater is unavailable (e.g. the
+/// `updater:default` permission is missing) or the check request fails.
+#[cfg(desktop)]
+#[tauri::command]
+pub async fn check_for_update<R: Runtime>(app: AppHandle<R>) -> Result<UpdateCheck, String> {
+    use tauri_plugin_updater::UpdaterExt;
+    match app
+        .updater()
+        .map_err(|e| e.to_string())?
+        .check()
+        .await
+        .map_err(|e| e.to_string())?
+    {
+        Some(update) => Ok(UpdateCheck {
+            available: true,
+            version: Some(update.version),
+        }),
+        None => Ok(UpdateCheck {
+            available: false,
+            version: None,
+        }),
+    }
+}
+
+/// Desktop-only command; the mobile stub reports that updating is unsupported.
+#[cfg(not(desktop))]
+#[tauri::command]
+pub async fn check_for_update<R: Runtime>(app: AppHandle<R>) -> Result<UpdateCheck, String> {
+    let _ = &app;
+    Err("Updating is not supported on this platform.".to_string())
+}
+
+/// Downloads and installs the available update, then relaunches.
+///
+/// Re-checks for an update, then downloads and installs it, emitting
+/// [`EVENT_UPDATE_PROGRESS`] as bytes arrive and [`EVENT_UPDATE_DOWNLOAD_FINISHED`]
+/// once the download completes, and finally relaunches into the new version.
+///
+/// The function re-`check()`s rather than trusting a prior result so the handle
+/// to the update is fresh; the `total` byte count may be `None`, which the
+/// frontend renders as an indeterminate bar.
+///
+/// # Errors
+/// Returns an error string if the updater is unavailable, no update is found, or
+/// the download/install fails. On success it does not return — the app restarts.
+#[cfg(desktop)]
+#[tauri::command]
+pub async fn install_update<R: Runtime>(app: AppHandle<R>) -> Result<(), String> {
+    use tauri_plugin_updater::UpdaterExt;
+    let update = app
+        .updater()
+        .map_err(|e| e.to_string())?
+        .check()
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "No update is available to install.".to_string())?;
+
+    let mut downloaded: usize = 0;
+    update
+        .download_and_install(
+            |chunk, total| {
+                downloaded = downloaded.saturating_add(chunk);
+                let _ = app.emit(EVENT_UPDATE_PROGRESS, UpdateProgress { downloaded, total });
+            },
+            || {
+                let _ = app.emit(EVENT_UPDATE_DOWNLOAD_FINISHED, ());
+            },
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Relaunch into the freshly installed version. `restart` never returns.
+    app.restart()
+}
+
+/// Desktop-only command; the mobile stub reports that updating is unsupported.
+#[cfg(not(desktop))]
+#[tauri::command]
+pub async fn install_update<R: Runtime>(app: AppHandle<R>) -> Result<(), String> {
+    let _ = &app;
+    Err("Updating is not supported on this platform.".to_string())
 }
